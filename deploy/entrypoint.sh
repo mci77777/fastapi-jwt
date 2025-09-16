@@ -1,5 +1,5 @@
 #!/bin/sh
-set -e
+set -eu
 
 nginx
-python run.py
+exec python run.py
