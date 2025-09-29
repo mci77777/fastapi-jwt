@@ -1,94 +1,70 @@
-import os
-import typing
+"""应用配置与环境变量加载逻辑。"""
+from functools import lru_cache
+from typing import List, Optional
 
-from pydantic_settings import BaseSettings
+from pydantic import AnyHttpUrl, BaseSettings, Field, validator
 
 
 class Settings(BaseSettings):
-    VERSION: str = "0.1.0"
-    APP_TITLE: str = "Vue FastAPI Admin"
-    PROJECT_NAME: str = "Vue FastAPI Admin"
-    APP_DESCRIPTION: str = "Description"
+    """集中式配置定义，便于后续依赖注入与测试覆盖。"""
 
-    CORS_ORIGINS: typing.List = ["*"]
-    CORS_ALLOW_CREDENTIALS: bool = True
-    CORS_ALLOW_METHODS: typing.List = ["*"]
-    CORS_ALLOW_HEADERS: typing.List = ["*"]
+    app_name: str = Field("GymBro API", env="APP_NAME")
+    app_description: str = Field(
+        "GymBro 对话与认证服务", env="APP_DESCRIPTION"
+    )
+    app_version: str = Field("0.1.0", env="APP_VERSION")
+    debug: bool = Field(False, env="DEBUG")
 
-    DEBUG: bool = True
+    cors_allow_origins: List[str] = Field(default_factory=lambda: ["*"], env="CORS_ALLOW_ORIGINS")
+    cors_allow_methods: List[str] = Field(default_factory=lambda: ["*"], env="CORS_ALLOW_METHODS")
+    cors_allow_headers: List[str] = Field(default_factory=lambda: ["*"], env="CORS_ALLOW_HEADERS")
+    cors_allow_credentials: bool = Field(True, env="CORS_ALLOW_CREDENTIALS")
 
-    PROJECT_ROOT: str = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-    BASE_DIR: str = os.path.abspath(os.path.join(PROJECT_ROOT, os.pardir))
-    LOGS_ROOT: str = os.path.join(BASE_DIR, "app/logs")
-    SECRET_KEY: str = "3488a63e1765035d386f05409663f55c83bfae3b3c61a932744b20ad14244dcf"  # openssl rand -hex 32
-    JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 day
-    TORTOISE_ORM: dict = {
-        "connections": {
-            # SQLite configuration
-            "sqlite": {
-                "engine": "tortoise.backends.sqlite",
-                "credentials": {"file_path": f"{BASE_DIR}/db.sqlite3"},  # Path to SQLite database file
-            },
-            # MySQL/MariaDB configuration
-            # Install with: tortoise-orm[asyncmy]
-            # "mysql": {
-            #     "engine": "tortoise.backends.mysql",
-            #     "credentials": {
-            #         "host": "localhost",  # Database host address
-            #         "port": 3306,  # Database port
-            #         "user": "yourusername",  # Database username
-            #         "password": "yourpassword",  # Database password
-            #         "database": "yourdatabase",  # Database name
-            #     },
-            # },
-            # PostgreSQL configuration
-            # Install with: tortoise-orm[asyncpg]
-            # "postgres": {
-            #     "engine": "tortoise.backends.asyncpg",
-            #     "credentials": {
-            #         "host": "localhost",  # Database host address
-            #         "port": 5432,  # Database port
-            #         "user": "yourusername",  # Database username
-            #         "password": "yourpassword",  # Database password
-            #         "database": "yourdatabase",  # Database name
-            #     },
-            # },
-            # MSSQL/Oracle configuration
-            # Install with: tortoise-orm[asyncodbc]
-            # "oracle": {
-            #     "engine": "tortoise.backends.asyncodbc",
-            #     "credentials": {
-            #         "host": "localhost",  # Database host address
-            #         "port": 1433,  # Database port
-            #         "user": "yourusername",  # Database username
-            #         "password": "yourpassword",  # Database password
-            #         "database": "yourdatabase",  # Database name
-            #     },
-            # },
-            # SQLServer configuration
-            # Install with: tortoise-orm[asyncodbc]
-            # "sqlserver": {
-            #     "engine": "tortoise.backends.asyncodbc",
-            #     "credentials": {
-            #         "host": "localhost",  # Database host address
-            #         "port": 1433,  # Database port
-            #         "user": "yourusername",  # Database username
-            #         "password": "yourpassword",  # Database password
-            #         "database": "yourdatabase",  # Database name
-            #     },
-            # },
-        },
-        "apps": {
-            "models": {
-                "models": ["app.models", "aerich.models"],
-                "default_connection": "sqlite",
-            },
-        },
-        "use_tz": False,  # Whether to use timezone-aware datetimes
-        "timezone": "Asia/Shanghai",  # Timezone setting
-    }
-    DATETIME_FORMAT: str = "%Y-%m-%d %H:%M:%S"
+    supabase_project_id: Optional[str] = Field(None, env="SUPABASE_PROJECT_ID")
+    supabase_jwks_url: Optional[AnyHttpUrl] = Field(None, env="SUPABASE_JWKS_URL")
+    supabase_jwk: Optional[str] = Field(None, env="SUPABASE_JWK")
+    supabase_issuer: Optional[AnyHttpUrl] = Field(None, env="SUPABASE_ISSUER")
+    supabase_audience: Optional[str] = Field(None, env="SUPABASE_AUDIENCE")
+    supabase_service_role_key: Optional[str] = Field(None, env="SUPABASE_SERVICE_ROLE_KEY")
+
+    jwks_cache_ttl_seconds: int = Field(900, env="JWKS_CACHE_TTL_SECONDS")
+    allowed_issuers: List[AnyHttpUrl] = Field(default_factory=list, env="JWT_ALLOWED_ISSUERS")
+    required_audience: Optional[str] = Field(None, env="JWT_AUDIENCE")
+    token_leeway_seconds: int = Field(30, env="JWT_LEEWAY_SECONDS")
+
+    http_timeout_seconds: float = Field(10.0, env="HTTP_TIMEOUT_SECONDS")
+    trace_header_name: str = Field("x-trace-id", env="TRACE_HEADER_NAME")
+    ai_provider: Optional[str] = Field(None, env="AI_PROVIDER")
+    ai_model: Optional[str] = Field(None, env="AI_MODEL")
+    ai_api_base_url: Optional[AnyHttpUrl] = Field(None, env="AI_API_BASE_URL")
+    ai_api_key: Optional[str] = Field(None, env="AI_API_KEY")
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        case_sensitive = False
+
+    @validator("cors_allow_origins", pre=True)
+    def _split_origins(cls, value: object) -> List[str]:  # noqa: D401
+        """支持逗号分隔的字符串或直接传入列表。"""
+        if value is None:
+            return ["*"]
+        if isinstance(value, str):
+            items = [item.strip() for item in value.split(",") if item.strip()]
+            return items or ["*"]
+        return list(value)
+
+    @validator("allowed_issuers", pre=True)
+    def _split_issuers(cls, value: object) -> List[AnyHttpUrl]:
+        if value in (None, "", []):
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return list(value)
 
 
-settings = Settings()
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """使用 LRU 缓存避免 BaseSettings 反复解析。"""
+
+    return Settings()

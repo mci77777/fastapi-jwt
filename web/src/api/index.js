@@ -32,6 +32,16 @@ export default {
   updateApi: (data = {}) => request.post('/api/update', data),
   deleteApi: (params = {}) => request.delete('/api/delete', { params }),
   refreshApi: (data = {}) => request.post('/api/refresh', data),
+  // llm models
+  getAIModels: (params = {}) => request.get('/llm/models', { params }),
+  createAIModel: (data = {}) => request.post('/llm/models', data),
+  updateAIModel: (data = {}) => request.put('/llm/models', data),
+  // llm prompts
+  getAIPrompts: (params = {}) => request.get('/llm/prompts', { params }),
+  getAIPromptDetail: (promptId) => request.get(`/llm/prompts/${promptId}`),
+  createAIPrompt: (data = {}) => request.post('/llm/prompts', data),
+  updateAIPrompt: (promptId, data = {}) => request.put(`/llm/prompts/${promptId}`, data),
+  activateAIPrompt: (promptId) => request.post(`/llm/prompts/${promptId}/activate`),
   // depts
   getDepts: (params = {}) => request.get('/dept/list', { params }),
   createDept: (data = {}) => request.post('/dept/create', data),

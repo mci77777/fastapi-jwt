@@ -14,3 +14,22 @@ db.sqlite3-wal
 
 .DS_Store
 ._.DS_Store
+
+.bmad
+.bmad-core
+.qoder
+.qoder-core
+.qoder-core-web
+.qoder-core-web-ui
+.qoder-core-web-ui-core
+.qoder-core-web-ui-core-web
+.qoder-core-web-ui-core-web-ui
+
+.cursor
+.cursor-core
+.cursor-core-web
+.cursor-core-web-ui
+.cursor-core-web-ui-core
+.cursor-core-web-ui-core-web
+.cursor-core-web-ui-core-web-ui
+
