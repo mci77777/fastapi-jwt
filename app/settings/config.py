@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     supabase_issuer: Optional[AnyHttpUrl] = Field(None, env="SUPABASE_ISSUER")
     supabase_audience: Optional[str] = Field(None, env="SUPABASE_AUDIENCE")
     supabase_service_role_key: Optional[str] = Field(None, env="SUPABASE_SERVICE_ROLE_KEY")
+    supabase_chat_table: str = Field("chat_messages", env="SUPABASE_CHAT_TABLE")
 
     jwks_cache_ttl_seconds: int = Field(900, env="JWKS_CACHE_TTL_SECONDS")
     allowed_issuers: List[AnyHttpUrl] = Field(default_factory=list, env="JWT_ALLOWED_ISSUERS")
