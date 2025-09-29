@@ -2,7 +2,8 @@
 from functools import lru_cache
 from typing import List, Optional
 
-from pydantic import AnyHttpUrl, BaseSettings, Field, validator
+from pydantic import AnyHttpUrl, Field, validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -19,6 +20,8 @@ class Settings(BaseSettings):
     cors_allow_methods: List[str] = Field(default_factory=lambda: ["*"], env="CORS_ALLOW_METHODS")
     cors_allow_headers: List[str] = Field(default_factory=lambda: ["*"], env="CORS_ALLOW_HEADERS")
     cors_allow_credentials: bool = Field(True, env="CORS_ALLOW_CREDENTIALS")
+    allowed_hosts: List[str] = Field(default_factory=lambda: ["*"], env="ALLOWED_HOSTS")
+    force_https: bool = Field(False, env="FORCE_HTTPS")
 
     supabase_project_id: Optional[str] = Field(None, env="SUPABASE_PROJECT_ID")
     supabase_jwks_url: Optional[AnyHttpUrl] = Field(None, env="SUPABASE_JWKS_URL")
@@ -34,6 +37,7 @@ class Settings(BaseSettings):
     token_leeway_seconds: int = Field(30, env="JWT_LEEWAY_SECONDS")
 
     http_timeout_seconds: float = Field(10.0, env="HTTP_TIMEOUT_SECONDS")
+    event_stream_heartbeat_seconds: float = Field(15.0, env="SSE_HEARTBEAT_SECONDS")
     trace_header_name: str = Field("x-trace-id", env="TRACE_HEADER_NAME")
     ai_provider: Optional[str] = Field(None, env="AI_PROVIDER")
     ai_model: Optional[str] = Field(None, env="AI_MODEL")
@@ -61,6 +65,15 @@ class Settings(BaseSettings):
             return []
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
+        return list(value)
+
+    @validator("allowed_hosts", pre=True)
+    def _split_hosts(cls, value: object) -> List[str]:
+        if value in (None, "", []):
+            return ["*"]
+        if isinstance(value, str):
+            hosts = [item.strip() for item in value.split(",") if item.strip()]
+            return hosts or ["*"]
         return list(value)
 
 

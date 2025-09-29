@@ -3,13 +3,18 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api import api_router
+from app.core.exceptions import register_exception_handlers
+from app.core.middleware import TraceIDMiddleware
+from app.services.ai_service import AIService, MessageEventBroker
 from app.settings.config import get_settings
 
 
 @asynccontextmanager
-def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI):
     """暂留钩子，后续可在此注册连接池等资源。"""
 
     yield
@@ -27,6 +32,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    if settings.force_https:
+        app.add_middleware(HTTPSRedirectMiddleware)
+
+    if settings.allowed_hosts and settings.allowed_hosts != ["*"]:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
+
+    app.add_middleware(TraceIDMiddleware, header_name=settings.trace_header_name)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins,
@@ -34,6 +47,11 @@ def create_app() -> FastAPI:
         allow_headers=settings.cors_allow_headers,
         allow_credentials=settings.cors_allow_credentials,
     )
+
+    app.state.message_broker = MessageEventBroker()
+    app.state.ai_service = AIService()
+
+    register_exception_handlers(app)
 
     app.include_router(api_router, prefix="/api")
     return app

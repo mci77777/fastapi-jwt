@@ -1,3 +1,4 @@
-from .config import settings as settings
+from .config import get_settings
 
-TORTOISE_ORM = settings.TORTOISE_ORM
+settings = get_settings()
+TORTOISE_ORM = getattr(settings, 'TORTOISE_ORM', {})
