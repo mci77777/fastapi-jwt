@@ -1,0 +1,40 @@
+{
+  "timestamp": 1759151778.0862346,
+  "api_base": "http://localhost:9999",
+  "tests": {
+    "docs_endpoint": {
+      "status_code": 200,
+      "success": true,
+      "response_size": 942,
+      "content_type": "text/html; charset=utf-8"
+    },
+    "messages_no_auth": {
+      "status_code": 401,
+      "success": true,
+      "response": {
+        "code": "unauthorized",
+        "message": "Authorization header missing",
+        "status": 401,
+        "trace_id": "9ea177d105534f5c88fbd2c95a394c9a"
+      },
+      "has_trace_id": true,
+      "error_format_valid": true
+    },
+    "messages_bad_auth": {
+      "status_code": 401,
+      "success": true,
+      "response": {
+        "status": 401,
+        "code": "invalid_token_header",
+        "message": "Invalid JWT header",
+        "trace_id": "1368b58b6ea14a1a87dea97cfb964bf6"
+      },
+      "has_trace_id": true,
+      "error_format_valid": true
+    },
+    "health_endpoint": {
+      "success": false,
+      "message": "未找到健康检查端点"
+    }
+  }
+}

@@ -10,6 +10,7 @@ import httpx
 import jwt
 from fastapi import HTTPException, status
 
+from app.core.middleware import get_current_trace_id
 from app.settings.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,36 @@ class AuthenticatedUser:
 
     uid: str
     claims: Dict[str, Any]
+    user_type: str = "permanent"  # "anonymous" or "permanent"
+
+    @property
+    def is_anonymous(self) -> bool:
+        """检查用户是否为匿名用户。"""
+        return self.user_type == "anonymous"
+
+
+@dataclass
+class JWTError:
+    """统一的JWT错误响应结构。"""
+
+    status: int
+    code: str
+    message: str
+    trace_id: Optional[str] = None
+    hint: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式。"""
+        result = {
+            "status": self.status,
+            "code": self.code,
+            "message": self.message,
+        }
+        if self.trace_id:
+            result["trace_id"] = self.trace_id
+        if self.hint:
+            result["hint"] = self.hint
+        return result
 
 
 class JWKSCache:
@@ -113,30 +144,45 @@ class JWTVerifier:
         )
 
     def verify_token(self, token: str) -> AuthenticatedUser:
+        trace_id = get_current_trace_id()
+
         if not token:
-            raise self._unauthorized("token_missing", "Authorization token is required")
+            self._log_verification_failure("token_missing", "Token missing", trace_id=trace_id)
+            raise self._create_unauthorized_error("token_missing", "Authorization token is required")
 
         try:
             header = jwt.get_unverified_header(token)
         except jwt.InvalidTokenError as exc:
-            logger.warning("无法解析 JWT 头部: %s", exc)
-            raise self._unauthorized("invalid_token_header", "Invalid JWT header") from exc
+            self._log_verification_failure("invalid_token_header", f"Invalid JWT header: {exc}", trace_id=trace_id)
+            raise self._create_unauthorized_error("invalid_token_header", "Invalid JWT header") from exc
 
         kid = header.get("kid")
         algorithm = header.get("alg")
+
+        # 验证算法是否在允许列表中
         if not algorithm:
-            raise self._unauthorized("algorithm_missing", "JWT header missing alg field")
+            self._log_verification_failure("algorithm_missing", "JWT header missing alg field",
+                                         trace_id=trace_id, kid=kid)
+            raise self._create_unauthorized_error("algorithm_missing", "JWT header missing alg field")
+
+        if algorithm not in self._settings.jwt_allowed_algorithms:
+            self._log_verification_failure("unsupported_algorithm", f"Algorithm {algorithm} not allowed",
+                                         trace_id=trace_id, kid=kid, algorithm=algorithm)
+            raise self._create_unauthorized_error("unsupported_alg", f"Unsupported algorithm: {algorithm}")
 
         try:
             key_dict = self._cache.get_key(kid)
         except Exception as exc:  # pragma: no cover - 依赖外部配置
-            logger.error("获取 JWKS 失败: kid=%s error=%s", kid, exc)
-            raise self._unauthorized("jwks_key_not_found", "Signing key not found") from exc
+            self._log_verification_failure("jwks_key_not_found", f"JWKS key retrieval failed: {exc}",
+                                         trace_id=trace_id, kid=kid, algorithm=algorithm)
+            raise self._create_unauthorized_error("jwks_key_not_found", "Signing key not found") from exc
 
         try:
             algorithm_cls = jwt.algorithms.get_default_algorithms()[algorithm]
         except KeyError as exc:
-            raise self._unauthorized("unsupported_alg", f"Unsupported alg: {algorithm}") from exc
+            self._log_verification_failure("unsupported_alg", f"Unsupported algorithm: {algorithm}",
+                                         trace_id=trace_id, kid=kid, algorithm=algorithm)
+            raise self._create_unauthorized_error("unsupported_alg", f"Unsupported algorithm: {algorithm}") from exc
 
         public_key = algorithm_cls.from_jwk(json.dumps(key_dict))
 
@@ -147,12 +193,18 @@ class JWTVerifier:
         )
 
         issuers = self._expected_issuers()
-        required_claims = ["iss", "sub", "exp", "iat", "nbf"]
+
+        # 构建必需声明列表 - nbf 现在是可选的
+        required_claims = ["iss", "sub", "exp", "iat"]
         if audience:
             required_claims.append("aud")
+        if self._settings.jwt_require_nbf:
+            required_claims.append("nbf")
+
         options = {
             "require": required_claims,
             "verify_aud": bool(audience),
+            "verify_nbf": self._settings.jwt_require_nbf,  # 控制 nbf 验证
         }
 
         try:
@@ -162,30 +214,85 @@ class JWTVerifier:
                 algorithms=[algorithm],
                 audience=audience,
                 issuer=issuers[0] if len(issuers) == 1 else None,
-                leeway=self._settings.token_leeway_seconds,
+                leeway=self._settings.jwt_clock_skew_seconds,  # 使用新的 clock skew 配置
                 options=options,
             )
         except jwt.ExpiredSignatureError as exc:
-            raise self._unauthorized("token_expired", "Token has expired") from exc
+            self._log_verification_failure("token_expired", "Token has expired",
+                                         trace_id=trace_id, kid=kid, algorithm=algorithm,
+                                         audience=audience, issuer=issuers[0] if len(issuers) == 1 else None)
+            raise self._create_unauthorized_error("token_expired", "Token has expired") from exc
         except jwt.ImmatureSignatureError as exc:
-            raise self._unauthorized("token_not_yet_valid", "Token not active yet") from exc
+            self._log_verification_failure("token_not_yet_valid", "Token not active yet",
+                                         trace_id=trace_id, kid=kid, algorithm=algorithm,
+                                         audience=audience, issuer=issuers[0] if len(issuers) == 1 else None)
+            raise self._create_unauthorized_error("token_not_yet_valid", "Token not active yet") from exc
         except jwt.InvalidAudienceError as exc:
-            raise self._unauthorized("invalid_audience", "Audience validation failed") from exc
+            self._log_verification_failure("invalid_audience", "Audience validation failed",
+                                         trace_id=trace_id, kid=kid, algorithm=algorithm,
+                                         audience=audience, issuer=issuers[0] if len(issuers) == 1 else None)
+            raise self._create_unauthorized_error("invalid_audience", "Audience validation failed") from exc
         except jwt.InvalidIssuerError as exc:
-            raise self._unauthorized("invalid_issuer", "Issuer validation failed") from exc
+            self._log_verification_failure("invalid_issuer", "Issuer validation failed",
+                                         trace_id=trace_id, kid=kid, algorithm=algorithm,
+                                         audience=audience, issuer=issuers[0] if len(issuers) == 1 else None)
+            raise self._create_unauthorized_error("invalid_issuer", "Issuer validation failed") from exc
         except jwt.InvalidTokenError as exc:
-            raise self._unauthorized("invalid_token", "JWT validation failed") from exc
+            self._log_verification_failure("invalid_token", f"JWT validation failed: {exc}",
+                                         trace_id=trace_id, kid=kid, algorithm=algorithm,
+                                         audience=audience, issuer=issuers[0] if len(issuers) == 1 else None)
+            raise self._create_unauthorized_error("invalid_token", "JWT validation failed") from exc
+
+        # 执行额外的时间验证
+        self._validate_time_claims(payload, trace_id, kid, algorithm, audience, issuers[0] if len(issuers) == 1 else None)
 
         issuer = payload.get("iss")
         if issuers and issuer not in issuers:
-            raise self._unauthorized("issuer_not_allowed", "Issuer is not in allow list")
+            self._log_verification_failure("issuer_not_allowed", f"Issuer {issuer} not in allow list",
+                                         trace_id=trace_id, kid=kid, algorithm=algorithm,
+                                         audience=audience, issuer=issuer, subject=payload.get("sub"))
+            raise self._create_unauthorized_error("issuer_not_allowed", "Issuer is not in allow list")
 
         subject = payload.get("sub")
         if not subject:
-            raise self._unauthorized("subject_missing", "Token missing subject claim")
+            self._log_verification_failure("subject_missing", "Token missing subject claim",
+                                         trace_id=trace_id, kid=kid, algorithm=algorithm,
+                                         audience=audience, issuer=issuer)
+            raise self._create_unauthorized_error("subject_missing", "Token missing subject claim")
 
-        logger.debug("JWT 验证成功 uid=%s", subject)
-        return AuthenticatedUser(uid=subject, claims=payload)
+        # 提取用户类型（匿名或永久）
+        is_anonymous = payload.get("is_anonymous", False)
+        user_type = "anonymous" if is_anonymous else "permanent"
+
+        # 记录成功验证，包含用户类型信息
+        self._log_verification_success(trace_id, subject, audience, issuer, kid, algorithm, user_type)
+        return AuthenticatedUser(uid=subject, claims=payload, user_type=user_type)
+
+    def _validate_time_claims(self, payload: Dict[str, Any], trace_id: Optional[str],
+                             kid: Optional[str], algorithm: str, audience: Optional[str],
+                             issuer: Optional[str]) -> None:
+        """验证时间相关声明，包括自定义的 iat 未来时间检查。"""
+        now = time.time()
+        iat = payload.get("iat")
+
+        if iat is not None:
+            # 检查 iat 是否过于未来（超过允许的时钟偏移）
+            if iat > now + self._settings.jwt_max_future_iat_seconds:
+                self._log_verification_failure("iat_too_future",
+                                             f"Token issued too far in future: iat={iat}, now={now}, max_future={self._settings.jwt_max_future_iat_seconds}",
+                                             trace_id=trace_id, kid=kid, algorithm=algorithm,
+                                             audience=audience, issuer=issuer, subject=payload.get("sub"))
+                raise self._create_unauthorized_error("iat_too_future", "Token issued too far in the future")
+
+        # 如果存在 nbf 声明，验证它（即使不是必需的）
+        nbf = payload.get("nbf")
+        if nbf is not None:
+            if nbf > now + self._settings.jwt_clock_skew_seconds:
+                self._log_verification_failure("token_not_yet_valid",
+                                             f"Token not yet valid: nbf={nbf}, now={now}, skew={self._settings.jwt_clock_skew_seconds}",
+                                             trace_id=trace_id, kid=kid, algorithm=algorithm,
+                                             audience=audience, issuer=issuer, subject=payload.get("sub"))
+                raise self._create_unauthorized_error("token_not_yet_valid", "Token not yet valid")
 
     def _expected_issuers(self) -> List[str]:
         values: List[str] = []
@@ -194,12 +301,57 @@ class JWTVerifier:
         values.extend(str(item) for item in self._settings.allowed_issuers)
         return values
 
-    @staticmethod
-    def _unauthorized(code: str, message: str) -> HTTPException:
-        logger.warning("JWT 验证失败 code=%s message=%s", code, message)
+    def _create_unauthorized_error(self, code: str, message: str, hint: Optional[str] = None) -> HTTPException:
+        """创建统一格式的401错误响应。"""
+        trace_id = get_current_trace_id()
+        error = JWTError(
+            status=401,
+            code=code,
+            message=message,
+            trace_id=trace_id,
+            hint=hint
+        )
         return HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": code, "message": message},
+            detail=error.to_dict(),
+        )
+
+    def _log_verification_success(self, trace_id: Optional[str], subject: str,
+                                audience: Optional[str], issuer: Optional[str],
+                                kid: Optional[str], algorithm: str, user_type: str = "permanent") -> None:
+        """记录JWT验证成功的结构化日志。"""
+        logger.info(
+            "JWT verification successful",
+            extra={
+                "trace_id": trace_id,
+                "subject": subject,
+                "audience": audience,
+                "issuer": issuer,
+                "kid": kid,
+                "algorithm": algorithm,
+                "user_type": user_type,
+                "event": "jwt_verification_success"
+            }
+        )
+
+    def _log_verification_failure(self, code: str, reason: str, trace_id: Optional[str] = None,
+                                subject: Optional[str] = None, audience: Optional[str] = None,
+                                issuer: Optional[str] = None, kid: Optional[str] = None,
+                                algorithm: Optional[str] = None) -> None:
+        """记录JWT验证失败的结构化日志。"""
+        logger.warning(
+            "JWT verification failed",
+            extra={
+                "trace_id": trace_id,
+                "code": code,
+                "reason": reason,
+                "subject": subject,
+                "audience": audience,
+                "issuer": issuer,
+                "kid": kid,
+                "algorithm": algorithm,
+                "event": "jwt_verification_failure"
+            }
         )
 
 

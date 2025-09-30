@@ -33,4 +33,8 @@ db.sqlite3-wal
 .cursor-core-web-ui-core-web
 .cursor-core-web-ui-core-web-ui
 
+.claude
+.claude\commands
+.claude\commands\BMad
+
 .env

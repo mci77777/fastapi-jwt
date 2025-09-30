@@ -1,0 +1,65 @@
+[
+  {
+    "test_name": "rate_limit_qps",
+    "endpoint": "/api/v1/me",
+    "method": "GET",
+    "expected_status": 429,
+    "actual_status": 429,
+    "response_data": {
+      "total_requests": 10,
+      "rate_limited_count": 10,
+      "status_codes": [
+        429,
+        429,
+        429,
+        429,
+        429,
+        429,
+        429,
+        429,
+        429,
+        429
+      ],
+      "rate_limited_responses": [
+        {
+          "status": 429,
+          "code": "RATE_LIMIT_EXCEEDED",
+          "message": "Rate limit exceeded: IP in cooldown period",
+          "trace_id": null
+        },
+        {
+          "status": 429,
+          "code": "RATE_LIMIT_EXCEEDED",
+          "message": "Rate limit exceeded: IP in cooldown period",
+          "trace_id": null
+        },
+        {
+          "status": 429,
+          "code": "RATE_LIMIT_EXCEEDED",
+          "message": "Rate limit exceeded: IP in cooldown period",
+          "trace_id": null
+        }
+      ]
+    },
+    "response_headers": null,
+    "error_format_valid": true,
+    "execution_time": 1.3192298412322998,
+    "success": true,
+    "trace_id": "policy-test-21e21c2f"
+  },
+  {
+    "test_name": "rate_limit_sse_concurrency",
+    "endpoint": "/api/v1/messages/{id}/events",
+    "method": "GET",
+    "expected_status": 429,
+    "actual_status": null,
+    "response_data": {
+      "error": "创建测试消息失败: 创建消息失败: 429 - {\"status\":429,\"code\":\"RATE_LIMIT_EXCEEDED\",\"message\":\"Rate limit exceeded: IP in cooldown period\",\"trace_id\":null}"
+    },
+    "response_headers": null,
+    "error_format_valid": false,
+    "execution_time": null,
+    "success": false,
+    "trace_id": "policy-test-b3c96634"
+  }
+]

@@ -9,6 +9,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from app.api import api_router
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import TraceIDMiddleware
+from app.core.policy_gate import PolicyGateMiddleware
+from app.core.rate_limiter import RateLimitMiddleware
 from app.services.ai_service import AIService, MessageEventBroker
 from app.settings.config import get_settings
 
@@ -39,6 +41,8 @@ def create_app() -> FastAPI:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
 
     app.add_middleware(TraceIDMiddleware, header_name=settings.trace_header_name)
+    app.add_middleware(PolicyGateMiddleware)  # 策略门中间件，在限流之前
+    app.add_middleware(RateLimitMiddleware)
 
     app.add_middleware(
         CORSMiddleware,

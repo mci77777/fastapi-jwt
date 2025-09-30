@@ -1,0 +1,412 @@
+{
+  "info": {
+    "name": "E2E Anonymous JWT SSE Tests",
+    "description": "端到端匿名JWT→AI→APP（SSE）闭环与策略校验测试集合",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// 设置全局trace_id",
+          "pm.globals.set('trace_id', 'newman-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Anonymous Authentication",
+      "item": [
+        {
+          "name": "Get User Info (Anonymous)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains user info', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('uid');",
+                  "    pm.expect(jsonData).to.have.property('user_type');",
+                  "});",
+                  "",
+                  "pm.test('User is anonymous', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.user_type).to.eql('anonymous');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Trace-Id",
+                "value": "{{trace_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/api/v1/me",
+              "host": ["{{api_base}}"],
+              "path": ["api", "v1", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Message Creation and SSE",
+      "item": [
+        {
+          "name": "Create Message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 202', function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});",
+                  "",
+                  "pm.test('Response contains message_id', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message_id');",
+                  "    pm.globals.set('message_id', jsonData.message_id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Trace-Id",
+                "value": "{{trace_id}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Hello, this is a Newman E2E test for anonymous JWT and SSE.\",\n  \"conversation_id\": \"newman-test-conv\",\n  \"metadata\": {\n    \"source\": \"newman_test\",\n    \"test_type\": \"e2e_anonymous\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/api/v1/messages",
+              "host": ["{{api_base}}"],
+              "path": ["api", "v1", "messages"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Policy Gate Tests",
+      "item": [
+        {
+          "name": "Admin Access (Should Fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test('Error format is valid', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "    pm.expect(jsonData).to.have.property('code');",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});",
+                  "",
+                  "pm.test('Contains trace_id', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('trace_id');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Trace-Id",
+                "value": "{{trace_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/api/v1/admin/users",
+              "host": ["{{api_base}}"],
+              "path": ["api", "v1", "admin", "users"]
+            }
+          }
+        },
+        {
+          "name": "Share Conversation (Should Fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test('Error format is valid', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "    pm.expect(jsonData).to.have.property('code');",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Trace-Id",
+                "value": "{{trace_id}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Share\",\n  \"description\": \"Test sharing from Newman\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/api/v1/conversations/test-conv-id/share",
+              "host": ["{{api_base}}"],
+              "path": ["api", "v1", "conversations", "test-conv-id", "share"]
+            }
+          }
+        },
+        {
+          "name": "Batch Messages (Should Fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([403, 429]);",
+                  "});",
+                  "",
+                  "pm.test('Error format is valid', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "    pm.expect(jsonData).to.have.property('code');",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Trace-Id",
+                "value": "{{trace_id}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\"text\": \"Message 1\"},\n    {\"text\": \"Message 2\"}\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/api/v1/messages/batch",
+              "host": ["{{api_base}}"],
+              "path": ["api", "v1", "messages", "batch"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Rate Limiting Tests",
+      "item": [
+        {
+          "name": "Rapid Requests (Rate Limit Test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 这个测试可能返回200或429，取决于当前的请求频率",
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 429) {",
+                  "    pm.test('Rate limit error format is valid', function () {",
+                  "        const jsonData = pm.response.json();",
+                  "        pm.expect(jsonData).to.have.property('status');",
+                  "        pm.expect(jsonData).to.have.property('code');",
+                  "        pm.expect(jsonData).to.have.property('message');",
+                  "        pm.expect(jsonData).to.have.property('hint');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Trace-Id",
+                "value": "{{trace_id}}-rapid",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/api/v1/me",
+              "host": ["{{api_base}}"],
+              "path": ["api", "v1", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Error Format Validation",
+      "item": [
+        {
+          "name": "Invalid Endpoint (404 Test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Error format is valid', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "    pm.expect(jsonData).to.have.property('code');",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Trace-Id",
+                "value": "{{trace_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/api/v1/nonexistent-endpoint",
+              "host": ["{{api_base}}"],
+              "path": ["api", "v1", "nonexistent-endpoint"]
+            }
+          }
+        },
+        {
+          "name": "Invalid Method (405 Test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 405', function () {",
+                  "    pm.response.to.have.status(405);",
+                  "});",
+                  "",
+                  "pm.test('Error format is valid', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "    pm.expect(jsonData).to.have.property('code');",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Trace-Id",
+                "value": "{{trace_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/api/v1/me",
+              "host": ["{{api_base}}"],
+              "path": ["api", "v1", "me"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "api_base",
+      "value": "{{api_base}}",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "{{access_token}}",
+      "type": "string"
+    }
+  ]
+}

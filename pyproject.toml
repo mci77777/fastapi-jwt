@@ -72,6 +72,9 @@ dependencies = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "sse-starlette>=1.6.0",
+    "requests>=2.32.5",
+    "aiohttp>=3.12.15",
+    "prometheus-client>=0.23.1",
 ]
 
 [tool.black]

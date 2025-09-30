@@ -1,0 +1,62 @@
+{
+  "start_time": 1759153461.239734,
+  "steps": [
+    {
+      "name": "步骤A: 匿名JWT获取",
+      "success": false,
+      "timestamp": 1759153463.3984957,
+      "details": {
+        "return_code": 1,
+        "stdout": "🔐 开始匿名JWT获取测试...\r\n📍 Supabase URL: https://rykglivrwzcykhhnxwoz.supabase.co\r\n📍 API Base: http://localhost:9999\r\n\r\n📝 步骤1: 执行匿名登录...\r\n❌ 测试失败: 匿名登录失败: 422 - {\"code\":422,\"error_code\":\"anonymous_provider_disabled\",\"msg\":\"Anonymous sign-ins are disabled\"}\r\n",
+        "stderr": "Traceback (most recent call last):\r\n  File \"D:\\GymBro\\vue-fastapi-admin\\e2e\\anon_jwt_sse\\scripts\\anon_signin.py\", line 151, in main\r\n    auth_response = await auth_client.sign_in_anonymously()\r\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"D:\\GymBro\\vue-fastapi-admin\\e2e\\anon_jwt_sse\\scripts\\anon_signin.py\", line 52, in sign_in_anonymously\r\n    raise Exception(f\"匿名登录失败: {response.status_code} - {response.text}\")\r\nException: 匿名登录失败: 422 - {\"code\":422,\"error_code\":\"anonymous_provider_disabled\",\"msg\":\"Anonymous sign-ins are disabled\"}\r\n"
+      }
+    },
+    {
+      "name": "步骤B: SSE流式调用",
+      "success": false,
+      "timestamp": 1759153466.8682578,
+      "details": {
+        "return_code": 1,
+        "stdout": "🌊 开始SSE流式调用测试...\r\n📍 API Base: http://localhost:9999\r\n⏱️ SSE超时: 30秒\r\n\r\n🔑 步骤1: 加载JWT令牌...\r\n✅ JWT令牌加载成功\r\n\r\n🔧 步骤2: 创建SSE客户端...\r\n\r\n📝 步骤3: 创建AI消息...\r\n❌ 测试失败: 创建消息失败: 429 - {\"status\":429,\"code\":\"RATE_LIMIT_EXCEEDED\",\"message\":\"Rate limit exceeded: IP in cooldown period\",\"trace_id\":null}\r\n",
+        "stderr": "Traceback (most recent call last):\r\n  File \"D:\\GymBro\\vue-fastapi-admin\\e2e\\anon_jwt_sse\\scripts\\sse_client.py\", line 290, in main\r\n    message_id = await client.create_message(test_message)\r\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"D:\\GymBro\\vue-fastapi-admin\\e2e\\anon_jwt_sse\\scripts\\sse_client.py\", line 90, in create_message\r\n    raise Exception(f\"创建消息失败: {response.status_code} - {response.text}\")\r\nException: 创建消息失败: 429 - {\"status\":429,\"code\":\"RATE_LIMIT_EXCEEDED\",\"message\":\"Rate limit exceeded: IP in cooldown period\",\"trace_id\":null}\r\n"
+      }
+    },
+    {
+      "name": "步骤C: 数据库断言",
+      "success": false,
+      "timestamp": 1759153466.9423103,
+      "details": {
+        "return_code": 1,
+        "stdout": "",
+        "stderr": "Traceback (most recent call last):\r\n  File \"D:\\GymBro\\vue-fastapi-admin\\e2e\\anon_jwt_sse\\scripts\\db_assert.py\", line 12, in <module>\r\n    import psycopg2\r\nModuleNotFoundError: No module named 'psycopg2'\r\n"
+      }
+    },
+    {
+      "name": "步骤D: 策略和限流测试",
+      "success": true,
+      "timestamp": 1759153484.364014,
+      "details": {
+        "return_code": 0,
+        "stdout": "🚫 开始策略门和限流测试...\r\n📍 API Base: http://localhost:9999\r\n\r\n🔑 步骤1: 加载JWT令牌...\r\n✅ JWT令牌加载成功\r\n\r\n🔧 步骤2: 创建策略测试器...\r\n\r\n🚫 步骤3: 执行策略门测试...\r\n🚫 开始策略门测试...\r\n   ❌ policy_gate_get__api_v1_admin_users: 429 (期望: 403)\r\n   ❌ policy_gate_get__api_v1_admin_dashboard: 429 (期望: 403)\r\n   ❌ policy_gate_post__api_v1_admin_settings: 429 (期望: 403)\r\n   ❌ policy_gate_get__api_v1_user_profile: 429 (期望: 403)\r\n   ❌ policy_gate_put__api_v1_user_profile: 429 (期望: 403)\r\n   ❌ policy_gate_delete__api_v1_user_account: 429 (期望: 403)\r\n   ❌ policy_gate_post__api_v1_conversations_test_conv_id_share: 429 (期望: 403)\r\n   ❌ policy_gate_get__api_v1_public_shares_test_share_id: 429 (期望: 403)\r\n   ❌ policy_gate_post__api_v1_messages_batch: 429 (期望: 403)\r\n   ❌ policy_gate_post__api_v1_conversations_batch: 429 (期望: 403)\r\n   ❌ policy_gate_post__api_v1_llm_models: 429 (期望: 403)\r\n   ❌ policy_gate_put__api_v1_llm_models_test_model: 429 (期望: 403)\r\n   ❌ policy_gate_delete__api_v1_llm_models_test_model: 429 (期望: 403)\r\n\r\n⏱️ 步骤4: 执行限流测试...\r\n⏱️ 开始限流测试...\r\n   测试QPS限流...\r\n   QPS限流测试: 10/10 请求被限流\r\n   测试SSE并发限流...\r\n\r\n💾 步骤5: 保存测试结果...\r\n📝 策略门测试结果已保存: D:\\GymBro\\vue-fastapi-admin\\e2e\\anon_jwt_sse\\artifacts\\policy_gate.json\r\n📝 限流测试结果已保存: D:\\GymBro\\vue-fastapi-admin\\e2e\\anon_jwt_sse\\artifacts\\policy_rate_limit.json\r\n📝 策略测试汇总已保存: D:\\GymBro\\vue-fastapi-admin\\e2e\\anon_jwt_sse\\artifacts\\policy_test_summary.json\r\n\r\n📊 策略测试完成:\r\n   总测试数: 15\r\n   通过: 1\r\n   失败: 14\r\n   成功率: 6.7%\r\n\r\n⚠️ 存在失败的测试，请检查结果详情\r\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "Newman测试",
+      "success": false,
+      "timestamp": 1759153484.3655453,
+      "details": {
+        "error": "Newman未安装，请运行: npm install -g newman"
+      }
+    }
+  ],
+  "summary": {
+    "total_steps": 5,
+    "passed_steps": 1,
+    "failed_steps": 4,
+    "success_rate": 20.0,
+    "overall_success": false
+  },
+  "end_time": 1759153484.3655453,
+  "duration": 23.125811338424683
+}

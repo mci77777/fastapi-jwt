@@ -35,4 +35,10 @@ async def get_current_user(
     user = verifier.verify_token(token)
     request.state.user = user
     request.state.token = token
+    request.state.user_type = user.user_type  # 设置用户类型到请求上下文
     return user
+
+
+async def get_authenticated_user_optional(request: Request) -> Optional[AuthenticatedUser]:
+    """从请求状态中获取已认证的用户（如果存在）。"""
+    return getattr(request.state, 'user', None)

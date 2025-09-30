@@ -1,0 +1,2558 @@
+{
+  "scan_summary": {
+    "total_issues": 316,
+    "scan_timestamp": "2025-09-29T13:50:00Z",
+    "project_root": "D:\\GymBro\\vue-fastapi-admin",
+    "excluded_dirs": [
+      "node_modules",
+      "venv",
+      "__pycache__",
+      ".git",
+      ".github",
+      ".mypy_cache",
+      ".venv",
+      ".pytest_cache",
+      "tools"
+    ]
+  },
+  "issue_counts_by_type": {
+    "ENVIRONMENT_VARIABLE_LEAK": 316
+  },
+  "severity_counts": {
+    "MEDIUM": 316
+  },
+  "issues": [
+    {
+      "file_path": "scripts\\check_config.py",
+      "line_number": 13,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_path =",
+      "code_snippet": "env_path = Path(__file__).parent.parent / '.env'"
+    },
+    {
+      "file_path": "scripts\\check_config.py",
+      "line_number": 22,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = {}"
+    },
+    {
+      "file_path": "scripts\\check_config.py",
+      "line_number": 36,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'SUPABASE_SERVICE_ROLE_KEY'",
+      "code_snippet": "'SUPABASE_SERVICE_ROLE_KEY',"
+    },
+    {
+      "file_path": "scripts\\check_config.py",
+      "line_number": 39,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'AI_API_KEY'",
+      "code_snippet": "'AI_API_KEY'"
+    },
+    {
+      "file_path": "scripts\\check_config.py",
+      "line_number": 56,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'SECRET'",
+      "code_snippet": "if 'KEY' in var or 'SECRET' in var:"
+    },
+    {
+      "file_path": "scripts\\check_config.py",
+      "line_number": 56,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'KEY'",
+      "code_snippet": "if 'KEY' in var or 'SECRET' in var:"
+    },
+    {
+      "file_path": "scripts\\check_table_structure.py",
+      "line_number": 17,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_file =",
+      "code_snippet": "env_file = Path(__file__).parent.parent / \".env\""
+    },
+    {
+      "file_path": "scripts\\check_table_structure.py",
+      "line_number": 18,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = {}"
+    },
+    {
+      "file_path": "scripts\\check_table_structure.py",
+      "line_number": 39,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = load_env_file()"
+    },
+    {
+      "file_path": "scripts\\check_table_structure.py",
+      "line_number": 41,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_SERVICE_ROLE_KEY\"",
+      "code_snippet": "service_role_key = env_vars.get(\"SUPABASE_SERVICE_ROLE_KEY\")"
+    },
+    {
+      "file_path": "scripts\\check_table_structure.py",
+      "line_number": 60,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": service_role_key,"
+    },
+    {
+      "file_path": "scripts\\check_table_structure.py",
+      "line_number": 97,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": service_role_key,"
+    },
+    {
+      "file_path": "scripts\\check_table_structure.py",
+      "line_number": 113,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": service_role_key,"
+    },
+    {
+      "file_path": "scripts\\create_jwk.py",
+      "line_number": 18,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: secret_bytes =",
+      "code_snippet": "secret_bytes = secret.encode('utf-8')"
+    },
+    {
+      "file_path": "scripts\\create_jwk.py",
+      "line_number": 37,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: os.getenv('JWT_SECRET'",
+      "code_snippet": "jwt_secret = os.getenv('JWT_SECRET')"
+    },
+    {
+      "file_path": "scripts\\create_jwk.py",
+      "line_number": 37,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'JWT_SECRET'",
+      "code_snippet": "jwt_secret = os.getenv('JWT_SECRET')"
+    },
+    {
+      "file_path": "scripts\\create_jwk.py",
+      "line_number": 60,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_file =",
+      "code_snippet": "env_file = os.path.join(os.path.dirname(__file__), '..', '.env')"
+    },
+    {
+      "file_path": "scripts\\create_test_jwt.py",
+      "line_number": 20,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_file =",
+      "code_snippet": "env_file = Path(__file__).parent.parent / \".env\""
+    },
+    {
+      "file_path": "scripts\\create_test_jwt.py",
+      "line_number": 21,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = {}"
+    },
+    {
+      "file_path": "scripts\\create_test_jwt.py",
+      "line_number": 44,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keys\"",
+      "code_snippet": "return jwks_data.get(\"keys\", [])"
+    },
+    {
+      "file_path": "scripts\\create_test_jwt.py",
+      "line_number": 104,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_ANON_KEY\"",
+      "code_snippet": "anon_key = env_vars.get(\"SUPABASE_ANON_KEY\")"
+    },
+    {
+      "file_path": "scripts\\create_test_jwt.py",
+      "line_number": 126,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": anon_key,"
+    },
+    {
+      "file_path": "scripts\\create_test_jwt.py",
+      "line_number": 131,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"password\": \"TestPassword123!\","
+    },
+    {
+      "file_path": "scripts\\create_test_jwt.py",
+      "line_number": 146,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": anon_key,"
+    },
+    {
+      "file_path": "scripts\\create_test_jwt.py",
+      "line_number": 151,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"password\": \"TestPassword123!\""
+    },
+    {
+      "file_path": "scripts\\create_test_jwt.py",
+      "line_number": 159,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"access_token\"",
+      "code_snippet": "access_token = login_data.get(\"access_token\")"
+    },
+    {
+      "file_path": "scripts\\create_test_jwt.py",
+      "line_number": 186,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = load_env_file()"
+    },
+    {
+      "file_path": "scripts\\debug_jwt_verifier.py",
+      "line_number": 195,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "print(f\"✅ JWKS获取成功，包含 {len(jwks_data.get('keys', []))} 个密钥\")"
+    },
+    {
+      "file_path": "scripts\\debug_jwt_verifier.py",
+      "line_number": 206,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keys\"",
+      "code_snippet": "for key in jwks_data.get(\"keys\", []):"
+    },
+    {
+      "file_path": "scripts\\detect_table_schema.py",
+      "line_number": 17,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_file =",
+      "code_snippet": "env_file = Path(__file__).parent.parent / \".env\""
+    },
+    {
+      "file_path": "scripts\\detect_table_schema.py",
+      "line_number": 18,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = {}"
+    },
+    {
+      "file_path": "scripts\\detect_table_schema.py",
+      "line_number": 40,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": service_role_key,"
+    },
+    {
+      "file_path": "scripts\\detect_table_schema.py",
+      "line_number": 61,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": service_role_key,"
+    },
+    {
+      "file_path": "scripts\\detect_table_schema.py",
+      "line_number": 83,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = load_env_file()"
+    },
+    {
+      "file_path": "scripts\\detect_table_schema.py",
+      "line_number": 85,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_SERVICE_ROLE_KEY\"",
+      "code_snippet": "service_role_key = env_vars.get(\"SUPABASE_SERVICE_ROLE_KEY\")"
+    },
+    {
+      "file_path": "scripts\\detect_table_schema.py",
+      "line_number": 129,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": service_role_key,"
+    },
+    {
+      "file_path": "scripts\\diagnose_supabase.py",
+      "line_number": 75,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "keys_count = len(jwks_data.get('keys', []))"
+    },
+    {
+      "file_path": "scripts\\diagnose_supabase.py",
+      "line_number": 80,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "first_key = jwks_data['keys'][0]"
+    },
+    {
+      "file_path": "scripts\\diagnose_supabase.py",
+      "line_number": 126,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\diagnose_supabase.py",
+      "line_number": 165,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\diagnose_supabase.py",
+      "line_number": 218,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\diagnose_supabase.py",
+      "line_number": 223,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"password\": test_password"
+    },
+    {
+      "file_path": "scripts\\diagnose_supabase.py",
+      "line_number": 242,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\diagnose_supabase.py",
+      "line_number": 247,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"password\": test_password"
+    },
+    {
+      "file_path": "scripts\\diagnose_supabase.py",
+      "line_number": 255,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"access_token\"",
+      "code_snippet": "access_token = data.get(\"access_token\")"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 22,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_file =",
+      "code_snippet": "env_file = Path(__file__).parent.parent / \".env\""
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 23,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = {}"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 74,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"api_key\"",
+      "code_snippet": "\"api_key\": api_key,"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 90,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"api_key\"",
+      "code_snippet": "api_key = email_info[\"api_key\"]"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 150,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_ANON_KEY\"",
+      "code_snippet": "supabase_anon_key = env_vars.get(\"SUPABASE_ANON_KEY\")"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 176,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": supabase_anon_key,"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 181,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"password\": test_password"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 222,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"access_token\"",
+      "code_snippet": "jwt_token = session_data.get(\"access_token\")"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 236,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": supabase_anon_key,"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 241,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"password\": test_password"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 249,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"access_token\"",
+      "code_snippet": "jwt_token = login_data.get(\"access_token\")"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 379,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_SERVICE_ROLE_KEY\"",
+      "code_snippet": "service_role_key = env_vars.get(\"SUPABASE_SERVICE_ROLE_KEY\")"
+    },
+    {
+      "file_path": "scripts\\e2e_test.py",
+      "line_number": 411,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = load_env_file()"
+    },
+    {
+      "file_path": "scripts\\find_jwt_secret.py",
+      "line_number": 35,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_candidates =",
+      "code_snippet": "env_candidates = ["
+    },
+    {
+      "file_path": "scripts\\find_jwt_secret.py",
+      "line_number": 36,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: os.getenv(\"JWT_SECRET\"",
+      "code_snippet": "os.getenv(\"JWT_SECRET\"),"
+    },
+    {
+      "file_path": "scripts\\find_jwt_secret.py",
+      "line_number": 36,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"JWT_SECRET\"",
+      "code_snippet": "os.getenv(\"JWT_SECRET\"),"
+    },
+    {
+      "file_path": "scripts\\find_jwt_secret.py",
+      "line_number": 37,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: os.getenv(\"SUPABASE_JWT_SECRET\"",
+      "code_snippet": "os.getenv(\"SUPABASE_JWT_SECRET\"),"
+    },
+    {
+      "file_path": "scripts\\find_jwt_secret.py",
+      "line_number": 37,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_JWT_SECRET\"",
+      "code_snippet": "os.getenv(\"SUPABASE_JWT_SECRET\"),"
+    },
+    {
+      "file_path": "scripts\\find_jwt_secret.py",
+      "line_number": 38,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: os.getenv(\"SUPABASE_SECRET\"",
+      "code_snippet": "os.getenv(\"SUPABASE_SECRET\"),"
+    },
+    {
+      "file_path": "scripts\\find_jwt_secret.py",
+      "line_number": 38,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_SECRET\"",
+      "code_snippet": "os.getenv(\"SUPABASE_SECRET\"),"
+    },
+    {
+      "file_path": "scripts\\find_jwt_secret.py",
+      "line_number": 84,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_file =",
+      "code_snippet": "env_file = os.path.join(os.path.dirname(__file__), '..', '.env')"
+    },
+    {
+      "file_path": "scripts\\k5_security_scanner.py",
+      "line_number": 150,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"PLAINTEXT_BEARER_TOKEN\"",
+      "code_snippet": "issue_type=\"PLAINTEXT_BEARER_TOKEN\","
+    },
+    {
+      "file_path": "scripts\\k5_security_scanner.py",
+      "line_number": 164,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_patterns =",
+      "code_snippet": "env_patterns = ["
+    },
+    {
+      "file_path": "scripts\\k5_security_scanner.py",
+      "line_number": 275,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"PLAINTEXT_BEARER_TOKEN\"",
+      "code_snippet": "if any(issue.issue_type == \"PLAINTEXT_BEARER_TOKEN\" for issue in self.issues):"
+    },
+    {
+      "file_path": "scripts\\manual_jwt_test.py",
+      "line_number": 19,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_file =",
+      "code_snippet": "env_file = Path(__file__).parent.parent / \".env\""
+    },
+    {
+      "file_path": "scripts\\manual_jwt_test.py",
+      "line_number": 20,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = {}"
+    },
+    {
+      "file_path": "scripts\\manual_jwt_test.py",
+      "line_number": 45,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = load_env_file()"
+    },
+    {
+      "file_path": "scripts\\manual_jwt_test.py",
+      "line_number": 47,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_ANON_KEY\"",
+      "code_snippet": "supabase_anon_key = env_vars.get(\"SUPABASE_ANON_KEY\")"
+    },
+    {
+      "file_path": "scripts\\manual_jwt_test.py",
+      "line_number": 89,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": supabase_anon_key,"
+    },
+    {
+      "file_path": "scripts\\manual_jwt_test.py",
+      "line_number": 94,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"password\": test_password"
+    },
+    {
+      "file_path": "scripts\\manual_jwt_test.py",
+      "line_number": 102,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"access_token\"",
+      "code_snippet": "jwt_token = login_data.get(\"access_token\")"
+    },
+    {
+      "file_path": "scripts\\manual_jwt_test.py",
+      "line_number": 202,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = load_env_file()"
+    },
+    {
+      "file_path": "scripts\\manual_jwt_test.py",
+      "line_number": 204,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_SERVICE_ROLE_KEY\"",
+      "code_snippet": "service_role_key = env_vars.get(\"SUPABASE_SERVICE_ROLE_KEY\")"
+    },
+    {
+      "file_path": "scripts\\manual_jwt_test.py",
+      "line_number": 219,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": service_role_key,"
+    },
+    {
+      "file_path": "scripts\\simple_jwt_test.py",
+      "line_number": 18,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_file =",
+      "code_snippet": "env_file = Path(__file__).parent.parent / \".env\""
+    },
+    {
+      "file_path": "scripts\\simple_jwt_test.py",
+      "line_number": 19,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = {}"
+    },
+    {
+      "file_path": "scripts\\simple_jwt_test.py",
+      "line_number": 50,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "print(f\"📋 获取到 {len(jwks_data.get('keys', []))} 个密钥\")"
+    },
+    {
+      "file_path": "scripts\\simple_jwt_test.py",
+      "line_number": 53,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "for i, key in enumerate(jwks_data.get('keys', [])):"
+    },
+    {
+      "file_path": "scripts\\simple_jwt_test.py",
+      "line_number": 72,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_SERVICE_ROLE_KEY\"",
+      "code_snippet": "\"SUPABASE_SERVICE_ROLE_KEY\","
+    },
+    {
+      "file_path": "scripts\\simple_jwt_test.py",
+      "line_number": 115,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = load_env_file()"
+    },
+    {
+      "file_path": "scripts\\simple_test.py",
+      "line_number": 86,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "keys_count = len(jwks_data.get('keys', []))"
+    },
+    {
+      "file_path": "scripts\\simple_test.py",
+      "line_number": 104,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\simple_test.py",
+      "line_number": 137,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\simple_test.py",
+      "line_number": 183,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\simple_test.py",
+      "line_number": 188,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"password\": test_password"
+    },
+    {
+      "file_path": "scripts\\simple_test.py",
+      "line_number": 207,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\simple_test.py",
+      "line_number": 212,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"password\": test_password"
+    },
+    {
+      "file_path": "scripts\\simple_test.py",
+      "line_number": 218,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"access_token\"",
+      "code_snippet": "access_token = data.get(\"access_token\")"
+    },
+    {
+      "file_path": "scripts\\smoke_test.py",
+      "line_number": 49,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": self.settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\smoke_test.py",
+      "line_number": 54,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"password\": self.test_password"
+    },
+    {
+      "file_path": "scripts\\smoke_test.py",
+      "line_number": 78,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": self.settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\smoke_test.py",
+      "line_number": 83,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"password\": self.test_password"
+    },
+    {
+      "file_path": "scripts\\smoke_test.py",
+      "line_number": 89,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"access_token\"",
+      "code_snippet": "self.access_token = data.get(\"access_token\")"
+    },
+    {
+      "file_path": "scripts\\smoke_test.py",
+      "line_number": 223,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": self.settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\test_jwt_api.py",
+      "line_number": 18,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_file =",
+      "code_snippet": "env_file = Path(__file__).parent.parent / \".env\""
+    },
+    {
+      "file_path": "scripts\\test_jwt_api.py",
+      "line_number": 19,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = {}"
+    },
+    {
+      "file_path": "scripts\\test_jwt_api.py",
+      "line_number": 41,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_SERVICE_ROLE_KEY\"",
+      "code_snippet": "service_role_key = env_vars.get(\"SUPABASE_SERVICE_ROLE_KEY\")"
+    },
+    {
+      "file_path": "scripts\\test_jwt_api.py",
+      "line_number": 138,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_vars =",
+      "code_snippet": "env_vars = load_env_file()"
+    },
+    {
+      "file_path": "scripts\\test_without_jwt.py",
+      "line_number": 109,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\test_with_service_key.py",
+      "line_number": 143,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\test_with_service_key.py",
+      "line_number": 173,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\verify_jwt_config.py",
+      "line_number": 33,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "print(f\"📋 获取到 {len(jwks_data.get('keys', []))} 个密钥\")"
+    },
+    {
+      "file_path": "scripts\\verify_jwt_config.py",
+      "line_number": 36,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "for i, key in enumerate(jwks_data.get('keys', [])):"
+    },
+    {
+      "file_path": "scripts\\verify_jwt_config.py",
+      "line_number": 81,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_SERVICE_ROLE_KEY\"",
+      "code_snippet": "(\"SUPABASE_SERVICE_ROLE_KEY\", settings.supabase_service_role_key),"
+    },
+    {
+      "file_path": "scripts\\verify_supabase_config.py",
+      "line_number": 56,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'SUPABASE_SERVICE_ROLE_KEY'",
+      "code_snippet": "'SUPABASE_SERVICE_ROLE_KEY': self.settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "scripts\\verify_supabase_config.py",
+      "line_number": 86,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "if 'keys' not in jwks_data:"
+    },
+    {
+      "file_path": "scripts\\verify_supabase_config.py",
+      "line_number": 89,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "keys_count = len(jwks_data['keys'])"
+    },
+    {
+      "file_path": "scripts\\verify_supabase_config.py",
+      "line_number": 94,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys_count'",
+      "code_snippet": "'keys_count': keys_count,"
+    },
+    {
+      "file_path": "scripts\\verify_supabase_config.py",
+      "line_number": 95,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "'keys': jwks_data['keys']"
+    },
+    {
+      "file_path": "scripts\\verify_supabase_config.py",
+      "line_number": 95,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'keys'",
+      "code_snippet": "'keys': jwks_data['keys']"
+    },
+    {
+      "file_path": "scripts\\verify_supabase_config.py",
+      "line_number": 111,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'apikey'",
+      "code_snippet": "'apikey': self.settings.supabase_service_role_key,"
+    },
+    {
+      "file_path": "tests\\test_e2e_integration.py",
+      "line_number": 119,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"invalid_token_header\"",
+      "code_snippet": "assert data[\"code\"] == \"invalid_token_header\""
+    },
+    {
+      "file_path": "tests\\test_jwt_auth.py",
+      "line_number": 26,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_missing\"",
+      "code_snippet": "assert exc_info.value.detail[\"code\"] == \"token_missing\""
+    },
+    {
+      "file_path": "tests\\test_jwt_auth.py",
+      "line_number": 35,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"invalid_token_header\"",
+      "code_snippet": "assert exc_info.value.detail[\"code\"] == \"invalid_token_header\""
+    },
+    {
+      "file_path": "tests\\test_jwt_hardening.py",
+      "line_number": 102,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_not_yet_valid\"",
+      "code_snippet": "assert exc_info.value.detail[\"code\"] == \"token_not_yet_valid\""
+    },
+    {
+      "file_path": "tests\\test_jwt_hardening.py",
+      "line_number": 183,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"jwks_key_not_found\"",
+      "code_snippet": "assert exc_info.value.detail[\"code\"] == \"jwks_key_not_found\""
+    },
+    {
+      "file_path": "tests\\test_jwt_hardening.py",
+      "line_number": 199,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_missing\"",
+      "code_snippet": "assert detail[\"code\"] == \"token_missing\""
+    },
+    {
+      "file_path": "tests\\test_jwt_hardening.py",
+      "line_number": 235,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_missing\"",
+      "code_snippet": "assert extra[\"code\"] == \"token_missing\""
+    },
+    {
+      "file_path": "tests\\test_jwt_integration_hardening.py",
+      "line_number": 110,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_missing\"",
+      "code_snippet": "{\"headers\": {}, \"expected_code\": \"token_missing\"},"
+    },
+    {
+      "file_path": "tests\\test_jwt_integration_hardening.py",
+      "line_number": 112,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"invalid_token_header\"",
+      "code_snippet": "{\"headers\": {\"Authorization\": \"Bearer invalid\"}, \"expected_code\": \"invalid_token_header\"},"
+    },
+    {
+      "file_path": "tests\\test_jwt_integration_hardening.py",
+      "line_number": 114,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_missing\"",
+      "code_snippet": "{\"headers\": {\"Authorization\": \"Bearer \"}, \"expected_code\": \"token_missing\"},"
+    },
+    {
+      "file_path": "tests\\test_jwt_integration_hardening.py",
+      "line_number": 215,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_not_yet_valid\"",
+      "code_snippet": "assert data[\"code\"] == \"token_not_yet_valid\""
+    },
+    {
+      "file_path": "web\\build\\utils.js",
+      "line_number": 41,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: process.env.npm_lifecycle_script",
+      "code_snippet": "const script = process.env.npm_lifecycle_script"
+    },
+    {
+      "file_path": "web\\src\\utils\\auth\\token.js",
+      "line_number": 3,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'access_token'",
+      "code_snippet": "const TOKEN_CODE = 'access_token'"
+    },
+    {
+      "file_path": "web\\i18n\\messages\\cn.json",
+      "line_number": 14,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"message_input_username_password\"",
+      "code_snippet": "\"message_input_username_password\": \"请输入用户名和密码\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\cn.json",
+      "line_number": 35,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"label_old_password\"",
+      "code_snippet": "\"label_old_password\": \"旧密码\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\cn.json",
+      "line_number": 36,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"label_new_password\"",
+      "code_snippet": "\"label_new_password\": \"新密码\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\cn.json",
+      "line_number": 37,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"label_confirm_password\"",
+      "code_snippet": "\"label_confirm_password\": \"确认密码\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\cn.json",
+      "line_number": 44,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"message_old_password_required\"",
+      "code_snippet": "\"message_old_password_required\": \"请输入旧密码\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\cn.json",
+      "line_number": 45,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"message_new_password_required\"",
+      "code_snippet": "\"message_new_password_required\": \"请输入新密码\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\cn.json",
+      "line_number": 46,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"message_password_confirmation_required\"",
+      "code_snippet": "\"message_password_confirmation_required\": \"请再次输入密码\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\cn.json",
+      "line_number": 47,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"message_password_confirmation_diff\"",
+      "code_snippet": "\"message_password_confirmation_diff\": \"两次密码输入不一致\""
+    },
+    {
+      "file_path": "web\\i18n\\messages\\en.json",
+      "line_number": 14,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"message_input_username_password\"",
+      "code_snippet": "\"message_input_username_password\": \"Please enter username and password\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\en.json",
+      "line_number": 35,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"label_old_password\"",
+      "code_snippet": "\"label_old_password\": \"Old password\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\en.json",
+      "line_number": 36,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"label_new_password\"",
+      "code_snippet": "\"label_new_password\": \"New password\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\en.json",
+      "line_number": 37,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"label_confirm_password\"",
+      "code_snippet": "\"label_confirm_password\": \"Password confirmation\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\en.json",
+      "line_number": 44,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"message_old_password_required\"",
+      "code_snippet": "\"message_old_password_required\": \"Please enter the old password\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\en.json",
+      "line_number": 45,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"message_new_password_required\"",
+      "code_snippet": "\"message_new_password_required\": \"Please enter a new password\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\en.json",
+      "line_number": 46,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"message_password_confirmation_required\"",
+      "code_snippet": "\"message_password_confirmation_required\": \"Please enter confirm password\","
+    },
+    {
+      "file_path": "web\\i18n\\messages\\en.json",
+      "line_number": 47,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"message_password_confirmation_diff\"",
+      "code_snippet": "\"message_password_confirmation_diff\": \"Two password inputs are inconsistent\""
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 10,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"base_url\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 15,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"supabase_url\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 20,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"supabase_anon_key\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 20,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"supabase_anon_key\"",
+      "code_snippet": "\"key\": \"supabase_anon_key\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 25,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"test_email\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 30,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"test_password\"",
+      "code_snippet": "\"key\": \"test_password\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 30,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"test_password\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 35,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"access_token\"",
+      "code_snippet": "\"key\": \"access_token\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 35,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"access_token\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 40,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"message_id\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 65,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"Content-Type\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 69,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"apikey\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 69,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"key\": \"apikey\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 103,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'access_token'",
+      "code_snippet": "\"    pm.expect(jsonData).to.have.property('access_token');\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 104,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: 'access_token'",
+      "code_snippet": "\"    pm.collectionVariables.set('access_token', jsonData.access_token);\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 115,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"Content-Type\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 119,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"apikey\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 119,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"key\": \"apikey\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 135,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token\"",
+      "code_snippet": "\"token\""
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 139,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"grant_type\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 140,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"password\"",
+      "code_snippet": "\"value\": \"password\""
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 171,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"Content-Type\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 175,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"Authorization\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 225,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"Content-Type\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 229,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"Authorization\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 279,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"Authorization\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 283,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"Accept\","
+    },
+    {
+      "file_path": "docs\\jwt改\\GymBro_API_Tests.postman_collection.json",
+      "line_number": 287,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"key\"",
+      "code_snippet": "\"key\": \"Cache-Control\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.exercise.local.database.ExerciseDatabase\\1.json",
+      "line_number": 150,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.exercise.local.database.ExerciseDatabase\\1.json",
+      "line_number": 239,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.exercise.local.database.ExerciseDatabase\\1.json",
+      "line_number": 244,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"tokenizer\"",
+      "code_snippet": "\"tokenizer\": \"simple\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.exercise.local.database.ExerciseDatabase\\1.json",
+      "line_number": 245,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"tokenizerArgs\"",
+      "code_snippet": "\"tokenizerArgs\": [],"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.exercise.local.database.ExerciseDatabase\\1.json",
+      "line_number": 305,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.exercise.local.database.ExerciseDatabase\\1.json",
+      "line_number": 310,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.exercise.local.database.ExerciseDatabase\\1.json",
+      "line_number": 347,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.exercise.local.database.ExerciseDatabase\\1.json",
+      "line_number": 382,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.exercise.local.database.ExerciseDatabase\\1.json",
+      "line_number": 437,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.exercise.local.database.ExerciseDatabase\\1.json",
+      "line_number": 472,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 294,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 347,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 510,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 517,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 620,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 637,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": ["
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 652,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"tokens\"",
+      "code_snippet": "\"tableName\": \"tokens\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 662,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"accessToken\"",
+      "code_snippet": "\"fieldPath\": \"accessToken\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 663,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"accessToken\"",
+      "code_snippet": "\"columnName\": \"accessToken\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 668,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"refreshToken\"",
+      "code_snippet": "\"fieldPath\": \"refreshToken\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 669,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"refreshToken\"",
+      "code_snippet": "\"columnName\": \"refreshToken\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 674,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"tokenType\"",
+      "code_snippet": "\"fieldPath\": \"tokenType\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 675,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"tokenType\"",
+      "code_snippet": "\"columnName\": \"tokenType\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 704,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 711,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 748,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 755,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 870,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 905,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 972,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1017,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": ["
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1034,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"tokenizer\"",
+      "code_snippet": "\"tokenizer\": \"simple\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1035,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"tokenizerArgs\"",
+      "code_snippet": "\"tokenizerArgs\": [],"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1054,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1059,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1138,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1193,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1224,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1231,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1292,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1327,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": ["
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1394,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"originalTokenCount\"",
+      "code_snippet": "\"fieldPath\": \"originalTokenCount\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1395,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"original_token_count\"",
+      "code_snippet": "\"columnName\": \"original_token_count\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1400,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"summaryTokenCount\"",
+      "code_snippet": "\"fieldPath\": \"summaryTokenCount\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1401,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"summary_token_count\"",
+      "code_snippet": "\"columnName\": \"summary_token_count\","
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1430,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1475,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": ["
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1578,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.local.database.AppDatabase\\31.json",
+      "line_number": 1661,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.plan.database.PlanDatabase\\2.json",
+      "line_number": 102,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.plan.database.PlanDatabase\\2.json",
+      "line_number": 164,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.plan.database.PlanDatabase\\2.json",
+      "line_number": 231,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.plan.database.PlanDatabase\\2.json",
+      "line_number": 284,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": ["
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.plan.database.PlanDatabase\\2.json",
+      "line_number": 333,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.plan.database.PlanDatabase\\2.json",
+      "line_number": 368,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": ["
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.session.database.SessionDatabase\\1.json",
+      "line_number": 102,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.session.database.SessionDatabase\\1.json",
+      "line_number": 173,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.session.database.SessionDatabase\\1.json",
+      "line_number": 276,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.session.database.SessionDatabase\\1.json",
+      "line_number": 320,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": ["
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.session.database.SessionDatabase\\1.json",
+      "line_number": 411,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.session.database.SessionDatabase\\1.json",
+      "line_number": 455,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": ["
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.session.database.SessionDatabase\\1.json",
+      "line_number": 528,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.session.database.SessionDatabase\\1.json",
+      "line_number": 572,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.session.database.SessionDatabase\\1.json",
+      "line_number": 645,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.session.database.SessionDatabase\\1.json",
+      "line_number": 689,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.stats.database.StatsDatabase\\1.json",
+      "line_number": 102,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.stats.database.StatsDatabase\\1.json",
+      "line_number": 166,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.template.database.TemplateDatabase\\3.json",
+      "line_number": 120,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.template.database.TemplateDatabase\\3.json",
+      "line_number": 200,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": []"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.template.database.TemplateDatabase\\3.json",
+      "line_number": 273,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.template.database.TemplateDatabase\\3.json",
+      "line_number": 317,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": ["
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.template.database.TemplateDatabase\\3.json",
+      "line_number": 378,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"primaryKey\"",
+      "code_snippet": "\"primaryKey\": {"
+    },
+    {
+      "file_path": "docs\\schemas\\com.example.gymbro.data.workout.template.database.TemplateDatabase\\3.json",
+      "line_number": 423,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"foreignKeys\"",
+      "code_snippet": "\"foreignKeys\": ["
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 77,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keys\"",
+      "code_snippet": "if isinstance(data, dict) and \"keys\" in data:"
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 78,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keys\"",
+      "code_snippet": "self._keys = list(data.get(\"keys\") or [])"
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 107,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keys\"",
+      "code_snippet": "keys = payload.get(\"keys\") if isinstance(payload, dict) else None"
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 144,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_missing\"",
+      "code_snippet": "self._log_verification_failure(\"token_missing\", \"Token missing\", trace_id=trace_id)"
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 145,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_missing\"",
+      "code_snippet": "raise self._create_unauthorized_error(\"token_missing\", \"Authorization token is required\")"
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 150,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"invalid_token_header\"",
+      "code_snippet": "self._log_verification_failure(\"invalid_token_header\", f\"Invalid JWT header: {exc}\", trace_id=trace_"
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 151,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"invalid_token_header\"",
+      "code_snippet": "raise self._create_unauthorized_error(\"invalid_token_header\", \"Invalid JWT header\") from exc"
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 170,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"jwks_key_not_found\"",
+      "code_snippet": "self._log_verification_failure(\"jwks_key_not_found\", f\"JWKS key retrieval failed: {exc}\","
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 172,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"jwks_key_not_found\"",
+      "code_snippet": "raise self._create_unauthorized_error(\"jwks_key_not_found\", \"Signing key not found\") from exc"
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 215,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_expired\"",
+      "code_snippet": "self._log_verification_failure(\"token_expired\", \"Token has expired\","
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 218,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_expired\"",
+      "code_snippet": "raise self._create_unauthorized_error(\"token_expired\", \"Token has expired\") from exc"
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 220,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_not_yet_valid\"",
+      "code_snippet": "self._log_verification_failure(\"token_not_yet_valid\", \"Token not active yet\","
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 223,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_not_yet_valid\"",
+      "code_snippet": "raise self._create_unauthorized_error(\"token_not_yet_valid\", \"Token not active yet\") from exc"
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 235,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"invalid_token\"",
+      "code_snippet": "self._log_verification_failure(\"invalid_token\", f\"JWT validation failed: {exc}\","
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 238,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"invalid_token\"",
+      "code_snippet": "raise self._create_unauthorized_error(\"invalid_token\", \"JWT validation failed\") from exc"
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 281,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_not_yet_valid\"",
+      "code_snippet": "self._log_verification_failure(\"token_not_yet_valid\","
+    },
+    {
+      "file_path": "app\\auth\\jwt_verifier.py",
+      "line_number": 285,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"token_not_yet_valid\"",
+      "code_snippet": "raise self._create_unauthorized_error(\"token_not_yet_valid\", \"Token not yet valid\")"
+    },
+    {
+      "file_path": "app\\auth\\supabase_provider.py",
+      "line_number": 34,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"apikey\"",
+      "code_snippet": "\"apikey\": self._service_role_key,"
+    },
+    {
+      "file_path": "app\\settings\\config.py",
+      "line_number": 31,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"SUPABASE_SERVICE_ROLE_KEY\"",
+      "code_snippet": "supabase_service_role_key: Optional[str] = Field(None, env=\"SUPABASE_SERVICE_ROLE_KEY\")"
+    },
+    {
+      "file_path": "app\\settings\\config.py",
+      "line_number": 51,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"AI_API_KEY\"",
+      "code_snippet": "ai_api_key: Optional[str] = Field(None, env=\"AI_API_KEY\")"
+    },
+    {
+      "file_path": "app\\settings\\config.py",
+      "line_number": 67,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_file=",
+      "code_snippet": "env_file=\".env\","
+    },
+    {
+      "file_path": "app\\settings\\config.py",
+      "line_number": 68,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: env_file_encoding=",
+      "code_snippet": "env_file_encoding=\"utf-8\","
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    },
+    {
+      "file_path": ".qoder\\repowiki\\zh\\meta\\repowiki-metadata.json",
+      "line_number": 1,
+      "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
+      "severity": "MEDIUM",
+      "description": "检测到环境变量使用: \"keywords\"",
+      "code_snippet": "{\"knowledge_relations\":[{\"id\":4241,\"source_id\":\"e486afa8-a419-44c3-9dbd-a5e4c55ff44f\",\"target_id\":\"5"
+    }
+  ],
+  "scan_status": "FAIL",
+  "recommendations": [
+    "确保敏感环境变量不在代码中硬编码"
+  ]
+}

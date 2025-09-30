@@ -2,7 +2,7 @@
 from functools import lru_cache
 from typing import List, Optional
 
-from pydantic import AnyHttpUrl, Field, validator
+from pydantic import AnyHttpUrl, Field, field_validator, ConfigDict
 from pydantic_settings import BaseSettings
 
 
@@ -29,12 +29,19 @@ class Settings(BaseSettings):
     supabase_issuer: Optional[AnyHttpUrl] = Field(None, env="SUPABASE_ISSUER")
     supabase_audience: Optional[str] = Field(None, env="SUPABASE_AUDIENCE")
     supabase_service_role_key: Optional[str] = Field(None, env="SUPABASE_SERVICE_ROLE_KEY")
+    supabase_jwt_secret: Optional[str] = Field(None, env="SUPABASE_JWT_SECRET")
     supabase_chat_table: str = Field("chat_messages", env="SUPABASE_CHAT_TABLE")
 
     jwks_cache_ttl_seconds: int = Field(900, env="JWKS_CACHE_TTL_SECONDS")
     allowed_issuers: List[AnyHttpUrl] = Field(default_factory=list, env="JWT_ALLOWED_ISSUERS")
     required_audience: Optional[str] = Field(None, env="JWT_AUDIENCE")
     token_leeway_seconds: int = Field(30, env="JWT_LEEWAY_SECONDS")
+
+    # JWT 验证硬化配置
+    jwt_clock_skew_seconds: int = Field(120, env="JWT_CLOCK_SKEW_SECONDS")
+    jwt_max_future_iat_seconds: int = Field(120, env="JWT_MAX_FUTURE_IAT_SECONDS")
+    jwt_require_nbf: bool = Field(False, env="JWT_REQUIRE_NBF")
+    jwt_allowed_algorithms: List[str] = Field(["ES256", "RS256", "HS256"], env="JWT_ALLOWED_ALGORITHMS")
 
     http_timeout_seconds: float = Field(10.0, env="HTTP_TIMEOUT_SECONDS")
     event_stream_heartbeat_seconds: float = Field(15.0, env="SSE_HEARTBEAT_SECONDS")
@@ -44,13 +51,39 @@ class Settings(BaseSettings):
     ai_api_base_url: Optional[AnyHttpUrl] = Field(None, env="AI_API_BASE_URL")
     ai_api_key: Optional[str] = Field(None, env="AI_API_KEY")
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    # 匿名用户支持配置
+    anon_enabled: bool = Field(True, env="ANON_ENABLED")
 
-    @validator("cors_allow_origins", pre=True)
-    def _split_origins(cls, value: object) -> List[str]:  # noqa: D401
+    # 限流配置
+    rate_limit_per_user_qps: int = Field(10, env="RATE_LIMIT_PER_USER_QPS")
+    rate_limit_per_user_daily: int = Field(1000, env="RATE_LIMIT_PER_USER_DAILY")
+    rate_limit_per_ip_qps: int = Field(20, env="RATE_LIMIT_PER_IP_QPS")
+    rate_limit_per_ip_daily: int = Field(2000, env="RATE_LIMIT_PER_IP_DAILY")
+    rate_limit_anonymous_qps: int = Field(5, env="RATE_LIMIT_ANONYMOUS_QPS")
+    rate_limit_anonymous_daily: int = Field(1000, env="RATE_LIMIT_ANONYMOUS_DAILY")
+    rate_limit_cooldown_seconds: int = Field(300, env="RATE_LIMIT_COOLDOWN_SECONDS")
+    rate_limit_failure_threshold: int = Field(10, env="RATE_LIMIT_FAILURE_THRESHOLD")
+
+    # SSE 并发控制
+    sse_max_concurrent_per_user: int = Field(2, env="SSE_MAX_CONCURRENT_PER_USER")
+    sse_max_concurrent_per_conversation: int = Field(1, env="SSE_MAX_CONCURRENT_PER_CONVERSATION")
+    sse_max_concurrent_per_anonymous_user: int = Field(2, env="SSE_MAX_CONCURRENT_PER_ANONYMOUS_USER")
+
+    # 回滚预案配置
+    auth_fallback_enabled: bool = Field(False, env="AUTH_FALLBACK_ENABLED")
+    rate_limit_enabled: bool = Field(True, env="RATE_LIMIT_ENABLED")
+    policy_gate_enabled: bool = Field(True, env="POLICY_GATE_ENABLED")
+
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, value: object) -> List[str]:
         """支持逗号分隔的字符串或直接传入列表。"""
         if value is None:
             return ["*"]
@@ -59,7 +92,8 @@ class Settings(BaseSettings):
             return items or ["*"]
         return list(value)
 
-    @validator("allowed_issuers", pre=True)
+    @field_validator("allowed_issuers", mode="before")
+    @classmethod
     def _split_issuers(cls, value: object) -> List[AnyHttpUrl]:
         if value in (None, "", []):
             return []
@@ -67,7 +101,8 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return list(value)
 
-    @validator("allowed_hosts", pre=True)
+    @field_validator("allowed_hosts", mode="before")
+    @classmethod
     def _split_hosts(cls, value: object) -> List[str]:
         if value in (None, "", []):
             return ["*"]

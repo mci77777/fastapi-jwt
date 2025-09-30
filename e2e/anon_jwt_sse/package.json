@@ -1,0 +1,36 @@
+{
+  "name": "e2e-anon-jwt-sse",
+  "version": "1.0.0",
+  "description": "E2E测试：匿名JWT→AI→APP（SSE）闭环与策略校验",
+  "main": "index.js",
+  "scripts": {
+    "e2e": "python scripts/run_e2e_enhanced.py",
+    "e2e:quick": "python scripts/run_e2e_enhanced.py --quick",
+    "e2e:edge": "python scripts/run_e2e_enhanced.py --auth-method edge",
+    "e2e:native": "python scripts/run_e2e_enhanced.py --auth-method native",
+    "e2e:full": "python scripts/run_e2e_enhanced.py --auth-method both",
+    "jwt:test": "python scripts/jwt_mutation_tests.py",
+    "sse:test": "python scripts/sse_chaos.py",
+    "sse:client": "python scripts/sse_client.py",
+    "auth:signin": "python scripts/anon_signin_enhanced.py",
+    "validate": "python scripts/validate_anon_integration.py",
+    "postman:update": "node scripts/patch_postman_env.mjs",
+    "newman:run": "newman run postman/collection.json -e postman/env.json --reporters cli,html --reporter-html-export artifacts/newman-report.html",
+    "clean": "rm -rf artifacts/*.json artifacts/*.log artifacts/*.md",
+    "setup": "pip install -r requirements.txt"
+  },
+  "dependencies": {
+    "newman": "^6.0.0"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "e2e",
+    "jwt",
+    "sse",
+    "supabase",
+    "anonymous",
+    "testing"
+  ],
+  "author": "GymBro Team",
+  "license": "MIT"
+}

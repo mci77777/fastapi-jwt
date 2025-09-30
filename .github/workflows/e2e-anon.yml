@@ -1,0 +1,36 @@
+name: e2e-anon
+on:
+  workflow_dispatch:
+  schedule: [ { cron: "15 3 * * *" } ] # 每日 03:15 UTC 夜跑
+concurrency:
+  group: e2e-anon-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      API_BASE: ${{ secrets.API_BASE }}
+      DB_CONN: ${{ secrets.DB_CONN_READONLY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: corepack enable && corepack prepare pnpm@9.7.0 --activate
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: |
+          pip install -r e2e/anon_jwt_sse/requirements.txt
+          pnpm -C e2e/anon_jwt_sse install
+      - name: Verify env
+        run: python e2e/anon_jwt_sse/scripts/verify_setup.py
+      - name: Run E2E (staging)
+        run: pnpm -C e2e/anon_jwt_sse run e2e:anon
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-anon-artifacts
+          path: |
+            e2e/anon_jwt_sse/artifacts/**
+            e2e/anon_jwt_sse/REPORT.md

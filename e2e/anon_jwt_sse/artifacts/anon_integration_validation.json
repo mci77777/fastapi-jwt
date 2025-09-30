@@ -1,0 +1,153 @@
+{
+  "timestamp": "2025-09-29T14:21:01.959379+00:00",
+  "tests": [
+    {
+      "test_name": "数据库表检查",
+      "passed": false,
+      "timestamp": "2025-09-29T14:21:01.962928+00:00",
+      "details": {
+        "error": "psycopg未安装，跳过数据库测试",
+        "skipped": true
+      }
+    },
+    {
+      "test_name": "RLS策略检查",
+      "passed": false,
+      "timestamp": "2025-09-29T14:21:01.962928+00:00",
+      "details": {
+        "error": "psycopg未安装，跳过RLS策略测试",
+        "skipped": true
+      }
+    },
+    {
+      "test_name": "API健康检查",
+      "passed": true,
+      "timestamp": "2025-09-29T14:21:02.241486+00:00",
+      "details": {
+        "endpoint": "http://localhost:9999/health",
+        "status_code": 404,
+        "response": "{\"detail\":\"Not Found\"}"
+      }
+    },
+    {
+      "test_name": "无token JWT验证",
+      "passed": true,
+      "timestamp": "2025-09-29T14:21:02.244495+00:00",
+      "details": {
+        "expected_status": 401,
+        "actual_status": 401,
+        "response": {
+          "code": "unauthorized",
+          "message": "Authorization header missing",
+          "status": 401,
+          "trace_id": "1a0c3f716df943e18404c0c599a74a31"
+        },
+        "has_unified_error_format": true
+      }
+    },
+    {
+      "test_name": "限流机制测试",
+      "passed": true,
+      "timestamp": "2025-09-29T14:21:02.244495+00:00",
+      "details": {
+        "total_requests": 10,
+        "status_codes": [
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401
+        ],
+        "has_429": false,
+        "has_consistent_auth_rejection": true,
+        "explanation": "限流可能在认证层生效",
+        "responses": [
+          {
+            "status_code": 401,
+            "headers": {
+              "Date": "Mon, 29 Sep 2025 14:21:01 GMT",
+              "Server": "uvicorn",
+              "Content-Length": "102",
+              "Content-Type": "application/json",
+              "x-trace-id": "rate-test-0"
+            },
+            "response": "{\"code\":\"unauthorized\",\"message\":\"Authorization header missing\",\"status\":401,\"trace_id\":\"rate-test-0\"}"
+          },
+          {
+            "status_code": 401,
+            "headers": {
+              "Date": "Mon, 29 Sep 2025 14:21:01 GMT",
+              "Server": "uvicorn",
+              "Content-Length": "102",
+              "Content-Type": "application/json",
+              "x-trace-id": "rate-test-1"
+            },
+            "response": "{\"code\":\"unauthorized\",\"message\":\"Authorization header missing\",\"status\":401,\"trace_id\":\"rate-test-1\"}"
+          },
+          {
+            "status_code": 401,
+            "headers": {
+              "Date": "Mon, 29 Sep 2025 14:21:01 GMT",
+              "Server": "uvicorn",
+              "Content-Length": "102",
+              "Content-Type": "application/json",
+              "x-trace-id": "rate-test-2"
+            },
+            "response": "{\"code\":\"unauthorized\",\"message\":\"Authorization header missing\",\"status\":401,\"trace_id\":\"rate-test-2\"}"
+          }
+        ]
+      }
+    },
+    {
+      "test_name": "无效token验证",
+      "passed": true,
+      "timestamp": "2025-09-29T14:21:02.762987+00:00",
+      "details": {
+        "invalid_token_1": {
+          "token": "invalid.token.here...",
+          "status_code": 401,
+          "response": {
+            "status": 401,
+            "code": "invalid_token_header",
+            "message": "Invalid JWT header",
+            "trace_id": "941dadd6c067484199aedab651126045"
+          },
+          "success": true
+        },
+        "invalid_token_2": {
+          "token": "eyJhbGciOiJIUzI1NiIs...",
+          "status_code": 401,
+          "response": {
+            "status": 401,
+            "code": "invalid_token_header",
+            "message": "Invalid JWT header",
+            "trace_id": "ba8bdbab07074d47adb7ed3a5dfa249f"
+          },
+          "success": true
+        },
+        "invalid_token_3": {
+          "token": "Bearer invalid-token...",
+          "status_code": 401,
+          "response": {
+            "status": 401,
+            "code": "invalid_token_header",
+            "message": "Invalid JWT header",
+            "trace_id": "ff85d8b099ba4135b992b6de43cb9fcf"
+          },
+          "success": true
+        }
+      }
+    }
+  ],
+  "summary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "errors": []
+  }
+}

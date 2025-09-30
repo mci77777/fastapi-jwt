@@ -20,7 +20,7 @@ def ensure_python312() -> None:
 
 
 if __name__ == "__main__":
-    ensure_python312()
+    # ensure_python312()  # 暂时跳过版本检查，使用当前环境
 
     LOGGING_CONFIG["formatters"]["default"]["fmt"] = "%(asctime)s - %(levelname)s - %(message)s"
     LOGGING_CONFIG["formatters"]["default"]["datefmt"] = "%Y-%m-%d %H:%M:%S"

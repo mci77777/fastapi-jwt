@@ -6,10 +6,11 @@ import json
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sse_starlette.sse import EventSourceResponse
 
 from app.auth import AuthenticatedUser, get_current_user
+from app.core.sse_guard import check_sse_concurrency, unregister_sse_connection
 from app.services.ai_service import AIMessageInput, AIService, MessageEventBroker
 from app.settings.config import get_settings
 
@@ -60,31 +61,51 @@ async def stream_message_events(
     message_id: str,
     request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> EventSourceResponse:
+) -> StreamingResponse:
     broker: MessageEventBroker = request.app.state.message_broker
     queue = broker.get_channel(message_id)
     if queue is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="message not found")
 
+    # 检查SSE并发限制
+    conversation_id = request.query_params.get("conversation_id")
+    connection_id = f"{current_user.uid}:{message_id}"
+
+    concurrency_error = await check_sse_concurrency(
+        connection_id, current_user, conversation_id, message_id, request
+    )
+    if concurrency_error:
+        return concurrency_error
+
     settings = get_settings()
     heartbeat_interval = max(settings.event_stream_heartbeat_seconds, 0.5)
 
     async def event_generator():
-        while True:
-            if await request.is_disconnected():
-                break
-            try:
-                item = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval)
-            except asyncio.TimeoutError:
-                heartbeat = json.dumps({"message_id": message_id, "event": "heartbeat"})
-                yield {"event": "heartbeat", "data": heartbeat}
-                continue
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval)
+                except asyncio.TimeoutError:
+                    heartbeat = json.dumps({"message_id": message_id, "event": "heartbeat"})
+                    yield f"event: heartbeat\ndata: {heartbeat}\n\n"
+                    continue
 
-            if item is None:
-                break
+                if item is None:
+                    break
 
-            yield {"event": item.event, "data": json.dumps(item.data)}
+                yield f"event: {item.event}\ndata: {json.dumps(item.data)}\n\n"
+        finally:
+            # 清理连接
+            await broker.close(message_id)
+            await unregister_sse_connection(connection_id)
 
-        await broker.close(message_id)
-
-    return EventSourceResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )

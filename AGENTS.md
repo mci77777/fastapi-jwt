@@ -1,29 +1,31 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Backend FastAPI lives in `app/`; `api/v1/` for routes, `models/` + `schemas/` for DB and validation, `settings/` for config, and audit logs land in `log/`.
-- Vue client in `web/`; `src/` for features, `build/` for Vite helpers, `.env.*` for environment toggles, static assets under `public/` and `src/assets/`.
-- Supporting assets include `deploy/` for Docker samples plus root `Makefile`, `Dockerfile`, `pyproject.toml`, and `run.py` for local entrypoints.
+- Backend lives in `app/`; `api/v1/` holds FastAPI routes, `models/` and `schemas/` back the database layer, while audit logs land in `log/`.
+- Vue client sits in `web/`; use `web/src/` for features, `web/src/assets/` and `public/` for static assets, and `.env.*` files for environment toggles.
+- Supporting assets include `deploy/` for Docker samples and root-level tooling such as `Makefile`, `Dockerfile`, `pyproject.toml`, and `run.py`.
 
 ## Build, Test, and Development Commands
-- Backend: `uv venv && uv add pyproject.toml` prepares dependencies; `python run.py` or `make start` boots the API on http://localhost:9999; `make install` refreshes pinned libs.
-- Quality: `make lint` (ruff) and `make format` (black + isort); `make check` runs both in dry-run mode.
-- Tests: `make test` exports `.env` then calls `pytest`; install `pytest` in your venv if missing.
-- Frontend (inside `web/`): `pnpm install`, `pnpm dev`, `pnpm build`, `pnpm lint` / `pnpm lint:fix`, and `pnpm preview` for post-build smoke checks.
+- `uv venv && uv add pyproject.toml`: prepare the backend virtual environment with pinned dependencies.
+- `python run.py` or `make start`: boot the API at http://localhost:9999 for local development.
+- `make lint`, `make format`, `make check`: run ruff, black/isort, or both in dry-run mode to keep code quality high.
+- `make test`: export `.env` and execute the pytest suite.
+- `pnpm install`, `pnpm dev`, `pnpm build`, `pnpm lint`: manage the Vue client lifecycle from dependency install through production build.
 
 ## Coding Style & Naming Conventions
-- Python favors `black` 120-char limits and `isort` ordering; modules and functions snake_case, Pydantic/ORM classes PascalCase, constants UPPER_SNAKE.
-- Vue/TS code keeps two-space indent, PascalCase component files in `src/components`, camelCase composables and stores, shared tokens in `src/styles`; run `pnpm prettier` before sweeping UI edits.
+- Python defaults to black with a 120-character line limit and isort ordering; prefer snake_case functions, PascalCase Pydantic/ORM models, and UPPER_SNAKE constants.
+- Vue/TypeScript uses two-space indentation, PascalCase component filenames in `src/components`, and camelCase composables/stores; run `pnpm prettier` before sweeping UI edits.
 
 ## Testing Guidelines
-- Place backend tests beside features under `tests/` (e.g., `tests/api/test_users.py`); cover RBAC, JWT auth, and CRUD flows, and reset DB fixtures between cases.
-- Frontend suites are optional today—document manual QA in PRs; if you add Vitest, colocate specs in `web/src/__tests__` and wire `pnpm vitest` in scripts.
+- Backend tests live under `tests/`, colocated with features (e.g., `tests/api/test_users.py`); cover RBAC, JWT auth, and CRUD flows with fixtures reset between cases.
+- Frontend automated tests are optional today; document manual QA steps in PR descriptions if no Vitest coverage is added.
+- Run `make test` before pushing code; add new cases when altering business logic or API contracts.
 
 ## Commit & Pull Request Guidelines
-- Use succinct imperative commits as in history (`fix login's loading message`, `adjust audit log filter`); split unrelated work across commits.
-- PRs should note backend/frontend touchpoints, link issues, include screenshots or curl samples for UI/API tweaks, and confirm lint/tests succeeded.
-- Call out new env vars or migrations; coordinate schema changes with `make migrate`/`make upgrade` steps.
+- Follow the existing imperative commit style, e.g., `fix login's loading message` or `adjust audit log filter`.
+- PRs should note backend/frontend touchpoints, link relevant issues, include screenshots or curl samples for UI/API updates, and confirm that lint and tests succeed.
+- Call out new environment variables or migrations in the PR body and coordinate schema changes with `make migrate`/`make upgrade`.
 
 ## Security & Configuration Tips
-- Keep secrets in local `.env` files and never commit them; update `app/settings` defaults cautiously.
-- Rotate JWT keys and database creds through deployment configs under `deploy/` whenever they change.
+- Keep secrets in local `.env` files; never commit credentials.
+- Update defaults in `app/settings` cautiously and rotate JWT keys plus database credentials via the deployment configs in `deploy/` when they change.

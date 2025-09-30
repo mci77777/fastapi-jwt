@@ -1,0 +1,36 @@
+{
+  "start_time": 1759157087.0651171,
+  "auth_method": "auto",
+  "steps": [
+    {
+      "name": "集成验证测试",
+      "success": false,
+      "timestamp": 1759157093.8576856,
+      "details": {
+        "return_code": 3221225477,
+        "stdout": "",
+        "stderr": "",
+        "command": "C:\\Program Files\\Python314\\python.exe D:\\GymBro\\vue-fastapi-admin\\e2e\\anon_jwt_sse\\scripts\\validate_anon_integration.py"
+      }
+    },
+    {
+      "name": "匿名JWT获取(自动)",
+      "success": false,
+      "timestamp": 1759157101.7385616,
+      "details": {
+        "return_code": 1,
+        "stdout": "🚀 增强版匿名用户JWT获取测试开始...\r\n📋 方式: both\r\n============================================================\r\n\r\n🔄 尝试Edge Function方式...\r\n🔑 通过Edge Function获取匿名JWT...\r\n📍 URL: https://rykglivrwzcykhhnxwoz.supabase.co/functions/v1/get-anon-token\r\n🔍 Trace ID: edge-anon-3cf6e631\r\n❌ Edge Function方式失败: Edge Function failed: 401 - {\"code\":401,\"message\":\"Missing authorization header\"}\r\n❌ Edge Function方式失败: Edge Function failed: 401 - {\"code\":401,\"message\":\"Missing authorization header\"}\r\n\r\n🔄 尝试原生认证方式...\r\n🔑 通过原生匿名登录获取JWT...\r\n📍 URL: https://rykglivrwzcykhhnxwoz.supabase.co/auth/v1/signup\r\n🔍 Trace ID: native-anon-7a7156a8\r\n❌ 原生认证方式失败: Anonymous sign-ins are disabled in Supabase Dashboard\r\n❌ 原生认证方式失败: Anonymous sign-ins are disabled in Supabase Dashboard\r\n❌ 所有方式都失败了\r\n",
+        "stderr": "",
+        "command": "C:\\Program Files\\Python314\\python.exe D:\\GymBro\\vue-fastapi-admin\\e2e\\anon_jwt_sse\\scripts\\anon_signin_enhanced.py --method both --verify"
+      }
+    }
+  ],
+  "summary": {
+    "end_time": 1759157101.7386165,
+    "duration_seconds": 14.673499345779419,
+    "total_steps": 2,
+    "passed_steps": 0,
+    "failed_steps": 2,
+    "success_rate": 0.0
+  }
+}

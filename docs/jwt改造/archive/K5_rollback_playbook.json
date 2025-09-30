@@ -1,0 +1,76 @@
+{
+  "rollback_playbook": {
+    "title": "GymBro API v2.0 回滚操作手册",
+    "version": "1.0",
+    "last_updated": "2025-09-29T13:59:25.193555"
+  },
+  "emergency_contacts": [
+    {
+      "role": "Primary Oncall",
+      "contact": "+86-138-0000-0001",
+      "slack": "@primary.oncall"
+    },
+    {
+      "role": "Secondary Oncall",
+      "contact": "+86-138-0000-0002",
+      "slack": "@secondary.oncall"
+    },
+    {
+      "role": "Tech Lead",
+      "contact": "+86-138-0000-0003",
+      "slack": "@tech.lead"
+    }
+  ],
+  "rollback_triggers": [
+    {
+      "trigger": "error_rate > 5%",
+      "severity": "P0",
+      "auto_rollback": true
+    },
+    {
+      "trigger": "p95_latency > 5000ms",
+      "severity": "P0",
+      "auto_rollback": true
+    },
+    {
+      "trigger": "health_check_failure",
+      "severity": "P1",
+      "auto_rollback": false
+    },
+    {
+      "trigger": "business_metric_drop > 20%",
+      "severity": "P1",
+      "auto_rollback": false
+    }
+  ],
+  "rollback_procedures": [
+    {
+      "scenario": "自动回滚",
+      "steps": [
+        "监控系统检测到触发条件",
+        "自动执行流量切换到稳定版本",
+        "发送告警通知值班人员",
+        "值班人员确认回滚状态",
+        "执行事后分析和修复"
+      ]
+    },
+    {
+      "scenario": "手动回滚",
+      "steps": [
+        "值班人员确认需要回滚",
+        "执行 kubectl rollout undo deployment/gymbro-api",
+        "监控服务恢复状态",
+        "验证关键功能正常",
+        "通知相关团队回滚完成"
+      ]
+    }
+  ],
+  "verification_checklist": [
+    "健康检查端点返回200",
+    "错误率低于1%",
+    "P95延迟低于1000ms",
+    "关键业务功能可用",
+    "数据库连接正常",
+    "外部依赖服务正常"
+  ]
+}

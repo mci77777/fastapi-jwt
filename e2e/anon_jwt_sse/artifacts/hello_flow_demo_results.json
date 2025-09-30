@@ -1,0 +1,48 @@
+{
+  "timestamp": 1759152139.8953035,
+  "trace_id": "663d6cc6-6046-4f54-a68d-ce9aeb5da104",
+  "api_base": "http://localhost:9999",
+  "steps": {
+    "no_auth": {
+      "status_code": 429,
+      "response": {
+        "status": 429,
+        "code": "RATE_LIMIT_EXCEEDED",
+        "message": "Rate limit exceeded: IP in cooldown period",
+        "trace_id": null
+      },
+      "success": false
+    },
+    "bad_auth": {
+      "status_code": 429,
+      "response": {
+        "status": 429,
+        "code": "RATE_LIMIT_EXCEEDED",
+        "message": "Rate limit exceeded: IP in cooldown period",
+        "trace_id": null
+      },
+      "success": false
+    },
+    "malformed_jwt": {
+      "status_code": 429,
+      "response": {
+        "status": 429,
+        "code": "RATE_LIMIT_EXCEEDED",
+        "message": "Rate limit exceeded: IP in cooldown period",
+        "trace_id": null
+      },
+      "success": false
+    },
+    "api_docs": {
+      "status_code": 429,
+      "content_type": "application/json",
+      "content_size": 114,
+      "success": false
+    },
+    "error_consistency": {
+      "total_errors": 0,
+      "all_consistent": true,
+      "success": true
+    }
+  }
+}

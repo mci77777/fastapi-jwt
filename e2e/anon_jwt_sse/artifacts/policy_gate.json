@@ -1,0 +1,314 @@
+[
+  {
+    "test_name": "policy_gate_get__api_v1_admin_users",
+    "endpoint": "/api/v1/admin/users",
+    "method": "GET",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:28 GMT",
+      "server": "uvicorn",
+      "retry-after": "123",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 1.076885461807251,
+    "success": false,
+    "trace_id": "policy-test-b84868f4"
+  },
+  {
+    "test_name": "policy_gate_get__api_v1_admin_dashboard",
+    "endpoint": "/api/v1/admin/dashboard",
+    "method": "GET",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:28 GMT",
+      "server": "uvicorn",
+      "retry-after": "122",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 0.8997595310211182,
+    "success": false,
+    "trace_id": "policy-test-c707b570"
+  },
+  {
+    "test_name": "policy_gate_post__api_v1_admin_settings",
+    "endpoint": "/api/v1/admin/settings",
+    "method": "POST",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:29 GMT",
+      "server": "uvicorn",
+      "retry-after": "121",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 0.9385309219360352,
+    "success": false,
+    "trace_id": "policy-test-d5d5b6db"
+  },
+  {
+    "test_name": "policy_gate_get__api_v1_user_profile",
+    "endpoint": "/api/v1/user/profile",
+    "method": "GET",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:30 GMT",
+      "server": "uvicorn",
+      "retry-after": "120",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 0.7928919792175293,
+    "success": false,
+    "trace_id": "policy-test-8e7ea32e"
+  },
+  {
+    "test_name": "policy_gate_put__api_v1_user_profile",
+    "endpoint": "/api/v1/user/profile",
+    "method": "PUT",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:31 GMT",
+      "server": "uvicorn",
+      "retry-after": "119",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 0.8050358295440674,
+    "success": false,
+    "trace_id": "policy-test-79c15bd1"
+  },
+  {
+    "test_name": "policy_gate_delete__api_v1_user_account",
+    "endpoint": "/api/v1/user/account",
+    "method": "DELETE",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:31 GMT",
+      "server": "uvicorn",
+      "retry-after": "118",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 0.810598611831665,
+    "success": false,
+    "trace_id": "policy-test-8293aed9"
+  },
+  {
+    "test_name": "policy_gate_post__api_v1_conversations_test_conv_id_share",
+    "endpoint": "/api/v1/conversations/test-conv-id/share",
+    "method": "POST",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:32 GMT",
+      "server": "uvicorn",
+      "retry-after": "118",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 0.8052847385406494,
+    "success": false,
+    "trace_id": "policy-test-d704c8fa"
+  },
+  {
+    "test_name": "policy_gate_get__api_v1_public_shares_test_share_id",
+    "endpoint": "/api/v1/public_shares/test-share-id",
+    "method": "GET",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:33 GMT",
+      "server": "uvicorn",
+      "retry-after": "117",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 0.8220326900482178,
+    "success": false,
+    "trace_id": "policy-test-99cebc9a"
+  },
+  {
+    "test_name": "policy_gate_post__api_v1_messages_batch",
+    "endpoint": "/api/v1/messages/batch",
+    "method": "POST",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:34 GMT",
+      "server": "uvicorn",
+      "retry-after": "116",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 0.752814531326294,
+    "success": false,
+    "trace_id": "policy-test-19d830b0"
+  },
+  {
+    "test_name": "policy_gate_post__api_v1_conversations_batch",
+    "endpoint": "/api/v1/conversations/batch",
+    "method": "POST",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:35 GMT",
+      "server": "uvicorn",
+      "retry-after": "115",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 1.049853801727295,
+    "success": false,
+    "trace_id": "policy-test-18ef2a2a"
+  },
+  {
+    "test_name": "policy_gate_post__api_v1_llm_models",
+    "endpoint": "/api/v1/llm/models",
+    "method": "POST",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:38 GMT",
+      "server": "uvicorn",
+      "retry-after": "113",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 2.2976174354553223,
+    "success": false,
+    "trace_id": "policy-test-8948131f"
+  },
+  {
+    "test_name": "policy_gate_put__api_v1_llm_models_test_model",
+    "endpoint": "/api/v1/llm/models/test-model",
+    "method": "PUT",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:39 GMT",
+      "server": "uvicorn",
+      "retry-after": "111",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 1.6468122005462646,
+    "success": false,
+    "trace_id": "policy-test-c7be3644"
+  },
+  {
+    "test_name": "policy_gate_delete__api_v1_llm_models_test_model",
+    "endpoint": "/api/v1/llm/models/test-model",
+    "method": "DELETE",
+    "expected_status": 403,
+    "actual_status": 429,
+    "response_data": {
+      "status": 429,
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded: IP in cooldown period",
+      "trace_id": null
+    },
+    "response_headers": {
+      "date": "Mon, 29 Sep 2025 13:44:41 GMT",
+      "server": "uvicorn",
+      "retry-after": "109",
+      "content-length": "114",
+      "content-type": "application/json"
+    },
+    "error_format_valid": true,
+    "execution_time": 1.9270577430725098,
+    "success": false,
+    "trace_id": "policy-test-3738bf27"
+  }
+]
