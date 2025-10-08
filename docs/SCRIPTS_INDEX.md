@@ -1,113 +1,109 @@
-# GymBro 项目脚本索引
+# GymBro 脚本索引
 
 **更新时间**：2025-10-08  
-**�ܼ�**��30 ���ű� / �ű����ʲ�
+**总计**：24 个 Python 脚本（scripts/ 目录 16 个，e2e/ 匿名链路 8 个）
 
 ---
 
-## 目录结构总览
+## 目录结构
 
 ```
 vue-fastapi-admin/
-������ scripts/                      # ���Ĺ�����ع�ű���21 ����
-└── e2e/anon_jwt_sse/scripts/     # 匿名 JWT SSE 专用 E2E 脚本（9 个）
+├── scripts/                      # 核心运维与诊断脚本
+└── e2e/anon_jwt_sse/scripts/     # 匿名 JWT SSE 专用 E2E 脚本
 ```
 
 ---
 
-## scripts/ Ŀ¼��21 ����
+## scripts/ 目录（16 个）
 
-### 1. JWT ����֤���ߣ�5 ����
+### 1. JWT 工具（5 个）
 
-| 脚本 | 作用 | 运行方式 |
+| 脚本 | 功能 | 运行方式 |
 |------|------|----------|
-| `verify_jwks_cache.py` | ✅ 推荐：综合校验 JWKS 缓存与 JWT 验证链路 | `python scripts/verify_jwks_cache.py` |
-| `verify_jwt_config.py` | 核对 Supabase JWT 配置并尝试加载验证器 | `python scripts/verify_jwt_config.py` |
-| `decode_jwt.py` | 解码任意 JWT 查看 Claims | `python scripts/decode_jwt.py <token>` |
+| `verify_jwks_cache.py` | ✅ 综合校验 JWKS 缓存与 JWT 验证链路 | `python scripts/verify_jwks_cache.py` |
+| `verify_jwt_config.py` | 检查 Supabase JWT 配置并尝试初始化验证器 | `python scripts/verify_jwt_config.py` |
 | `create_jwk.py` | 生成 HS256 对应的 JWK | `python scripts/create_jwk.py` |
+| `decode_jwt.py` | 解码 JWT 观察 Claims | `python scripts/decode_jwt.py <token>` |
 | `find_jwt_secret.py` | 辅助定位正确的 JWT Secret | `python scripts/find_jwt_secret.py` |
 
-### 2. Supabase 与环境体检（4 个）
+### 2. Supabase 体检（4 个）
 
-| 脚本 | 作用 | 运行方式 |
+| 脚本 | 功能 | 运行方式 |
 |------|------|----------|
-| `verify_supabase_config.py` | ✅ 推荐：异步校验 Supabase 配置 / API / 表权限 | `python scripts/verify_supabase_config.py` |
-| `diagnose_supabase.py` | 分析 Supabase 服务健康度 | `python scripts/diagnose_supabase.py` |
-| `detect_table_schema.py` | 探测聊天表结构并给出字段补全建议 | `python scripts/detect_table_schema.py` |
+| `verify_supabase_config.py` | ✅ 异步验证配置 / API / 表权限 | `python scripts/verify_supabase_config.py` |
+| `diagnose_supabase.py` | Supabase 健康检查 | `python scripts/diagnose_supabase.py` |
+| `detect_table_schema.py` | 探测聊天表结构，给出字段建议 | `python scripts/detect_table_schema.py` |
 | `create_supabase_tables.sql` | 建表 SQL（通过 Supabase CLI 或控制台执行） | `supabase db push < scripts/create_supabase_tables.sql` |
 
-### 3. �ع���׼�����ά�ű���6 ����
+### 3. 回归运维（6 个）
 
-| 脚本 | 作用 | 运行方式 |
+| 脚本 | 功能 | 运行方式 |
 |------|------|----------|
-| `k5_build_and_test.py` | ✅ 推荐：K5 CI 总控（双构建 + Newman 测试） | `python scripts/k5_build_and_test.py` |
-| `k5_rollback_drill.py` | K5 回滚演练与基线对比 | `python scripts/k5_rollback_drill.py` |
-| `k5_security_scanner.py` | K5 安全扫描与报告生成 | `python scripts/k5_security_scanner.py` |
-| `smoke_test.py` | API 冒烟：注册、JWT 获取、SSE、持久化 | `python scripts/smoke_test.py` |
+| `k5_build_and_test.py` | ✅ K5 CI 管线（双构建 + Newman 测试） | `python scripts/k5_build_and_test.py` |
+| `k5_rollback_drill.py` | K5 回滚演练 | `python scripts/k5_rollback_drill.py` |
+| `k5_security_scanner.py` | K5 安全扫描与报告 | `python scripts/k5_security_scanner.py` |
+| `smoke_test.py` | API 冒烟：注册、JWT、SSE、持久化 | `python scripts/smoke_test.py` |
 | `verify_docker_deployment.py` | Docker 部署探测 | `python scripts/verify_docker_deployment.py` |
 | `verify_gw_auth.py` | 网关认证通路验证 | `python scripts/verify_gw_auth.py` |
 
-### 4. 平台部署与快速验证（4 个）
+### 4. 平台部署与巡检（4 个）
 
-| 脚本 | 作用 | 运行方式 |
+| 脚本 | 功能 | 运行方式 |
 |------|------|----------|
 | `deploy-edge-function.sh` | 部署 Supabase Edge Function | `./scripts/deploy-edge-function.sh` |
-| `docker_build_and_run.ps1` | Windows 下一键构建并启动 Docker | `pwsh ./scripts/docker_build_and_run.ps1` |
-| `quick_verify.sh` | Shell 快速巡检（Linux / macOS） | `./scripts/quick_verify.sh` |
-| `quick_verify.ps1` | PowerShell 快速巡检（Windows） | `pwsh ./scripts/quick_verify.ps1` |
+| `docker_build_and_run.ps1` | Windows 下一键构建 / 启动 Docker | `pwsh ./scripts/docker_build_and_run.ps1` |
+| `quick_verify.sh` | Linux / macOS 快速巡检 | `./scripts/quick_verify.sh` |
+| `quick_verify.ps1` | Windows 快速巡检 | `pwsh ./scripts/quick_verify.ps1` |
 
 ### 5. 辅助工具（2 个）
 
-| 脚本 | 作用 | 运行方式 |
+| 脚本 | 功能 | 运行方式 |
 |------|------|----------|
 | `analyze_scripts.py` | 输出脚本清单与分类统计 | `python scripts/analyze_scripts.py` |
-| `test_web_frontend.py` | 校验本地前端与 API 反向代理是否可用 | `python scripts/test_web_frontend.py` |
+| `test_web_frontend.py` | 校验本地前端与 API 反向代理 | `python scripts/test_web_frontend.py` |
 
 ---
 
-## e2e/anon_jwt_sse/scripts/ 目录（9 个）
+## e2e/anon_jwt_sse/scripts/ 目录（8 个）
 
-### 1. E2E 执行与联调（6 个）
+### 1. E2E 执行（5 个）
 
-| 脚本 | 作用 | 运行方式 |
+| 脚本 | 功能 | 运行方式 |
 |------|------|----------|
-| `verify_setup.py` | ✅ 推荐：E2E 环境体检入口 | `python e2e/anon_jwt_sse/scripts/verify_setup.py` |
-| `run_e2e_enhanced.py` | 加强版匿名用户端到端流程 | `python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py` |
-| `anon_signin_enhanced.py` | 增强匿名登录 + SSE 观察 | `python e2e/anon_jwt_sse/scripts/anon_signin_enhanced.py` |
-| `sse_client.py` | 轻量 SSE 客户端调试器 | `python e2e/anon_jwt_sse/scripts/sse_client.py` |
-| `sse_chaos.py` | SSE 混沌测试（并发 / 断连模拟） | `python e2e/anon_jwt_sse/scripts/sse_chaos.py` |
-| `validate_anon_integration.py` | 匿名 JWT API 验证 | `python e2e/anon_jwt_sse/scripts/validate_anon_integration.py` |
+| `verify_setup.py` | ✅ 检查依赖、网络与配置 | `python e2e/anon_jwt_sse/scripts/verify_setup.py` |
+| `run_e2e_enhanced.py` | 注册 → 登录 → AI 消息 → SSE → JSON 记录 | `python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py` |
+| `anon_signin_enhanced.py` | 逐步调试匿名登录与 SSE | `python e2e/anon_jwt_sse/scripts/anon_signin_enhanced.py` |
+| `sse_client.py` | 轻量 SSE 客户端调试 | `python e2e/anon_jwt_sse/scripts/sse_client.py` |
+| `sse_chaos.py` | SSE 混沌/压力测试 | `python e2e/anon_jwt_sse/scripts/sse_chaos.py` |
 
-### 2. Token 工具与集成辅助（3 个）
+### 2. Token & 验证（3 个）
 
-| 脚本 | 作用 | 运行方式 |
+| 脚本 | 功能 | 运行方式 |
 |------|------|----------|
-| `generate_test_token.py` | ✅ 生成匿名 Token（支持 --method / --verify） | `python e2e/anon_jwt_sse/scripts/generate_test_token.py` |
+| `generate_test_token.py` | ✅ 生成匿名 Token（`--method {auto|edge|native}` / `--verify`） | `python e2e/anon_jwt_sse/scripts/generate_test_token.py` |
 | `jwt_mutation_tests.py` | JWT 变体安全测试 | `python e2e/anon_jwt_sse/scripts/jwt_mutation_tests.py` |
-| `patch_postman_env.mjs` | Postman 环境变量批量更新 | `node e2e/anon_jwt_sse/scripts/patch_postman_env.mjs` |
+| `validate_anon_integration.py` | 快速校验匿名 JWT API | `python e2e/anon_jwt_sse/scripts/validate_anon_integration.py` |
 
 ---
 
-## 本次脚本清理摘要
+## 最近清理摘要
 
-- 移除根目录早期测试脚本：`test_api_call.py`、`test_e2e_simple.py`、`test_jwt_verifier.py`、`test_jwt_verify.py`、`test_settings.py`  
-  → 功能由 `scripts/smoke_test.py`、`scripts/verify_jwks_cache.py` 等脚本覆盖。
-- 合并配置 / 表结构检查：删除 `scripts/check_config.py`、`scripts/check_table_structure.py`，统一使用 `scripts/verify_supabase_config.py` 与 `scripts/detect_table_schema.py`。
-- 删除旧版 API / Service Key 迭代脚本：`test_jwt_api.py`、`test_with_service_key.py`、`test_without_jwt.py`。
-- K 系列仅保留最终 K5 套件，移除 `k3_smoke_test.py`、`k4_demo_generator.py`。
-- E2E 目录保留增强版流程，移除 `run_simple_e2e.py`。
+- 删除历史脚本：`create_test_jwt.py`、`manual_jwt_test.py` 及旧版测试脚本，改由 `generate_test_token.py` 和 `run_e2e_enhanced.py` 提供统一能力。
+- `generate_test_token.py`、`run_e2e_enhanced.py`、`anon_signin_enhanced.py`、`sse_*` 等脚本统一由 Ruff 校验通过，并输出 JSON 级联记录。
+- 文档与 README 均同步更新，确保目录统计和使用说明准确。
 
 ---
 
-## 快速上手路径
+## 快速上手
 
 ```bash
-# 1. 校验配置与 JWKS
+# 1. 校验 Supabase 配置与 JWKS
 python scripts/verify_supabase_config.py
 python scripts/verify_jwks_cache.py
 
-# 2. 生成测试 Token 并执行匿名 E2E
-python e2e/anon_jwt_sse/scripts/generate_test_token.py
+# 2. 生成 Token 并执行匿名 E2E
+python e2e/anon_jwt_sse/scripts/generate_test_token.py --method auto --verify
 python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py
 
 # 3. 运行冒烟 / CI 套件
@@ -117,21 +113,9 @@ python scripts/k5_build_and_test.py
 
 ---
 
-## 维护建议
+## 维护准则
 
-1. 避免再新增平行迭代脚本，所有增量统一并入现有脚本或添加参数开关。
-2. 新脚本必须在所属目录 README 中登记用途与运行方法。
-3. 高风险脚本（写操作、回滚、部署）请附带 dry-run 说明或确认提示。
-4. 定期运行 `python scripts/analyze_scripts.py` 校验目录状况。
-
----
-
-## 参考文档
-
-- `docs/PROJECT_OVERVIEW.md`
-- `docs/E2E_ANON_JWT_SSE_DELIVERY_REPORT.md`
-- `docs/JWT_HARDENING_GUIDE.md`
-- `docs/DELIVERY_REPORT_2025-10-08.md`
-
-
-
+1. 新增脚本前优先评估是否能扩展现有脚本，避免再出现平行版本。
+2. 必须同步更新本文件与所属目录 README，注明用途、运行方式与主要输出。
+3. 对外部系统有写操作的脚本应提供 dry-run 或确认提示。
+4. 定期执行 `python scripts/analyze_scripts.py` 复核脚本分类与数量。

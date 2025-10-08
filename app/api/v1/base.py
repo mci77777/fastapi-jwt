@@ -178,6 +178,13 @@ async def get_user_menu(
     current_user: AuthenticatedUser = Depends(get_current_user_from_token)
 ) -> Dict[str, Any]:
     """获取当前用户的菜单权限。"""
+    print("=" * 80)
+    print("GET /usermenu called - NEW VERSION")
+    print("=" * 80)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("=== get_user_menu called === v3")
+
     # 临时硬编码菜单，实际应该从数据库查询
     menus = [
         {
@@ -211,6 +218,7 @@ async def get_user_menu(
             ],
         }
     ]
+    logger.info(f"Returning menus: {menus}")
     return create_response(data=menus)
 
 

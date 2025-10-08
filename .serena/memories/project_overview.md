@@ -1,0 +1,1 @@
+GymBro 是一个基于 FastAPI + Vue3 的后台管理系统，核心能力包含 RBAC、JWT 鉴权、移动端兼容以及 AI 接入；后端依赖 Supabase PostgreSQL、SQLAlchemy、Alembic、Redis、Prometheus/Grafana，前端使用 Vite、Naive UI、Pinia、Axios、Vue Router。

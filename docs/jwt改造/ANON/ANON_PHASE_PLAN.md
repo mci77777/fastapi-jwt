@@ -33,3 +33,13 @@
 
 ### 验收
 - 升级后继续访问历史会话；关闭匿名后旧匿名会话拒绝创建新内容。
+
+## 📂 合并文档速览
+
+匿名用户子任务的详细设计与测试要点已合并为速览。
+
+- **ANON-prompt**（原 `ANON-prompt.md`）：🧩 任务分派（最少编译、强依赖收口）
+- **匿名用户（Anonymous）支持 · API 契约增补**（原 `ANON_API_CONTRACTS.md`）：**版本**: v1.0
+- **匿名用户（Anonymous）支持 · 端到端测试套件**（原 `ANON_E2E_TESTS.md`）：**版本**: v1.0
+- **匿名用户（Anonymous）支持 · 限流与并发配置**（原 `ANON_RATE_LIMITING.md`）：**版本**: v1.0
+- **匿名用户（Anonymous）支持 · 顶层架构设计**（原 `ANON_SUPPORT_TOPLEVEL_DESIGN.md`）：**版本**: v1.0

@@ -10,7 +10,8 @@ export function reqResolve(config) {
 
   const token = getToken()
   if (token) {
-    config.headers.token = config.headers.token || token
+    // 使用 Bearer token 格式,符合后端的认证要求
+    config.headers.Authorization = config.headers.Authorization || `Bearer ${token}`
   }
 
   return config

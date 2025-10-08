@@ -1,0 +1,1 @@
+后端：`uv venv && uv add pyproject.toml` 初始化环境，`python run.py` 或 `make start` 本地启动，`make lint`、`make format`、`make check` 分别执行 ruff/black+isort/综合检查，`make test` 运行 pytest；前端：`pnpm install`、`pnpm dev`、`pnpm build`、`pnpm lint` 管理 Vue 客户端；脚本：常用验证如 `python scripts/verify_supabase_config.py`、`python scripts/smoke_test.py`、`python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py`。

@@ -1,5 +1,6 @@
 """FastAPI 应用初始化逻辑。"""
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,15 +12,26 @@ from app.core.exceptions import register_exception_handlers
 from app.core.middleware import TraceIDMiddleware
 from app.core.policy_gate import PolicyGateMiddleware
 from app.core.rate_limiter import RateLimitMiddleware
+from app.services.ai_config_service import AIConfigService
 from app.services.ai_service import AIService, MessageEventBroker
 from app.settings.config import get_settings
+from app.db import SQLiteManager
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app: FastAPI):
     """暂留钩子，后续可在此注册连接池等资源。"""
 
-    yield
+    settings = get_settings()
+    sqlite_manager = SQLiteManager(Path("db.sqlite3"))
+    await sqlite_manager.init()
+    app.state.sqlite_manager = sqlite_manager
+    app.state.ai_config_service = AIConfigService(sqlite_manager, settings)
+
+    try:
+        yield
+    finally:
+        await sqlite_manager.close()
 
 
 def create_app() -> FastAPI:

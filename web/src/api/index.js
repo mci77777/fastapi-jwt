@@ -36,12 +36,24 @@ export default {
   getAIModels: (params = {}) => request.get('/llm/models', { params }),
   createAIModel: (data = {}) => request.post('/llm/models', data),
   updateAIModel: (data = {}) => request.put('/llm/models', data),
+  deleteAIModel: (endpointId) => request.delete(`/llm/models/${endpointId}`),
+  checkAIModel: (endpointId) => request.post(`/llm/models/${endpointId}/check`),
+  checkAllAIModels: () => request.post('/llm/models/check-all'),
+  syncAIModel: (endpointId, direction = 'push') =>
+    request.post(`/llm/models/${endpointId}/sync`, { direction }),
+  syncAllAIModels: (direction = 'push') => request.post('/llm/models/sync', { direction }),
+  getSupabaseStatus: () => request.get('/llm/status/supabase'),
   // llm prompts
   getAIPrompts: (params = {}) => request.get('/llm/prompts', { params }),
   getAIPromptDetail: (promptId) => request.get(`/llm/prompts/${promptId}`),
   createAIPrompt: (data = {}) => request.post('/llm/prompts', data),
   updateAIPrompt: (promptId, data = {}) => request.put(`/llm/prompts/${promptId}`, data),
+  deleteAIPrompt: (promptId) => request.delete(`/llm/prompts/${promptId}`),
   activateAIPrompt: (promptId) => request.post(`/llm/prompts/${promptId}/activate`),
+  syncPrompts: (direction = 'push') => request.post('/llm/prompts/sync', { direction }),
+  getPromptTests: (promptId, params = {}) => request.get(`/llm/prompts/${promptId}/tests`, { params }),
+  // llm test
+  testPrompt: (data = {}) => request.post('/llm/prompts/test', data),
   // depts
   getDepts: (params = {}) => request.get('/dept/list', { params }),
   createDept: (data = {}) => request.post('/dept/create', data),

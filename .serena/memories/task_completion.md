@@ -1,0 +1,1 @@
+提交前需确保后端 `make check`、`make test` 通过，前端若改动运行 `pnpm lint`/`pnpm build`，如涉及 API 应附手动验证或 curl 示例，并指明新环境变量、迁移或脚本；保持单提交可回滚。

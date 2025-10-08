@@ -330,3 +330,17 @@ http://localhost:3101
 **最后更新**：2025-09-30
 **版本**：v0.1.0
 
+## 📚 已整合文档速览
+
+以下条目来自原先的操作/交付文档，关键信息已并入本概览，详请请参考源码与脚本目录。
+
+- **App JWT 对接指南**（原 `APP_JWT_INTEGRATION.md`）：本文档提供移动App（Android/iOS）与GymBro后端API的JWT认证对接指南。
+- **数据库设计文档**（原 `DATABASE_SCHEMA.md`）：本文档定义GymBro管理后台的数据库schema，基于RBAC（基于角色的访问控制）模型设计。
+- **GymBro 后端开发交付报告**（原 `DELIVERY_REPORT_2025-10-08.md`）：**交付日期**: 2025-10-08
+- **E2E-ANON-JWT→AI→APP（SSE）闭环与策略校验 - 交付报告**（原 `E2E_ANON_JWT_SSE_DELIVERY_REPORT.md`）：本项目成功实现了完整的端到端匿名JWT认证流程，集成AI消息处理和Server-Sent Events (SSE)实时通信，包含策略验证和限流机制的全面测试套件。
+- **GW-Auth 网关最小改造 - 交付报告**（原 `GW_AUTH_DELIVERY_REPORT.md`）：**版本**: v1.0
+- **GW-Auth 网关改造 - 安装指南**（原 `GW_AUTH_INSTALLATION.md`）：**版本**: v1.0
+- **K1 JWT 验证器硬化与兼容补丁 - 交付报告**（原 `K1_DELIVERY_REPORT.md`）：**项目代号**: K1
+- **下一步行动清单**（原 `NEXT_STEPS.md`）：步骤1 **深度分析**：
+- **Supabase JWT 验证落地指南**（原 `SUPABASE_JWT_SETUP.md`）：本文描述如何在 GymBro FastAPI 项目中正确接入 Supabase JWT 验证链路，并提供验证脚本与排障手册。
+- **匿名用户获取JWT**（原 `匿名用户获取JWT.md`）：以下是整理好的 Markdown 格式归纳，涵盖了匿名 token 相关需求、Edge Function 代码、环境变量说明、数据库表及 RLS 策略、匿名用户迁移示例 SQL，以及部署使用简要说明。

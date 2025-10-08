@@ -189,3 +189,16 @@ python scripts/k5_rollback_drill.py
 - [x] K5_DELIVERY_REPORT.md含扫描结果、Newman概览、双构建数据、发布tag与回滚演练记录
 - [x] 所有文档路径已修正为 docs/jwt改造/*
 
+## 📦 合并文档速览
+
+以下条目记录 JWT 改造阶段的交付与分析重点。
+
+- **09-29SQL结构**（原 `09-29SQL结构.md`）：-- WARNING: This schema is for context only and is not meant to be run.
+- **匿名访问功能数据表结构完整性分析报告**（原 `ANON_DATABASE_STRUCTURE_ANALYSIS.md`）：**分析日期**: 2025-09-29
+- **匿名用户功能实现 - 最终交付报告**（原 `ANON_IMPLEMENTATION_FINAL_REPORT.md`）：**项目**: GymBro Vue-FastAPI-Admin
+- **匿名访问表结构补充脚本修复说明**（原 `ANON_TABLES_SUPPLEMENT_FIXED.md`）：执行 `ANON_TABLES_SUPPLEMENT.sql` 时遇到错误：
+- **文档清理报告**（原 `DOCUMENTATION_CLEANUP_REPORT.md`）：**执行时间**: 2025-09-29
+- **K1 JWT 验证器硬化与兼容补丁 - 交付报告**（原 `K1_DELIVERY_REPORT.md`）：**项目代号**: K1
+- **K3 限流与反滥用 - 技术实现报告**（原 `K3_RATE_LIMITING_REPORT.md`）：K3任务实现了多层次的限流与反滥用机制，包括用户/IP双重限流、SSE并发控制、反爬虫检测和统一错误响应。
+- **K4 观测与告警基线 - SLO/SLI 指标体系**（原 `K4_OBSERVABILITY_SLO.md`）：**定义**: 从请求发起到收到第一个字节的时间
+- **K5 发布v2.0与回滚演练 - 交付报告**（原 `K5_DELIVERY_REPORT.md`）：**K5 — 发布v2.0与回滚演练** 已全部完成，CI/CD流程、安全扫描、构建验证、回滚演练均已实施。

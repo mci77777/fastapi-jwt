@@ -223,3 +223,26 @@ curl -X POST http://localhost:9999/api/v1/auth/anonymous
 **代码行数**: 2000+ 行代码 + 1200+ 行SQL + 3000+ 行文档  
 **覆盖范围**: 后端、数据库、文档、测试全覆盖  
 **质量标准**: 生产就绪，支持立即部署
+
+## 📚 归档文档速览
+
+以下条目保留详细实现/测试的索引说明。
+
+- **匿名用户后端策略与配置**（原 `ANON_BACKEND_POLICY.md`）：**版本**: v1.0
+- **匿名用户端点访问限制矩阵**（原 `ANON_ENDPOINT_MATRIX.md`）：**版本**: v1.0
+- **数据库架构对齐验证分析报告**（原 `DATABASE_SCHEMA_ALIGNMENT_ANALYSIS.md`）：**📅 分析日期**: 2025-09-29
+- **Supabase 部署检查清单**（原 `DEPLOYMENT_CHECKLIST.md`）：本文档提供了完整的 Supabase 配置和部署检查清单，确保 GymBro API 能够正确集成 Supabase 认证和数据库功能。
+- **GymBro API 最终冒烟测试报告**（原 `FINAL_SMOKE_TEST_REPORT.md`）：**测试日期**: 2025-09-29
+- **GymBro API Supabase 集成测试报告**（原 `FINAL_TEST_REPORT.md`）：**测试日期**: 2025-09-29
+- **K2 数据与 RLS 收口交付报告**（原 `K2_DATA_RLS_REPORT.md`）：**conversations**: 对话主表 (id, user_id, title, created_at, updated_at, source, trace_id)
+- **K4 仪表盘与告警配置草案**（原 `K4_DASHBOARD_CONFIG.md`）：JSON 配置示例详见原文
+- **K4 Runbook - 故障排查与恢复指南**（原 `K4_RUNBOOK.md`）：步骤1 **确认告警** - 检查告警详情和影响范围
+- **SCHEMA-all**（原 `SCHEMA-all.md`）：-- WARNING: This schema is for context only and is not meant to be run.
+- **数据库架构对齐最终报告**（原 `SCHEMA_ALIGNMENT_FINAL_REPORT.md`）：**📅 报告日期**: 2025-09-29
+- **GymBro APP Supabase数据库设置指南**（原 `SUPABASE_DASHBOARD_SETUP.md`）：**版本**: v1.0
+- **Supabase JWT 认证配置指南**（原 `SUPABASE_JWT_SETUP.md`）：本文档说明如何在 GymBro FastAPI 项目中正确配置 Supabase JWT 认证。
+- **GymBro Supabase 快速设置清单**（原 `SUPABASE_QUICK_SETUP_CHECKLIST.md`）：**⏱️ 预计时间**: 10-15分钟
+- **T2 后端策略与开关（FastAPI）- 交付报告**（原 `T2_BACKEND_DELIVERY_REPORT.md`）：**版本**: v1.0
+- **T3 数据与RLS（Supabase SQL）- 交付报告**（原 `T3_RLS_DELIVERY_REPORT.md`）：**版本**: v1.0
+- **T3任务交付报告：Supabase数据库结构生成**（原 `T3_SUPABASE_SCHEMA_DELIVERY_REPORT.md`）：**任务编号**: T3
+- **Task-A、Task-B、Task-C 完成报告**（原 `TASK_ABC_COMPLETION_REPORT.md`）：✅ **Task-A · 目录规范与搬运** - 已完成

@@ -180,3 +180,17 @@ JWT认证系统已完全实现并通过测试验证。系统具备：
 - ✅ 全面的测试覆盖
 
 系统已准备好进行生产部署和进一步的功能扩展。
+
+## 📚 归档文档速览
+
+以下文件的要点已合并到本摘要，面向快速查阅。
+
+- **Supabase 部署检查清单**（原 `DEPLOYMENT_CHECKLIST.md`）：本文档提供了完整的 Supabase 配置和部署检查清单，确保 GymBro API 能够正确集成 Supabase 认证和数据库功能。
+- **GymBro API 最终冒烟测试报告**（原 `FINAL_SMOKE_TEST_REPORT.md`）：**测试日期**: 2025-09-29
+- **GymBro API Supabase 集成测试报告**（原 `FINAL_TEST_REPORT.md`）：**测试日期**: 2025-09-29
+- **K2 数据与 RLS 收口交付报告**（原 `K2_DATA_RLS_REPORT.md`）：**conversations**: 对话主表 (id, user_id, title, created_at, updated_at, source, trace_id)
+- **K3 限流与反滥用交付报告**（原 `K3_RATE_LIMITING_REPORT.md`）：K3任务实现了完整的限流与反滥用系统，包括：
+- **K4 仪表盘与告警配置草案**（原 `K4_DASHBOARD_CONFIG.md`）：JSON 配置示例详见原文
+- **K4 观测与告警基线 - SLO/SLI 指标体系**（原 `K4_OBSERVABILITY_SLO.md`）：**定义**: 从请求发起到收到第一个字节的时间
+- **K4 Runbook - 故障排查与恢复指南**（原 `K4_RUNBOOK.md`）：步骤1 **确认告警** - 检查告警详情和影响范围
+- **K5 发布v2.0与回滚演练 - 交付报告**（原 `K5_DELIVERY_REPORT.md`）：**K5 — 发布v2.0与回滚演练** 已全部完成，CI/CD流程、安全扫描、构建验证、回滚演练均已实施。

@@ -1,0 +1,1 @@
+Python 端使用 black(120 列)+isort 排序、异步 FastAPI 结构，函数/变量 snake_case、模型 PascalCase、常量大写；Vue 端 2 空格缩进，组件文件 PascalCase，组合式 API + Pinia 状态，使用 pnpm prettier 保持代码风格。
