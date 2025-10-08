@@ -4,12 +4,18 @@ SSE 稳定性微压测：
 - 模拟慢消费，验证背压与资源释放
 运行：python e2e/anon_jwt_sse/scripts/sse_chaos.py
 """
-import asyncio, aiohttp, json, os, uuid, pathlib
+import asyncio
+import aiohttp
+import json
+import os
+import uuid
+import pathlib
 
 API = os.environ.get("API_BASE", "http://localhost:9999")
 token_path = os.path.join(os.path.dirname(__file__), "..", "artifacts", "token.json")
 TOK = json.load(open(token_path))["access_token"]
-ART = pathlib.Path("e2e/anon_jwt_sse/artifacts"); ART.mkdir(parents=True, exist_ok=True)
+ART = pathlib.Path("e2e/anon_jwt_sse/artifacts")
+ART.mkdir(parents=True, exist_ok=True)
 
 async def one_stream(i: int):
     trace = str(uuid.uuid4())

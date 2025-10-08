@@ -192,7 +192,7 @@ class SSEClient:
         # 保存完整事件日志
         log_file = artifacts_dir / "sse.log"
         with open(log_file, "w", encoding="utf-8") as f:
-            f.write(f"# SSE事件日志\n")
+            f.write("# SSE事件日志\n")
             f.write(f"# Trace ID: {self.trace_id}\n")
             f.write(f"# 生成时间: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n")
             f.write(f"# 事件总数: {len(self.events)}\n\n")

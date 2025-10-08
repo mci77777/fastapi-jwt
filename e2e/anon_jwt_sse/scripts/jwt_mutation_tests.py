@@ -6,7 +6,11 @@ JWT 变体/攻击面快速校验
 运行：python e2e/anon_jwt_sse/scripts/jwt_mutation_tests.py
 输出：状态码与响应体（应为 401/403 + 统一错误体）
 """
-import json, base64, time, httpx, os
+import json
+import base64
+import time
+import httpx
+import os
 
 API = os.environ.get("API_BASE", "http://localhost:9999")
 token_path = os.path.join(os.path.dirname(__file__), "..", "artifacts", "token.json")

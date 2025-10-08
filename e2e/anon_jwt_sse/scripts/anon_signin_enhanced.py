@@ -12,13 +12,11 @@ import json
 import os
 import pathlib
 import sys
-import time
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 import aiohttp
-import httpx
 from dotenv import load_dotenv
 
 # 加载环境变量
@@ -53,7 +51,7 @@ class EnhancedAnonAuth:
             "User-Agent": "E2E-Enhanced-Client/1.0"
         }
         
-        print(f"🔑 通过Edge Function获取匿名JWT...")
+        print("🔑 通过Edge Function获取匿名JWT...")
         print(f"📍 URL: {edge_url}")
         print(f"🔍 Trace ID: {trace_id}")
         
@@ -69,7 +67,7 @@ class EnhancedAnonAuth:
                     
                     if response.status == 200:
                         data = json.loads(response_text)
-                        print(f"✅ Edge Function获取成功")
+                        print("✅ Edge Function获取成功")
                         print(f"🆔 用户ID: {data['user']['id']}")
                         print(f"📧 邮箱: {data['user']['email']}")
                         print(f"⏰ 过期时间: {data['expires_at']}")
@@ -106,7 +104,7 @@ class EnhancedAnonAuth:
             "X-Trace-Id": trace_id
         }
         
-        print(f"🔑 通过原生匿名登录获取JWT...")
+        print("🔑 通过原生匿名登录获取JWT...")
         print(f"📍 URL: {auth_url}")
         print(f"🔍 Trace ID: {trace_id}")
         
@@ -125,7 +123,7 @@ class EnhancedAnonAuth:
                     
                     if response.status == 200:
                         data = json.loads(response_text)
-                        print(f"✅ 原生匿名登录成功")
+                        print("✅ 原生匿名登录成功")
                         
                         # 转换为统一格式
                         unified_data = {
@@ -222,11 +220,11 @@ class EnhancedAnonAuth:
                         results[endpoint] = result
                         
                         if response.status == 200:
-                            print(f"  ✅ 成功 (200)")
+                            print("  ✅ 成功 (200)")
                         elif response.status in [401, 403]:
                             print(f"  🔐 认证/权限问题 ({response.status})")
                         elif response.status == 429:
-                            print(f"  ⏱️ 限流 (429)")
+                            print("  ⏱️ 限流 (429)")
                         else:
                             print(f"  ❌ 失败 ({response.status})")
                             

@@ -122,7 +122,7 @@ pip install -r requirements.txt
 # 在Supabase SQL Editor中执行: docs/jwt改造/COMPLETE_REBUILD_FOR_ANDROID.sql
 
 # 5. 验证配置
-python scripts/check_config.py
+python scripts/verify_supabase_config.py
 
 # 6. 启动服务
 python run.py
@@ -188,3 +188,4 @@ python scripts/k5_rollback_drill.py
 - [x] 仓库中无残缺链接到 docs/jwt改/
 - [x] K5_DELIVERY_REPORT.md含扫描结果、Newman概览、双构建数据、发布tag与回滚演练记录
 - [x] 所有文档路径已修正为 docs/jwt改造/*
+

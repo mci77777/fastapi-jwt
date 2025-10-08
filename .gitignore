@@ -12,6 +12,9 @@ db.sqlite3-journal
 db.sqlite3-shm
 db.sqlite3-wal
 
+./*node_modules
+node_modules/*
+
 .DS_Store
 ._.DS_Store
 

@@ -10,9 +10,8 @@ import json
 import os
 import pathlib
 import sys
-import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 
 import aiohttp
 try:
@@ -106,7 +105,7 @@ class AnonIntegrationValidator:
                                 "response": data[:200] + "..." if len(data) > 200 else data
                             })
                             return True
-            except Exception as e:
+            except Exception:
                 continue
 
         # 所有端点都失败

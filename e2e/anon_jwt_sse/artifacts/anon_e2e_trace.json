@@ -1,0 +1,61 @@
+{
+  "started_at": 1759900208.0559561,
+  "finished_at": 1759900210.6493535,
+  "duration_seconds": 2.593397378921509,
+  "supabase_project_id": "rykglivrwzcykhhnxwoz",
+  "supabase_url": "https://rykglivrwzcykhhnxwoz.supabase.co",
+  "api_base_url": "http://localhost:9999/api/v1",
+  "user_email": "anon_e2e_1759900208@test.local",
+  "steps": [
+    {
+      "name": "supabase_signup",
+      "success": true,
+      "request": {
+        "url": "https://rykglivrwzcykhhnxwoz.supabase.co/auth/v1/signup",
+        "payload": {
+          "email": "anon_e2e_1759900208@test.local",
+          "password": "Pwd-8b3c6054e852",
+          "data": {
+            "source": "anon-e2e",
+            "registered_at": "2025-10-08T05:10:08Z"
+          }
+        }
+      },
+      "response": {
+        "status_code": 400,
+        "body": {
+          "code": 400,
+          "error_code": "email_address_invalid",
+          "msg": "Email address \"anon_e2e_1759900208@test.local\" is invalid"
+        }
+      },
+      "notes": {
+        "info": "用户可能已存在，继续使用现有账号"
+      },
+      "duration_ms": 2168.3983000013977
+    },
+    {
+      "name": "supabase_login",
+      "success": false,
+      "request": {
+        "url": "https://rykglivrwzcykhhnxwoz.supabase.co/auth/v1/token?grant_type=password",
+        "payload": {
+          "email": "anon_e2e_1759900208@test.local",
+          "password": "Pwd-8b3c6054e852"
+        }
+      },
+      "response": {
+        "status_code": 400,
+        "body": {
+          "code": 400,
+          "error_code": "invalid_credentials",
+          "msg": "Invalid login credentials"
+        }
+      },
+      "notes": {
+        "access_token_preview": null
+      },
+      "duration_ms": 265.19539999961853
+    }
+  ]
+}

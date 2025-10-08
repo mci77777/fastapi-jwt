@@ -1,181 +1,182 @@
-# Supabase JWT 认证配置指南
+# Supabase JWT 验证落地指南
 
-## 概述
+## 概览
 
-本文档说明如何在 GymBro FastAPI 项目中正确配置 Supabase JWT 认证。
+本文描述如何在 GymBro FastAPI 项目中正确接入 Supabase JWT 验证链路，并提供验证脚本与排障手册。
 
-## ✅ 已完成的配置
+---
 
-### 1. 环境变量配置
+## 1. 基础配置
 
-您的 `.env` 文件已正确配置：
+首先准备 `.env` 文件并补齐以下关键变量：
 
 ```bash
-# Supabase 项目配置
+# Supabase 项目信息
 SUPABASE_PROJECT_ID=rykglivrwzcykhhnxwoz
 SUPABASE_URL=https://rykglivrwzcykhhnxwoz.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
-# JWT 验证配置
+# JWT 验证参数
 SUPABASE_JWKS_URL=https://rykglivrwzcykhhnxwoz.supabase.co/auth/v1/.well-known/jwks.json
 SUPABASE_ISSUER=https://rykglivrwzcykhhnxwoz.supabase.co/auth/v1
 SUPABASE_AUDIENCE=authenticated
 
-# 数据库表配置
+# 数据表
 SUPABASE_CHAT_TABLE=ai_chat_messages
 ```
 
-### 2. JWT 验证器
+项目已内置 JWT 验证组件：
 
-项目已包含完整的 JWT 验证系统：
-- `app/auth/jwt_verifier.py` - JWT 验证核心逻辑
-- `app/auth/dependencies.py` - FastAPI 依赖注入
-- `app/auth/provider.py` - 认证提供者抽象
-- `app/auth/supabase_provider.py` - Supabase 集成
+- `app/auth/jwt_verifier.py`：核心验证逻辑  
+- `app/auth/dependencies.py`：FastAPI 依赖注入  
+- `app/auth/provider.py`、`app/auth/supabase_provider.py`：用户信息提供与同步
 
-## 🔧 需要完成的步骤
+---
 
-### 第一步：创建数据库表
+## 2. 初始化数据库
 
-1. 登录 [Supabase Dashboard](https://supabase.com/dashboard)
-2. 选择您的项目 `rykglivrwzcykhhnxwoz`
-3. 进入 "SQL Editor"
-4. 运行 `scripts/create_supabase_tables.sql` 中的 SQL 脚本
+1. 登录 [Supabase Dashboard](https://supabase.com/dashboard)  
+2. 选择项目 `rykglivrwzcykhhnxwoz`  
+3. 打开 “SQL Editor”  
+4. 执行仓库中的 `scripts/create_supabase_tables.sql`
 
-## 🔒 JWT 验证器硬化功能
+---
 
-### 新增硬化配置
+## 3. JWT 验证加固参数
 
-项目现已支持 JWT 验证器硬化功能，提供更好的安全性和 Supabase 兼容性：
+项目默认开启安全基线：
 
 ```bash
-# JWT 验证硬化配置
-JWT_CLOCK_SKEW_SECONDS=120      # 时钟偏移容忍度
-JWT_MAX_FUTURE_IAT_SECONDS=120  # iat 最大未来时间
-JWT_REQUIRE_NBF=false           # Supabase 兼容：nbf 可选
-JWT_ALLOWED_ALGORITHMS=ES256,RS256,HS256  # 允许的算法
+JWT_CLOCK_SKEW_SECONDS=120
+JWT_MAX_FUTURE_IAT_SECONDS=120
+JWT_REQUIRE_NBF=false      # Supabase 匿名用户未强制提供 nbf
+JWT_ALLOWED_ALGORITHMS=ES256,RS256,HS256
 ```
 
-### 主要改进
+关键考虑：
 
-1. **Supabase 兼容性**: 支持无 `nbf` 声明的 JWT
-2. **时钟偏移容忍**: ±120 秒时钟偏移窗口
-3. **算法安全**: 限制允许的签名算法
-4. **统一错误格式**: 包含 status、code、message、trace_id
-5. **增强日志**: 结构化日志记录，包含详细上下文
+1. 确保 Supabase 返回的 token 携带 `is_anonymous` / `providers` 等自定义 Claims  
+2. 校准服务端与客户端时间（±2 分钟）  
+3. 统一返回格式：`status`、`code`、`message`、`trace_id`  
+4. 完整记录验证链路日志，方便排障  
+5. 详见 `docs/JWT_HARDENING_GUIDE.md`
 
-详细信息请参考 [JWT 硬化指南](./JWT_HARDENING_GUIDE.md)。
+---
 
-### 第二步：验证配置
+## 4. 校验脚本与服务启动
 
-运行配置验证脚本：
+### 4.1 运行配置体检
 
 ```bash
-python scripts/simple_jwt_test.py
+python scripts/verify_supabase_config.py
+python scripts/verify_jwks_cache.py
 ```
 
-应该看到：
-```
-🎉 所有测试通过！JWT 配置正确。
-```
+若输出 `PASS` 或成功摘要，说明配置、JWKS、缓存均可用。
 
-### 第三步：启动服务器
+### 4.2 启动本地服务
 
 ```bash
 python run.py
 ```
 
-### 第四步：测试 API 端点
+---
+
+## 5. 验证 API 工作流
+
+### 5.1 冒烟测试
 
 ```bash
-python scripts/test_jwt_api.py
+python scripts/smoke_test.py
 ```
 
-## 🔑 JWT Token 获取方式
+该脚本会依次执行：注册测试用户 → 获取 JWT → 调用 `/api/v1/messages` → 监听 SSE → 校验数据库写入。
 
-### 方法一：使用 Supabase 客户端库
+### 5.2 进一步回归（可选）
 
-在前端应用中：
+```bash
+python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py
+python scripts/k5_build_and_test.py
+```
+
+---
+
+## 6. 获取 JWT Token
+
+### 方案 A：Supabase JS 客户端
 
 ```javascript
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  'https://rykglivrwzcykhhnxwoz.supabase.co',
-  'your-anon-key'
-)
-
-// 用户登录后获取 JWT
+const supabase = createClient('https://rykglivrwzcykhhnxwoz.supabase.co', 'your-anon-key')
 const { data: { session } } = await supabase.auth.getSession()
 const jwt = session?.access_token
 ```
 
-### 方法二：直接从 Supabase Auth API
+### 方案 B：调用 Supabase Auth API
 
 ```bash
-# 用户登录
 curl -X POST 'https://rykglivrwzcykhhnxwoz.supabase.co/auth/v1/token?grant_type=password' \
--H "apikey: YOUR_ANON_KEY" \
--H "Content-Type: application/json" \
--d '{
-  "email": "user@example.com",
-  "password": "password"
-}'
+  -H "apikey: YOUR_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"password"}'
 ```
 
-## 📋 API 端点测试
+---
+
+## 7. API 调用示例
 
 ### 获取用户信息
 
 ```bash
-curl -X GET 'http://localhost:8000/api/v1/me' \
--H "Authorization: Bearer YOUR_JWT_TOKEN"
+curl -X GET 'http://localhost:9999/api/v1/base/userinfo' \
+  -H "token: YOUR_JWT_TOKEN"
 ```
 
 ### 创建消息
 
 ```bash
-curl -X POST 'http://localhost:8000/api/v1/messages' \
--H "Authorization: Bearer YOUR_JWT_TOKEN" \
--H "Content-Type: application/json" \
--d '{
-  "content": "Hello, AI!",
-  "conversation_id": "test-conversation"
-}'
+curl -X POST 'http://localhost:9999/api/v1/messages' \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Hello, AI!","conversation_id":"test-conversation"}'
 ```
 
-### SSE 事件流
+### 订阅 SSE 事件
 
 ```bash
-curl -X GET 'http://localhost:8000/api/v1/messages/MESSAGE_ID/events' \
--H "Authorization: Bearer YOUR_JWT_TOKEN" \
--H "Accept: text/event-stream"
+curl -N 'http://localhost:9999/api/v1/messages/MESSAGE_ID/events' \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Accept: text/event-stream"
 ```
 
-## 🔍 故障排除
+---
 
-### 常见错误
+## 8. 常见问题排障
 
-1. **401 Unauthorized**
-   - 检查 JWT token 是否有效
-   - 确认 issuer 和 audience 配置正确
+| 现象 | 可能原因 | 建议 |
+|------|----------|------|
+| 401 Unauthorized | Token 失效或 Audience/Issuer 不匹配 | 重新生成 Token，确认 `.env` 配置一致 |
+| JWKS 拉取失败 | URL 配置错误或网络阻断 | 检查 `SUPABASE_JWKS_URL`，确认代理/防火墙 |
+| 数据库查询失败 | Service Role Key 不正确或表不存在 | 重新复制 Key，确认表已建并配置 RLS |
+| SSE 无事件 | 消息未写入或队列延迟 | 检查 API 返回的 `message_id`，查看日志 |
 
-2. **JWKS 获取失败**
-   - 检查网络连接
-   - 确认 SUPABASE_JWKS_URL 正确
+---
 
-3. **数据库连接失败**
-   - 确认 SUPABASE_SERVICE_ROLE_KEY 正确
-   - 检查数据库表是否已创建
+## 9. 相关脚本速查
 
-### 调试工具
+- `scripts/verify_supabase_config.py`：环境与权限体检  
+- `scripts/verify_jwks_cache.py`：JWKS 缓存 & JWT 验证链路  
+- `scripts/smoke_test.py`：端到端冒烟  
+- `scripts/verify_gw_auth.py`：网关认证链路  
+- `e2e/anon_jwt_sse/scripts/generate_test_token.py`：生成匿名 Token  
+- `e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py`：加强版匿名 E2E
 
-- `scripts/simple_jwt_test.py` - 验证 JWT 配置
-- `scripts/test_jwt_api.py` - 测试 API 端点
-- FastAPI 自动文档：http://localhost:8000/docs
+---
 
-## 📚 相关文档
+## 10. 参考资料
 
-- [Supabase Auth 文档](https://supabase.com/docs/guides/auth)
-- [JWT 验证指南](https://supabase.com/docs/guides/auth/jwts)
-- [Row Level Security](https://supabase.com/docs/guides/auth/row-level-security)
+- [Supabase Auth](https://supabase.com/docs/guides/auth)  
+- [Supabase JWT 指南](https://supabase.com/docs/guides/auth/jwts)  
+- [Row Level Security](https://supabase.com/docs/guides/auth/row-level-security)  
+- 项目文档：`docs/JWT_HARDENING_GUIDE.md`

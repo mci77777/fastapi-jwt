@@ -85,7 +85,11 @@ async def get_current_user_from_token(
     token: Optional[str] = Header(default=None, alias="token"),
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ) -> AuthenticatedUser:
-    """从token header或Authorization header中提取并验证用户。"""
+    """从token header或Authorization header中提取并验证用户。
+
+    注意：此函数用于兼容前端的 token header。
+    对于新的 API 端点，建议使用 app.auth.dependencies.get_current_user。
+    """
     # 优先使用token header（前端使用）
     auth_token = token
 
@@ -102,35 +106,22 @@ async def get_current_user_from_token(
             detail=create_response(code=401, msg="未提供认证令牌")
         )
 
-    # 验证token
-    settings = get_settings()
+    # 验证token - 使用 JWTVerifier
+    from app.auth import get_jwt_verifier
+    verifier = get_jwt_verifier()
     try:
-        payload = jwt.decode(
-            auth_token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
-            audience="authenticated",
-            options={"verify_exp": True}
-        )
-
-        user = AuthenticatedUser(
-            uid=payload.get("sub"),
-            claims=payload,
-            user_type="anonymous" if payload.get("is_anonymous") else "permanent"
-        )
+        user = verifier.verify_token(auth_token)
         request.state.user = user
         request.state.token = auth_token
         return user
-
-    except jwt.ExpiredSignatureError:
+    except HTTPException:
+        # JWTVerifier 已经抛出了正确的 HTTPException
+        raise
+    except Exception as e:
+        # 兜底错误处理
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=create_response(code=401, msg="令牌已过期")
-        )
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=create_response(code=401, msg=f"无效的令牌: {str(e)}")
+            detail=create_response(code=401, msg=f"令牌验证失败: {str(e)}")
         )
 
 
@@ -187,8 +178,40 @@ async def get_user_menu(
     current_user: AuthenticatedUser = Depends(get_current_user_from_token)
 ) -> Dict[str, Any]:
     """获取当前用户的菜单权限。"""
-    # 临时返回空菜单，实际应该从数据库查询
-    return create_response(data=[])
+    # 临时硬编码菜单，实际应该从数据库查询
+    menus = [
+        {
+            "name": "系统管理",
+            "path": "/system",
+            "component": "/system",
+            "icon": "carbon:settings-adjust",
+            "order": 100,
+            "is_hidden": False,
+            "redirect": None,
+            "keepalive": False,
+            "children": [
+                {
+                    "name": "AI 配置",
+                    "path": "ai",
+                    "component": "/system/ai",
+                    "icon": "carbon:ai-status",
+                    "order": 1,
+                    "is_hidden": False,
+                    "keepalive": False,
+                },
+                {
+                    "name": "Prompt 管理",
+                    "path": "ai/prompt",
+                    "component": "/system/ai/prompt",
+                    "icon": "carbon:prompt-template",
+                    "order": 2,
+                    "is_hidden": False,
+                    "keepalive": False,
+                },
+            ],
+        }
+    ]
+    return create_response(data=menus)
 
 
 @router.get("/userapi", summary="获取用户API权限")
@@ -196,8 +219,17 @@ async def get_user_api(
     current_user: AuthenticatedUser = Depends(get_current_user_from_token)
 ) -> Dict[str, Any]:
     """获取当前用户的API权限。"""
-    # 临时返回空权限，实际应该从数据库查询
-    return create_response(data=[])
+    # 临时硬编码API权限，实际应该从数据库查询
+    apis = [
+        "get/api/v1/llm/models",
+        "post/api/v1/llm/models",
+        "put/api/v1/llm/models",
+        "get/api/v1/llm/prompts",
+        "post/api/v1/llm/prompts",
+        "put/api/v1/llm/prompts",
+        "post/api/v1/llm/prompts/activate",
+    ]
+    return create_response(data=apis)
 
 
 @router.post("/update_password", summary="更新密码")

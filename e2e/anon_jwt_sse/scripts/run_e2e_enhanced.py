@@ -1,411 +1,379 @@
 #!/usr/bin/env python3
 """
-增强版E2E测试主运行器
-支持新的匿名用户JWT获取方式（Edge Function + 原生认证）
-执行完整的匿名JWT→AI→APP（SSE）闭环测试
+匿名用户端到端流程：
+1. 调用 Supabase 邮箱注册 API 创建测试账号
+2. 使用注册信息登录换取 JWT
+3. 携带 JWT 调用 AI 消息接口发送 “hello”
+4. 订阅 SSE 事件直到收到 [DONE]
+5. 把链路中的请求、响应、事件统一记录到 JSON
 """
-import asyncio
+from __future__ import annotations
+
 import argparse
+import asyncio
 import json
 import os
-import subprocess
-import sys
 import time
+import uuid
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
+import httpx
 from dotenv import load_dotenv
 
-# 添加项目根目录到Python路径
-project_root = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(project_root))
 
-# 加载环境变量
-load_dotenv(Path(__file__).parent.parent / ".env.local")
+ARTIFACTS_DIR = Path(__file__).resolve().parents[1] / "artifacts"
+DEFAULT_OUTPUT = ARTIFACTS_DIR / "anon_e2e_trace.json"
 
 
-class EnhancedE2ETestRunner:
-    """增强版E2E测试运行器"""
-    
-    def __init__(self, auth_method: str = "auto"):
-        self.base_dir = Path(__file__).parent.parent
-        self.scripts_dir = self.base_dir / "scripts"
-        self.artifacts_dir = self.base_dir / "artifacts"
-        self.postman_dir = self.base_dir / "postman"
-        
-        # 认证方式: auto, edge, native, both
-        self.auth_method = auth_method
-        
-        # 确保artifacts目录存在
-        self.artifacts_dir.mkdir(exist_ok=True)
-        
-        self.test_results = {
-            "start_time": time.time(),
-            "auth_method": auth_method,
-            "steps": [],
-            "summary": {}
+@dataclass
+class StepRecord:
+    name: str
+    success: bool
+    request: Dict[str, Any] = field(default_factory=dict)
+    response: Dict[str, Any] = field(default_factory=dict)
+    notes: Dict[str, Any] = field(default_factory=dict)
+    duration_ms: float = 0.0
+
+
+@dataclass
+class TraceReport:
+    started_at: float
+    finished_at: Optional[float] = None
+    supabase_project_id: Optional[str] = None
+    supabase_url: Optional[str] = None
+    api_base_url: str = "http://localhost:9999/api/v1"
+    user_email: str = ""
+    user_password: str = ""
+    steps: List[StepRecord] = field(default_factory=list)
+
+    def add_step(self, step: StepRecord) -> None:
+        self.steps.append(step)
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "duration_seconds": (self.finished_at or time.time()) - self.started_at,
+            "supabase_project_id": self.supabase_project_id,
+            "supabase_url": self.supabase_url,
+            "api_base_url": self.api_base_url,
+            "user_email": self.user_email,
+            "steps": [asdict(step) for step in self.steps],
         }
-    
-    def log_step(self, step_name: str, success: bool, details: Dict[str, Any] = None):
-        """记录测试步骤"""
-        step = {
-            "name": step_name,
-            "success": success,
-            "timestamp": time.time(),
-            "details": details or {}
-        }
-        self.test_results["steps"].append(step)
-        
-        status = "✅" if success else "❌"
-        print(f"{status} {step_name}")
-        
-        if not success and details:
-            print(f"   错误详情: {details}")
-    
-    async def run_python_script(self, script_name: str, step_name: str, args: List[str] = None) -> bool:
-        """运行Python脚本"""
-        script_path = self.scripts_dir / script_name
-        
-        if not script_path.exists():
-            self.log_step(step_name, False, {"error": f"脚本不存在: {script_path}"})
-            return False
-        
-        try:
-            print(f"🚀 执行: {script_name} {' '.join(args or [])}")
-            
-            # 构建命令
-            cmd = [sys.executable, str(script_path)]
-            if args:
-                cmd.extend(args)
-            
-            # 使用subprocess运行脚本
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=str(self.base_dir)
-            )
-            
-            stdout, stderr = await process.communicate()
-            
-            success = process.returncode == 0
-            
-            details = {
-                "return_code": process.returncode,
-                "stdout": stdout.decode('utf-8', errors='ignore'),
-                "stderr": stderr.decode('utf-8', errors='ignore'),
-                "command": ' '.join(cmd)
-            }
-            
-            self.log_step(step_name, success, details)
-            
-            # 如果失败，打印错误信息
-            if not success:
-                print(f"   返回码: {process.returncode}")
-                if stderr:
-                    print(f"   错误输出: {stderr.decode('utf-8', errors='ignore')[:500]}...")
-            
-            return success
-            
-        except Exception as e:
-            self.log_step(step_name, False, {"error": str(e)})
-            return False
-    
-    async def test_anon_jwt_acquisition(self) -> bool:
-        """测试匿名JWT获取"""
-        print("\n🔑 测试匿名JWT获取...")
-        
-        if self.auth_method == "auto":
-            # 自动选择：先尝试Edge Function，失败则尝试原生
-            success = await self.run_python_script(
-                "anon_signin_enhanced.py", 
-                "匿名JWT获取(自动)", 
-                ["--method", "both", "--verify"]
-            )
-        elif self.auth_method == "edge":
-            # 仅Edge Function
-            success = await self.run_python_script(
-                "anon_signin_enhanced.py", 
-                "匿名JWT获取(Edge Function)", 
-                ["--method", "edge", "--verify"]
-            )
-        elif self.auth_method == "native":
-            # 仅原生认证
-            success = await self.run_python_script(
-                "anon_signin_enhanced.py", 
-                "匿名JWT获取(原生认证)", 
-                ["--method", "native", "--verify"]
-            )
-        elif self.auth_method == "both":
-            # 测试两种方式
-            edge_success = await self.run_python_script(
-                "anon_signin_enhanced.py", 
-                "匿名JWT获取(Edge Function)", 
-                ["--method", "edge"]
-            )
-            native_success = await self.run_python_script(
-                "anon_signin_enhanced.py", 
-                "匿名JWT获取(原生认证)", 
-                ["--method", "native"]
-            )
-            success = edge_success or native_success
-        else:
-            self.log_step("匿名JWT获取", False, {"error": f"未知的认证方式: {self.auth_method}"})
-            return False
-        
-        return success
-    
-    async def test_integration_validation(self) -> bool:
-        """运行集成验证测试"""
-        print("\n🔍 运行集成验证...")
-        return await self.run_python_script(
-            "validate_anon_integration.py", 
-            "集成验证测试"
-        )
-    
-    async def test_jwt_security(self) -> bool:
-        """运行JWT安全测试"""
-        print("\n🛡️ 运行JWT安全测试...")
-        return await self.run_python_script(
-            "jwt_mutation_tests.py", 
-            "JWT安全测试"
-        )
-    
-    async def test_sse_stability(self) -> bool:
-        """运行SSE稳定性测试"""
-        print("\n📡 运行SSE稳定性测试...")
-        return await self.run_python_script(
-            "sse_chaos.py", 
-            "SSE稳定性测试"
-        )
-    
-    async def test_sse_client(self) -> bool:
-        """测试SSE客户端"""
-        print("\n📡 测试SSE客户端...")
-        return await self.run_python_script(
-            "sse_client.py", 
-            "SSE客户端测试"
-        )
-    
-    def update_postman_env(self) -> bool:
-        """更新Postman环境变量"""
-        try:
-            print("🔧 更新Postman环境...")
-            
-            # 读取token文件
-            token_file = self.artifacts_dir / "token.json"
-            if not token_file.exists():
-                self.log_step("更新Postman环境", False, {"error": "token.json文件不存在"})
-                return False
-            
-            with open(token_file, 'r', encoding='utf-8') as f:
-                token_data = json.load(f)
-            
-            access_token = token_data.get("access_token")
-            if not access_token:
-                self.log_step("更新Postman环境", False, {"error": "token.json中没有access_token"})
-                return False
-            
-            # 更新Postman环境文件
-            env_file = self.postman_dir / "env.json"
-            if env_file.exists():
-                with open(env_file, 'r', encoding='utf-8') as f:
-                    env_data = json.load(f)
-                
-                # 更新ACCESS_TOKEN
-                for value in env_data.get("values", []):
-                    if value.get("key") == "ACCESS_TOKEN":
-                        value["value"] = access_token
-                        break
-                else:
-                    # 如果不存在，添加新的
-                    env_data.setdefault("values", []).append({
-                        "key": "ACCESS_TOKEN",
-                        "value": access_token,
-                        "enabled": True
-                    })
-                
-                with open(env_file, 'w', encoding='utf-8') as f:
-                    json.dump(env_data, f, indent=2, ensure_ascii=False)
-            
-            self.log_step("更新Postman环境", True, {"access_token": access_token[:20] + "..."})
-            return True
-            
-        except Exception as e:
-            self.log_step("更新Postman环境", False, {"error": str(e)})
-            return False
-    
-    def run_newman_test(self) -> bool:
-        """运行Newman测试"""
-        try:
-            print("🚀 执行Newman API测试...")
-            
-            # 检查Newman是否安装
-            try:
-                subprocess.run(["newman", "--version"], 
-                             capture_output=True, check=True)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                self.log_step("Newman测试", False, 
-                            {"error": "Newman未安装，请运行: npm install -g newman"})
-                return False
-            
-            # 运行Newman测试
-            collection_file = self.postman_dir / "collection.json"
-            env_file = self.postman_dir / "env.json"
-            report_file = self.artifacts_dir / "newman-report.html"
-            
-            if not collection_file.exists():
-                self.log_step("Newman测试", False, {"error": f"Collection文件不存在: {collection_file}"})
-                return False
-            
-            cmd = [
-                "newman", "run", str(collection_file),
-                "-e", str(env_file),
-                "--reporters", "cli,html",
-                "--reporter-html-export", str(report_file),
-                "--timeout", "30000",
-                "--delay-request", "2000"  # 2秒延迟避免限流
-            ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            success = result.returncode == 0
-            
-            details = {
-                "return_code": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "report_file": str(report_file)
-            }
-            
-            self.log_step("Newman测试", success, details)
-            
-            if success:
-                print(f"   📊 Newman报告已生成: {report_file}")
-            else:
-                print(f"   返回码: {result.returncode}")
-                if result.stderr:
-                    print(f"   错误输出: {result.stderr[:500]}...")
-            
-            return success
-            
-        except Exception as e:
-            self.log_step("Newman测试", False, {"error": str(e)})
-            return False
-    
-    def generate_summary(self):
-        """生成测试总结"""
-        end_time = time.time()
-        duration = end_time - self.test_results["start_time"]
-        
-        total_steps = len(self.test_results["steps"])
-        passed_steps = sum(1 for step in self.test_results["steps"] if step["success"])
-        failed_steps = total_steps - passed_steps
-        
-        self.test_results["summary"] = {
-            "end_time": end_time,
-            "duration_seconds": duration,
-            "total_steps": total_steps,
-            "passed_steps": passed_steps,
-            "failed_steps": failed_steps,
-            "success_rate": passed_steps / total_steps if total_steps > 0 else 0
-        }
-        
-        # 保存详细结果
-        result_file = self.artifacts_dir / "e2e_enhanced_results.json"
-        with open(result_file, 'w', encoding='utf-8') as f:
-            json.dump(self.test_results, f, indent=2, ensure_ascii=False)
-        
-        # 打印总结
-        print("\n" + "="*60)
-        print("📊 增强版E2E测试总结")
-        print("="*60)
-        print(f"认证方式: {self.auth_method}")
-        print(f"总耗时: {duration:.1f}秒")
-        print(f"总步骤: {total_steps}")
-        print(f"通过: {passed_steps}")
-        print(f"失败: {failed_steps}")
-        print(f"成功率: {self.test_results['summary']['success_rate']:.1%}")
-        
-        if failed_steps > 0:
-            print("\n❌ 失败的步骤:")
-            for step in self.test_results["steps"]:
-                if not step["success"]:
-                    print(f"   - {step['name']}")
-        
-        print(f"\n💾 详细结果已保存: {result_file}")
-        
-        return failed_steps == 0
 
-async def main():
-    """主函数"""
-    parser = argparse.ArgumentParser(description="增强版E2E测试运行器")
-    parser.add_argument(
-        "--auth-method", 
-        choices=["auto", "edge", "native", "both"], 
-        default="auto",
-        help="JWT获取方式: auto(自动选择), edge(Edge Function), native(原生), both(两种都测试)"
-    )
-    parser.add_argument(
-        "--skip-newman", 
-        action="store_true",
-        help="跳过Newman测试"
-    )
-    parser.add_argument(
-        "--quick", 
-        action="store_true",
-        help="快速模式，跳过部分测试"
-    )
-    
-    args = parser.parse_args()
-    
-    print("🚀 增强版E2E测试开始...")
-    print(f"📋 认证方式: {args.auth_method}")
-    print(f"⚡ 快速模式: {'是' if args.quick else '否'}")
-    print("="*60)
-    
-    runner = EnhancedE2ETestRunner(args.auth_method)
-    
+
+class AnonymousE2E:
+    """执行匿名用户完整链路并产出 JSON 记录。"""
+
+    def __init__(
+        self,
+        api_base_url: str,
+        supabase_url: str,
+        supabase_service_key: str,
+        supabase_anon_key: str,
+        output_path: Path,
+        timeout: float = 30.0,
+    ) -> None:
+        self.api_base_url = api_base_url.rstrip("/")
+        self.supabase_url = supabase_url.rstrip("/")
+        self.supabase_service_key = supabase_service_key
+        self.supabase_anon_key = supabase_anon_key
+        self.output_path = output_path
+        self.timeout = timeout
+        self.report = TraceReport(
+            started_at=time.time(),
+            supabase_project_id=os.getenv("SUPABASE_PROJECT_ID"),
+            supabase_url=self.supabase_url,
+            api_base_url=self.api_base_url,
+        )
+
+    @staticmethod
+    def _now_ms() -> float:
+        return time.perf_counter() * 1000
+
+    async def _register_user(self, client: httpx.AsyncClient, email: str, password: str) -> StepRecord:
+        url = f"{self.supabase_url}/auth/v1/signup"
+        payload = {
+            "email": email,
+            "password": password,
+            "data": {
+                "source": "anon-e2e",
+                "registered_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            },
+        }
+        headers = {
+            "apikey": self.supabase_service_key or self.supabase_anon_key,
+            "Authorization": f"Bearer {self.supabase_service_key or self.supabase_anon_key}",
+            "Content-Type": "application/json",
+        }
+
+        start = self._now_ms()
+        resp = await client.post(url, json=payload, headers=headers, timeout=self.timeout)
+        duration = self._now_ms() - start
+
+        success = resp.status_code in (200, 201, 202, 400)
+        notes: Dict[str, Any] = {}
+        if resp.status_code == 400:
+            notes["info"] = "用户可能已存在，继续使用现有账号"
+
+        return StepRecord(
+            name="supabase_signup",
+            success=success,
+            request={"url": url, "payload": payload},
+            response={"status_code": resp.status_code, "body": _safe_json(resp)},
+            notes=notes,
+            duration_ms=duration,
+        )
+
+    async def _login_user(self, client: httpx.AsyncClient, email: str, password: str) -> StepRecord:
+        url = f"{self.supabase_url}/auth/v1/token?grant_type=password"
+        payload = {"email": email, "password": password}
+        headers = {
+            "apikey": self.supabase_service_key or self.supabase_anon_key,
+            "Authorization": f"Bearer {self.supabase_service_key or self.supabase_anon_key}",
+            "Content-Type": "application/json",
+        }
+
+        start = self._now_ms()
+        resp = await client.post(url, json=payload, headers=headers, timeout=self.timeout)
+        duration = self._now_ms() - start
+
+        body = _safe_json(resp)
+        token = body.get("access_token") if isinstance(body, dict) else None
+
+        return StepRecord(
+            name="supabase_login",
+            success=resp.status_code == 200 and isinstance(token, str),
+            request={"url": url, "payload": payload},
+            response={"status_code": resp.status_code, "body": body},
+            notes={"access_token_preview": f"{token[:12]}..." if token else None},
+            duration_ms=duration,
+        )
+
+    async def _send_message(self, client: httpx.AsyncClient, token: str) -> StepRecord:
+        url = f"{self.api_base_url}/messages"
+        payload = {
+            "text": "hello",
+            "conversation_id": None,
+            "metadata": {
+                "source": "anon_e2e",
+                "trace_id": str(uuid.uuid4()),
+            },
+        }
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "X-Trace-Id": payload["metadata"]["trace_id"],
+        }
+
+        start = self._now_ms()
+        resp = await client.post(url, json=payload, headers=headers, timeout=self.timeout)
+        duration = self._now_ms() - start
+
+        body = _safe_json(resp)
+        message_id = body.get("message_id") if isinstance(body, dict) else None
+
+        return StepRecord(
+            name="api_create_message",
+            success=resp.status_code in (200, 202) and isinstance(message_id, str),
+            request={"url": url, "payload": payload},
+            response={"status_code": resp.status_code, "body": body},
+            notes={"message_id": message_id},
+            duration_ms=duration,
+        )
+
+    async def _stream_events(self, client: httpx.AsyncClient, token: str, message_id: str) -> StepRecord:
+        url = f"{self.api_base_url}/messages/{message_id}/events"
+        headers = {"Authorization": f"Bearer {token}", "Accept": "text/event-stream"}
+
+        events: List[Dict[str, Any]] = []
+        status_code = None
+        start = self._now_ms()
+
+        try:
+            async with client.stream("GET", url, headers=headers, timeout=None) as resp:
+                status_code = resp.status_code
+
+                if resp.status_code != 200:
+                    text = await resp.aread()
+                    return StepRecord(
+                        name="api_stream_events",
+                        success=False,
+                        request={"url": url},
+                        response={"status_code": resp.status_code, "body": text.decode("utf-8", "ignore")},
+                        duration_ms=self._now_ms() - start,
+                    )
+
+                async for line in resp.aiter_lines():
+                    if not line.strip():
+                        continue
+                    if line.startswith("data:"):
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            events.append({"event": "done"})
+                            break
+                        events.append({"event": "data", "payload": _safe_parse_json(data_str)})
+        except Exception as exc:  # pragma: no cover
+            return StepRecord(
+                name="api_stream_events",
+                success=False,
+                request={"url": url},
+                response={"status_code": status_code, "body": str(exc)},
+                duration_ms=self._now_ms() - start,
+                notes={"error": str(exc)},
+            )
+
+        duration = self._now_ms() - start
+        return StepRecord(
+            name="api_stream_events",
+            success=len(events) > 0 and events[-1].get("event") == "done",
+            request={"url": url},
+            response={"status_code": status_code, "events": events},
+            duration_ms=duration,
+        )
+
+    async def run(self) -> int:
+        ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+
+        email = f"anon_e2e_{int(time.time())}@test.local"
+        password = f"Pwd-{uuid.uuid4().hex[:12]}"
+        self.report.user_email = email
+        self.report.user_password = password
+
+        print(f"[INFO] Starting anonymous E2E test; target API: {self.api_base_url}")
+        print(f"[INFO] Using temporary email: {email}")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            # 注册
+            signup_step = await self._register_user(client, email, password)
+            self.report.add_step(signup_step)
+            print(f"[STEP] Signup status: {signup_step.response['status_code']}")
+            if not signup_step.success:
+                return await self._finalize(1)
+
+            # 登录换取 JWT
+            login_step = await self._login_user(client, email, password)
+            self.report.add_step(login_step)
+            print(f"[STEP] Login status: {login_step.response['status_code']}")
+            if not login_step.success:
+                return await self._finalize(1)
+
+            token = login_step.response["body"]["access_token"]  # type: ignore[index]
+
+            # 发送消息
+            message_step = await self._send_message(client, token)
+            self.report.add_step(message_step)
+            print(f"[STEP] Message status: {message_step.response['status_code']}")
+            if not message_step.success:
+                return await self._finalize(1)
+
+            message_id = message_step.notes.get("message_id")
+            if not message_id:
+                return await self._finalize(1)
+
+            # 监听 SSE
+            events_step = await self._stream_events(client, token, message_id)
+            self.report.add_step(events_step)
+            print(f"[STEP] SSE status: {events_step.response.get('status_code')}")
+            if not events_step.success:
+                return await self._finalize(1)
+
+        return await self._finalize(0)
+
+    async def _finalize(self, exit_code: int) -> int:
+        self.report.finished_at = time.time()
+        with self.output_path.open("w", encoding="utf-8") as fp:
+            json.dump(self.report.to_json(), fp, ensure_ascii=False, indent=2)
+        print(f"[INFO] Full trace saved to: {self.output_path}")
+        return exit_code
+
+
+def _safe_json(resp: httpx.Response) -> Any:
     try:
-        # 1. 集成验证
-        await runner.test_integration_validation()
-        
-        # 2. 匿名JWT获取
-        jwt_success = await runner.test_anon_jwt_acquisition()
-        
-        if jwt_success:
-            # 3. 更新Postman环境
-            runner.update_postman_env()
-            
-            # 4. JWT安全测试
-            if not args.quick:
-                await runner.test_jwt_security()
-            
-            # 5. SSE稳定性测试
-            if not args.quick:
-                await runner.test_sse_stability()
-            
-            # 6. SSE客户端测试
-            await runner.test_sse_client()
-            
-            # 7. Newman测试
-            if not args.skip_newman:
-                runner.run_newman_test()
-        else:
-            print("⚠️ JWT获取失败，跳过后续测试")
-        
-        # 生成总结
-        success = runner.generate_summary()
-        
-        return 0 if success else 1
-        
-    except KeyboardInterrupt:
-        print("\n⚠️ 测试被用户中断")
+        return resp.json()
+    except Exception:
+        return resp.text
+
+
+def _safe_parse_json(data: str) -> Any:
+    try:
+        return json.loads(data)
+    except json.JSONDecodeError:
+        return data
+
+
+def load_env() -> None:
+    # 尝试加载多种位置的 .env，顺序：项目根 -> e2e/.env.local
+    env_files = [
+        Path(__file__).resolve().parents[3] / ".env",
+        Path(__file__).resolve().parents[1] / ".env.local",
+    ]
+    for env_file in env_files:
+        if env_file.exists():
+            load_dotenv(env_file, override=False)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="匿名 JWT E2E 测试")
+    parser.add_argument(
+        "--api-base-url",
+        default=os.getenv("API_BASE_URL", "http://localhost:9999/api/v1"),
+        help="后端 API 基础地址，默认为 http://localhost:9999/api/v1",
+    )
+    parser.add_argument(
+        "--supabase-url",
+        default=os.getenv("SUPABASE_URL"),
+        help="Supabase 项目地址，如 https://xxx.supabase.co",
+    )
+    parser.add_argument(
+        "--output",
+        default=str(DEFAULT_OUTPUT),
+        help=f"链路 JSON 输出路径，默认 {DEFAULT_OUTPUT}",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=float(os.getenv("E2E_HTTP_TIMEOUT", "30")),
+        help="HTTP 请求超时时间（秒），默认为 30",
+    )
+    return parser.parse_args()
+
+
+async def async_main() -> int:
+    load_env()
+    args = parse_args()
+
+    supabase_url = args.supabase_url or os.getenv("SUPABASE_URL")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or ""
+    anon_key = os.getenv("SUPABASE_ANON_KEY") or ""
+
+    missing = [name for name, value in [
+        ("SUPABASE_URL", supabase_url),
+        ("SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY", service_key or anon_key),
+    ] if not value]
+
+    if missing:
+        print("ERROR: 缺少必要的 Supabase 配置：", ", ".join(missing))
         return 1
-    except Exception as e:
-        print(f"\n💥 测试过程中发生异常: {e}")
-        return 1
+
+    runner = AnonymousE2E(
+        api_base_url=args.api_base_url,
+        supabase_url=supabase_url,
+        supabase_service_key=service_key,
+        supabase_anon_key=anon_key,
+        output_path=Path(args.output),
+        timeout=args.timeout,
+    )
+    return await runner.run()
+
+
+def main() -> None:
+    exit_code = asyncio.run(async_main())
+    raise SystemExit(exit_code)
+
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
-    sys.exit(exit_code)
+    main()
+
