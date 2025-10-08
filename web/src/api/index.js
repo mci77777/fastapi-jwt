@@ -43,6 +43,9 @@ export default {
     request.post(`/llm/models/${endpointId}/sync`, { direction }),
   syncAllAIModels: (direction = 'push') => request.post('/llm/models/sync', { direction }),
   getSupabaseStatus: () => request.get('/llm/status/supabase'),
+  getMonitorStatus: () => request.get('/llm/monitor/status'),
+  startMonitor: (intervalSeconds) => request.post('/llm/monitor/start', { interval_seconds: intervalSeconds }),
+  stopMonitor: () => request.post('/llm/monitor/stop'),
   // llm prompts
   getAIPrompts: (params = {}) => request.get('/llm/prompts', { params }),
   getAIPromptDetail: (promptId) => request.get(`/llm/prompts/${promptId}`),

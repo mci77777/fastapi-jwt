@@ -16,6 +16,7 @@
 2. 后台可查看、编辑并切换活跃 Prompt，提供测试功能。
 3. App 可通过 `/api/v1/llm/models` 拉取模型列表，选择后成功发起对话。
 4. 单元测试覆盖成功/失败/缺配置路径；审计日志记录基本调用信息。
+5. 2025-10 update: delivered SQLite + Supabase dual storage, status checks, prompt testing & admin UI (see `implementation.md`).
 
 ## 架构概要
 - App → FastAPI (`/api/v1/llm/chat`) → 可配置 LLM Endpoint。

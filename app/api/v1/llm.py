@@ -1,4 +1,5 @@
 """LLM 配置与 Prompt 管理接口。"""
+
 from __future__ import annotations
 
 import json
@@ -10,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.auth import AuthenticatedUser, get_current_user
 from app.services.ai_config_service import AIConfigService
+from app.services.monitor_service import EndpointMonitor
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 
@@ -34,6 +36,16 @@ def get_service(request: Request) -> AIConfigService:
             detail=create_response(code=503, msg="AI 配置服务未就绪"),
         )
     return service
+
+
+def get_monitor(request: Request) -> EndpointMonitor:
+    monitor = getattr(request.app.state, "endpoint_monitor", None)
+    if not isinstance(monitor, EndpointMonitor):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=create_response(code=503, msg="AI monitor not initialized"),
+        )
+    return monitor
 
 
 class SyncDirection(str, Enum):
@@ -120,9 +132,13 @@ class PromptCreate(PromptBase):
 
 
 class PromptUpdate(PromptBase):
-    """更新 Prompt 请求。"""
-
     auto_sync: bool = False
+
+
+class MonitorControlRequest(BaseModel):
+    """Control payload for the endpoint monitor."""
+
+    interval_seconds: int = Field(..., ge=10, le=600, description="Interval seconds")
 
 
 class PromptTestRequest(BaseModel):
@@ -255,12 +271,12 @@ async def check_all_endpoints(
 @router.post("/models/{endpoint_id}/sync")
 async def sync_single_endpoint(
     endpoint_id: int,
-    body: SyncRequest | None,
     request: Request,
+    body: SyncRequest | None = None,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     service = get_service(request)
-    direction = (body.direction if body else SyncDirection.PUSH)
+    direction = body.direction if body else SyncDirection.PUSH
     try:
         if direction in (SyncDirection.PUSH, SyncDirection.BOTH):
             endpoint = await service.push_endpoint_to_supabase(endpoint_id)
@@ -282,12 +298,12 @@ async def sync_single_endpoint(
 
 @router.post("/models/sync")
 async def sync_all_endpoints(
-    body: SyncRequest | None,
     request: Request,
+    body: SyncRequest | None = None,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     service = get_service(request)
-    direction = (body.direction if body else SyncDirection.PUSH)
+    direction = body.direction if body else SyncDirection.PUSH
     try:
         results: list[dict[str, Any]] = []
         if direction in (SyncDirection.PUSH, SyncDirection.BOTH):
@@ -315,6 +331,42 @@ async def supabase_status(
 # --------------------------------------------------------------------------- #
 # Prompt 管理
 # --------------------------------------------------------------------------- #
+
+
+@router.get("/monitor/status")
+async def monitor_status(
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    monitor = get_monitor(request)
+    return create_response(data=monitor.snapshot())
+
+
+@router.post("/monitor/start")
+async def start_monitor(
+    payload: MonitorControlRequest,
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    monitor = get_monitor(request)
+    try:
+        await monitor.start(payload.interval_seconds)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=create_response(code=400, msg="Interval must be between 10 and 600 seconds"),
+        ) from exc
+    return create_response(data=monitor.snapshot(), msg="Monitor started")
+
+
+@router.post("/monitor/stop")
+async def stop_monitor(
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    monitor = get_monitor(request)
+    await monitor.stop()
+    return create_response(data=monitor.snapshot(), msg="Monitor stopped")
 
 
 @router.get("/prompts")
@@ -437,12 +489,12 @@ async def activate_prompt(
 
 @router.post("/prompts/sync")
 async def sync_prompts(
-    body: SyncRequest | None,
     request: Request,
+    body: SyncRequest | None = None,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     service = get_service(request)
-    direction = (body.direction if body else SyncDirection.PUSH)
+    direction = body.direction if body else SyncDirection.PUSH
     try:
         results: list[dict[str, Any]] = []
         if direction in (SyncDirection.PUSH, SyncDirection.BOTH):
@@ -460,8 +512,8 @@ async def sync_prompts(
 @router.get("/prompts/{prompt_id}/tests")
 async def prompt_tests(
     prompt_id: int,
-    limit: int = Query(default=20, ge=1, le=100),
     request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     service = get_service(request)

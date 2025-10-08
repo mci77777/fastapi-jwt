@@ -1,5 +1,5 @@
 <script setup>
-import { computed, h, onMounted, ref, resolveDirective, withDirectives } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, resolveDirective, withDirectives } from 'vue'
 import {
   NAlert,
   NButton,
@@ -82,6 +82,24 @@ const supabaseLabel = computed(() => {
   if (status === 'disabled') return '未配置'
   return '检测中'
 })
+
+const monitorStatus = ref({
+  is_running: false,
+  interval_seconds: 60,
+  last_run_at: null,
+  last_error: null,
+})
+const monitorIntervalSeconds = ref(60)
+const monitorLoading = ref(false)
+const monitorIntervalOptions = [
+  { label: '10s', value: 10 },
+  { label: '30s', value: 30 },
+  { label: '60s', value: 60 },
+  { label: '120s', value: 120 },
+  { label: '300s', value: 300 },
+  { label: '600s', value: 600 },
+]
+let monitorStatusTimer = null
 
 const initForm = {
   id: null,
@@ -249,6 +267,81 @@ async function loadSupabaseStatus() {
     supabaseLoading.value = false
   }
 }
+
+function clearMonitorTimer() {
+  if (monitorStatusTimer) {
+    clearInterval(monitorStatusTimer)
+    monitorStatusTimer = null
+  }
+}
+function setupMonitorTimer() {
+  clearMonitorTimer()
+  if (!monitorStatus.value.is_running) {
+    return
+  }
+  const interval = Math.min(Math.max((monitorStatus.value.interval_seconds || 60) * 1000, 5000), 600000)
+  monitorStatusTimer = setInterval(() => {
+    loadMonitorStatus(true)
+  }, interval)
+}
+
+
+async function loadMonitorStatus(triggerTableRefresh = false) {
+  try {
+    const response = await api.getMonitorStatus()
+    const data = response.data || {}
+    monitorStatus.value = {
+      is_running: !!data.is_running,
+      interval_seconds: data.interval_seconds ?? monitorStatus.value.interval_seconds,
+      last_run_at: data.last_run_at ?? null,
+      last_error: data.last_error ?? null,
+    }
+    monitorIntervalSeconds.value = Number(monitorStatus.value.interval_seconds || monitorIntervalSeconds.value)
+    if (triggerTableRefresh && monitorStatus.value.is_running) {
+      $table.value?.handleSearch()
+    }
+    setupMonitorTimer()
+  } catch (error) {
+    monitorStatus.value = {
+      is_running: false,
+      interval_seconds: Number(monitorIntervalSeconds.value),
+      last_run_at: null,
+      last_error: error.message,
+    }
+    clearMonitorTimer()
+  }
+}
+
+async function handleStartMonitor() {
+  if (monitorLoading.value) return
+  try {
+    monitorLoading.value = true
+    await api.startMonitor(monitorIntervalSeconds.value)
+    await loadMonitorStatus()
+    window.$message?.success(`Monitor started (${monitorIntervalSeconds.value}s/round)`)
+  } catch (error) {
+    window.$message?.error(error.message || "Failed to start monitor")
+  } finally {
+    monitorLoading.value = false
+  }
+}
+
+
+async function handleStopMonitor() {
+  if (monitorLoading.value) return
+  try {
+    monitorLoading.value = true
+    await api.stopMonitor()
+    await loadMonitorStatus()
+    window.$message?.success("Monitor stopped")
+  } catch (error) {
+    window.$message?.error(error.message || "Failed to stop monitor")
+  } finally {
+    monitorLoading.value = false
+  }
+}
+
+
 
 async function handleCheckAll() {
   try {
@@ -468,7 +561,12 @@ const columns = [
 
 onMounted(async () => {
   await loadSupabaseStatus()
+  await loadMonitorStatus()
   $table.value?.handleSearch()
+})
+
+onBeforeUnmount(() => {
+  clearMonitorTimer()
 })
 </script>
 
@@ -514,7 +612,7 @@ onMounted(async () => {
       <NCard :loading="supabaseLoading" title="Supabase 状态" size="small">
         <template #header-extra>
           <NButton text size="small" @click="loadSupabaseStatus">
-            <TheIcon icon="mdi:refresh" :size="16" class="mr-4" />刷新
+            <TheIcon icon="mdi:refresh" :size="16" class="mr-4" />Refresh
           </NButton>
         </template>
         <NSpace vertical size="small">
@@ -523,13 +621,55 @@ onMounted(async () => {
               {{ supabaseLabel }}
             </NTag>
             <span v-if="supabaseStatus?.latency_ms">
-              延迟: {{ `${supabaseStatus.latency_ms.toFixed(0)} ms` }}
+              Latency: {{ `${supabaseStatus.latency_ms.toFixed(0)} ms` }}
             </span>
-            <span v-if="supabaseStatus?.last_synced_at">最近同步: {{ supabaseStatus.last_synced_at }}</span>
+            <span v-if="supabaseStatus?.last_synced_at">
+              Last sync: {{ supabaseStatus.last_synced_at }}
+            </span>
           </div>
           <NAlert v-if="supabaseStatus?.detail" type="info" :bordered="false">
             {{ supabaseStatus.detail }}
           </NAlert>
+        </NSpace>
+      </NCard>
+      <NCard
+        :loading="monitorLoading"
+        size="small"
+        title="Endpoint Monitor"
+      >
+        <NSpace vertical size="small">
+          <div class="flex flex-wrap items-center gap-3">
+            <NSelect
+              v-model:value="monitorIntervalSeconds"
+              style="width: 180px"
+              :disabled="monitorStatus.is_running || monitorLoading"
+              :options="monitorIntervalOptions"
+              placeholder="Select interval"
+            />
+            <NButton
+              type="primary"
+              :loading="monitorLoading"
+              :disabled="monitorStatus.is_running"
+              @click="handleStartMonitor"
+            >
+              <TheIcon icon="mdi:play" :size="16" class="mr-5" />Start Monitor
+            </NButton>
+            <NButton
+              type="default"
+              tertiary
+              :loading="monitorLoading"
+              :disabled="!monitorStatus.is_running"
+              @click="handleStopMonitor"
+            >
+              <TheIcon icon="mdi:stop" :size="16" class="mr-5" />Stop Monitor
+            </NButton>
+          </div>
+          <div class="text-sm text-gray-500">
+            <span>Status: {{ monitorStatus.is_running ? "Running" : "Stopped" }}</span>
+            <span class="ml-4">Last run: {{ monitorStatus.last_run_at || "--" }}</span>
+            <span class="ml-4">Interval (s): {{ monitorStatus.interval_seconds }}</span>
+            <span v-if="monitorStatus.last_error" class="ml-4 text-error">Error: {{ monitorStatus.last_error }}</span>
+          </div>
         </NSpace>
       </NCard>
 
