@@ -14,10 +14,12 @@ import {
   NSpace,
   NTable,
   NTag,
+  NTooltip,
   useMessage,
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 
+import CrudModal from '@/components/table/CrudModal.vue'
 import { useAiModelSuiteStore } from '@/store'
 
 defineOptions({ name: 'AiModelMapping' })
@@ -200,15 +202,40 @@ onMounted(() => {
             <td>{{ item.name || item.scope_key }}</td>
             <td>{{ item.default_model || '--' }}</td>
             <td>
-              <NSpace wrap>
-                <NTag
-                  v-for="model in item.candidates"
-                  :key="model"
-                  size="small"
-                  :bordered="false"
-                  >{{ model }}</NTag
-                >
-              </NSpace>
+              <template v-if="item.candidates && item.candidates.length">
+                <div v-if="item.candidates.length <= 3">
+                  <NSpace wrap>
+                    <NTag
+                      v-for="model in item.candidates"
+                      :key="model"
+                      size="small"
+                      :bordered="false"
+                    >
+                      {{ model }}
+                    </NTag>
+                  </NSpace>
+                </div>
+                <div v-else>
+                  <NTag size="small" :bordered="false">
+                    {{ item.candidates.length }} 个模型
+                  </NTag>
+                  <NTooltip>
+                    <template #trigger>
+                      <NButton text size="tiny" type="info" class="ml-2">查看全部</NButton>
+                    </template>
+                    <template #default>
+                      <div class="max-w-xs">
+                        <div v-for="model in item.candidates" :key="model" class="mb-1">
+                          {{ model }}
+                        </div>
+                      </div>
+                    </template>
+                  </NTooltip>
+                </div>
+              </template>
+              <template v-else>
+                <span class="text-gray-400">--</span>
+              </template>
             </td>
             <td>{{ item.updated_at || '--' }}</td>
             <td>
@@ -224,15 +251,25 @@ onMounted(() => {
       </NTable>
     </NCard>
 
-    <NModal
-      v-model:show="modalVisible"
-      preset="card"
+    <CrudModal
+      v-model:visible="modalVisible"
       :title="isEdit ? '编辑映射' : '新增映射'"
-      class="w-96"
+      width="640px"
+      @save="handleSubmit"
     >
-      <NForm ref="formRef" :model="formModel" label-placement="left" label-width="90">
+      <NForm
+        ref="formRef"
+        :model="formModel"
+        label-placement="left"
+        label-align="left"
+        :label-width="110"
+      >
         <NFormItem label="业务域" path="scope_type">
-          <NSelect v-model:value="formModel.scope_type" :options="scopeOptions" />
+          <NSelect
+            v-model:value="formModel.scope_type"
+            :options="scopeOptions"
+            style="width: 100%"
+          />
         </NFormItem>
         <NFormItem v-if="formModel.scope_type === 'prompt'" label="选择 Prompt" path="scope_key">
           <NSelect
@@ -240,14 +277,19 @@ onMounted(() => {
             :loading="promptsLoading"
             :options="promptOptions"
             filterable
+            style="width: 100%"
             @update:value="handlePromptChange"
           />
         </NFormItem>
         <NFormItem v-else label="业务键" path="scope_key">
-          <NInput v-model:value="formModel.scope_key" placeholder="请输入唯一键" />
+          <NInput
+            v-model:value="formModel.scope_key"
+            placeholder="请输入唯一键"
+            style="width: 100%"
+          />
         </NFormItem>
         <NFormItem label="名称" path="name">
-          <NInput v-model:value="formModel.name" placeholder="显示名称" />
+          <NInput v-model:value="formModel.name" placeholder="显示名称" style="width: 100%" />
         </NFormItem>
         <NFormItem label="候选来源">
           <NSelect
@@ -256,6 +298,7 @@ onMounted(() => {
             placeholder="可选：选择端点快速导入候选模型"
             filterable
             clearable
+            style="width: 100%"
             @update:value="handleEndpointPick"
           />
         </NFormItem>
@@ -265,6 +308,7 @@ onMounted(() => {
             :options="modelOptions"
             filterable
             clearable
+            style="width: 100%"
             @update:value="ensureDefaultInCandidates"
           />
         </NFormItem>
@@ -275,16 +319,11 @@ onMounted(() => {
             filterable
             clearable
             multiple
+            style="width: 100%"
           />
         </NFormItem>
       </NForm>
-      <template #footer>
-        <NSpace justify="end">
-          <NButton @click="modalVisible = false">取消</NButton>
-          <NButton type="primary" @click="handleSubmit">保存</NButton>
-        </NSpace>
-      </template>
-    </NModal>
+    </CrudModal>
 
     <NModal v-model:show="defaultModalVisible" preset="dialog" title="选择默认模型">
       <NRadioGroup v-model:value="defaultModalState.value">
@@ -311,5 +350,17 @@ onMounted(() => {
 <style scoped>
 .mt-4 {
   margin-top: 16px;
+}
+.ml-2 {
+  margin-left: 8px;
+}
+.mb-1 {
+  margin-bottom: 4px;
+}
+.max-w-xs {
+  max-width: 320px;
+}
+.text-gray-400 {
+  color: #9ca3af;
 }
 </style>

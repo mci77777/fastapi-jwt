@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
@@ -7,6 +7,7 @@ import {
   NFormItem,
   NInput,
   NInputNumber,
+  NProgress,
   NSelect,
   NSpace,
   NSwitch,
@@ -41,6 +42,8 @@ const loadForm = reactive({
 })
 const singleResult = ref(null)
 const singleError = ref(null)
+const pollingTimer = ref(null)
+const isPolling = ref(false)
 
 const endpointOptions = computed(() => store.endpointOptions)
 const modelDirectory = computed(() => {
@@ -76,6 +79,12 @@ const promptOptions = computed(() =>
 
 const loadSummary = computed(() => latestRunSummary.value || {})
 const loadTests = computed(() => latestRun.value?.tests || [])
+const loadProgress = computed(() => {
+  const summary = loadSummary.value
+  if (!summary.batch_size || summary.batch_size === 0) return 0
+  const completed = summary.completed_count || 0
+  return Math.round((completed / summary.batch_size) * 100)
+})
 
 watch(
   () => singleForm.endpoint_id,
@@ -139,8 +148,51 @@ async function runLoadTest() {
     model: loadForm.model,
     username: loadForm.username,
   }
-  await store.triggerLoadTest(payload)
-  window.$message?.success('压测完成')
+
+  try {
+    const result = await store.triggerLoadTest(payload)
+    // 开始轮询进度
+    const runId = result?.summary?.id
+    if (runId) {
+      startPolling(runId)
+    }
+    window.$message?.success('压测已启动,正在执行中...')
+  } catch (error) {
+    window.$message?.error(error?.message || '压测启动失败')
+  }
+}
+
+function startPolling(runId) {
+  stopPolling()
+  isPolling.value = true
+
+  const poll = async () => {
+    try {
+      const result = await store.refreshRun(runId)
+      const isRunning = result?.is_running ?? false
+
+      if (!isRunning) {
+        // 压测完成
+        stopPolling()
+        window.$message?.success('压测完成')
+      }
+    } catch (error) {
+      console.error('轮询压测状态失败:', error)
+    }
+  }
+
+  // 立即执行一次
+  poll()
+  // 每2秒轮询一次
+  pollingTimer.value = setInterval(poll, 2000)
+}
+
+function stopPolling() {
+  if (pollingTimer.value) {
+    clearInterval(pollingTimer.value)
+    pollingTimer.value = null
+  }
+  isPolling.value = false
 }
 
 async function refreshRun() {
@@ -151,6 +203,10 @@ async function refreshRun() {
 onMounted(() => {
   store.loadModels()
   store.loadPrompts()
+})
+
+onBeforeUnmount(() => {
+  stopPolling()
 })
 </script>
 
@@ -251,6 +307,22 @@ onMounted(() => {
       </NForm>
 
       <div v-if="loadSummary.id" class="mt-4">
+        <!-- 进度条 -->
+        <div v-if="isPolling || loadSummary.status === 'running'" class="mb-4">
+          <NCard size="small" title="执行进度">
+            <NProgress
+              type="line"
+              :percentage="loadProgress"
+              :status="loadSummary.failure_count > 0 ? 'warning' : 'success'"
+              :show-indicator="true"
+            />
+            <div class="mt-2 text-sm text-gray-500">
+              进度: {{ loadSummary.completed_count || 0 }} / {{ loadSummary.batch_size || 0 }}
+              (成功: {{ loadSummary.success_count || 0 }}, 失败: {{ loadSummary.failure_count || 0 }})
+            </div>
+          </NCard>
+        </div>
+
         <NCard size="small" title="压测摘要">
           <NSpace split="|" wrap>
             <span>运行ID：{{ loadSummary.id }}</span>

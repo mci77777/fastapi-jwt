@@ -358,10 +358,14 @@ async function handleCheckAll() {
 async function handleSyncAll(direction) {
   try {
     bulkSyncing.value = direction
-    await api.syncAllAIModels(direction)
+    const result = await api.syncAllAIModels(direction)
+    // 使用返回的数据立即更新表格
+    if (result?.data && Array.isArray(result.data)) {
+      // 刷新表格会自动加载最新数据
+      await loadSupabaseStatus()
+      $table.value?.handleSearch()
+    }
     window.$message?.success('批量同步已完成')
-    await loadSupabaseStatus()
-    $table.value?.handleSearch()
   } catch (error) {
     window.$message?.error(error.message || '批量同步失败')
   } finally {
@@ -385,10 +389,13 @@ async function handleCheckRow(row) {
 async function handleSyncRow(row, direction) {
   try {
     syncingRowId.value = row.id
-    await api.syncAIModel(row.id, direction)
+    const result = await api.syncAIModel(row.id, direction)
+    // 使用返回的数据立即更新
+    if (result?.data) {
+      await loadSupabaseStatus()
+      $table.value?.handleSearch()
+    }
     window.$message?.success(`端点「${row.name}」同步完成`)
-    await loadSupabaseStatus()
-    $table.value?.handleSearch()
   } catch (error) {
     window.$message?.error(error.message || '同步失败')
   } finally {

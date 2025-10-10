@@ -32,6 +32,16 @@ const filters = reactive({
   keyword: '',
   only_active: null,
 })
+const showAllModels = ref(false)
+const pageSize = ref(10)
+const showMore = ref(false)
+
+const paginatedModels = computed(() => {
+  if (showMore.value) {
+    return models.value
+  }
+  return models.value.slice(0, pageSize.value)
+})
 
 const statusType = {
   online: 'success',
@@ -151,16 +161,39 @@ onMounted(() => {
       </NSpace>
       <NDivider />
       <div v-if="availableModelNames.length" class="text-xs text-gray-500">
-        <span class="mr-2">可用模型：</span>
-        <NSpace wrap>
-          <NTag v-for="name in availableModelNames" :key="name" size="small" :bordered="false">{{
-            name
-          }}</NTag>
+        <div class="flex items-center justify-between">
+          <span class="mr-2">可用模型（{{ availableModelNames.length }}）：</span>
+          <NButton
+            text
+            size="tiny"
+            @click="showAllModels = !showAllModels"
+          >
+            {{ showAllModels ? '收起' : '展开全部' }}
+          </NButton>
+        </div>
+        <NSpace v-if="showAllModels" wrap class="mt-2">
+          <NTag v-for="name in availableModelNames" :key="name" size="small" :bordered="false">
+            {{ name }}
+          </NTag>
         </NSpace>
+        <div v-else class="mt-2">
+          <NTag
+            v-for="name in availableModelNames.slice(0, 5)"
+            :key="name"
+            size="small"
+            :bordered="false"
+            class="mr-1 mb-1"
+          >
+            {{ name }}
+          </NTag>
+          <span v-if="availableModelNames.length > 5" class="text-gray-400">
+            ...及其他 {{ availableModelNames.length - 5 }} 个
+          </span>
+        </div>
       </div>
-      <NAlert v-else type="warning" class="mt-2" show-icon
-        >暂未发现候选模型，请执行一次健康检测或同步。</NAlert
-      >
+      <NAlert v-else type="warning" class="mt-2" show-icon>
+        暂未发现候选模型，请执行一次健康检测或同步。
+      </NAlert>
     </NCard>
 
     <NCard title="模型筛选" size="small">
@@ -188,29 +221,34 @@ onMounted(() => {
     </NCard>
 
     <NCard :loading="modelsLoading" title="模型列表" size="small">
-      <div class="mb-4 text-sm text-gray-500">
-        <span>当前默认模型：</span>
-        <span v-if="defaultModel" class="font-semibold">{{
-          defaultModel.name || defaultModel.model
-        }}</span>
-        <span v-else class="text-warning">尚未设置</span>
+      <div class="mb-4 flex items-center justify-between">
+        <div class="text-sm text-gray-500">
+          <span>当前默认模型：</span>
+          <span v-if="defaultModel" class="font-semibold">
+            {{ defaultModel.name || defaultModel.model }}
+          </span>
+          <span v-else class="text-warning">尚未设置</span>
+        </div>
+        <div class="text-sm text-gray-500">
+          共 {{ models.length }} 个端点，显示前 {{ Math.min(pageSize, models.length) }} 个
+        </div>
       </div>
       <NTable :loading="modelsLoading" :single-line="false" size="small" striped>
         <thead>
           <tr>
-            <th style="width: 200px">名称</th>
+            <th style="width: 180px">名称</th>
             <th>Base URL</th>
-            <th style="width: 160px">可用模型</th>
-            <th style="width: 120px">状态</th>
-            <th style="width: 160px">上次检测</th>
-            <th style="width: 180px">操作</th>
+            <th style="width: 140px">可用模型</th>
+            <th style="width: 100px">状态</th>
+            <th style="width: 140px">上次检测</th>
+            <th style="width: 160px">操作</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!models.length">
+          <tr v-if="!paginatedModels.length">
             <td colspan="6" class="py-6 text-center text-gray-500">暂无数据</td>
           </tr>
-          <tr v-for="item in models" :key="item.id">
+          <tr v-for="item in paginatedModels" :key="item.id">
             <td>
               <div class="flex items-center gap-2">
                 <span>{{ item.name }}</span>
@@ -285,6 +323,16 @@ onMounted(() => {
           </tr>
         </tbody>
       </NTable>
+      <div v-if="models.length > pageSize && !showMore" class="mt-4 text-center">
+        <NButton secondary @click="showMore = true">
+          加载更多（还有 {{ models.length - pageSize }} 个端点）
+        </NButton>
+      </div>
+      <div v-if="showMore && models.length > pageSize" class="mt-4 text-center">
+        <NButton text @click="showMore = false">
+          收起
+        </NButton>
+      </div>
     </NCard>
 
     <NModal

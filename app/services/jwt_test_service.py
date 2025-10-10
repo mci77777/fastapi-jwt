@@ -36,6 +36,7 @@ class JwtRunSummary:
     started_at: str
     finished_at: str
     errors: list[str]
+    completed_count: int = 0  # 已完成数量(成功+失败)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -48,6 +49,7 @@ class JwtRunSummary:
             "stop_on_error": self.stop_on_error,
             "success_count": self.success_count,
             "failure_count": self.failure_count,
+            "completed_count": self.completed_count,
             "status": self.status,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
@@ -65,6 +67,7 @@ class JWTTestService:
         self._storage_dir.mkdir(parents=True, exist_ok=True)
         self._file_path = self._storage_dir / "jwt_runs.json"
         self._lock = asyncio.Lock()
+        self._active_runs: dict[str, JwtRunSummary] = {}  # 运行中的压测状态
 
     async def simulate_dialog(self, payload: dict[str, Any]) -> dict[str, Any]:
         username = payload.get("username") or "tester"
@@ -101,6 +104,25 @@ class JWTTestService:
         stop_event = asyncio.Event()
         queue: asyncio.Queue[int | None] = asyncio.Queue()
 
+        # 初始化活动运行状态
+        summary = JwtRunSummary(
+            id=run_id,
+            prompt_id=payload["prompt_id"],
+            endpoint_id=payload["endpoint_id"],
+            model=payload.get("model"),
+            batch_size=batch_size,
+            concurrency=concurrency,
+            stop_on_error=stop_on_error,
+            success_count=0,
+            failure_count=0,
+            completed_count=0,
+            status="running",
+            started_at=started_at,
+            finished_at="",
+            errors=[],
+        )
+        self._active_runs[run_id] = summary
+
         for idx in range(batch_size):
             queue.put_nowait(idx)
         for _ in range(concurrency):
@@ -120,19 +142,48 @@ class JWTTestService:
                     continue
                 message = self._decorate_message(payload["message"], run_id=run_id, index=idx)
                 async with semaphore:
-                    try:
-                        await self._ai_service.test_prompt(
-                            prompt_id=payload["prompt_id"],
-                            endpoint_id=payload["endpoint_id"],
-                            message=message,
-                            model=payload.get("model"),
-                        )
-                        success_count += 1
-                    except RuntimeError as exc:
-                        failure_count += 1
-                        errors.append(str(exc))
-                        if stop_on_error:
-                            stop_event.set()
+                    # 添加重试机制处理速率限制
+                    max_retries = 3
+                    base_delay = 1.0
+                    last_error = None
+                    for attempt in range(max_retries):
+                        try:
+                            # 在请求间添加小延迟以避免速率限制
+                            if idx > 0:
+                                await asyncio.sleep(0.1)
+                            await self._ai_service.test_prompt(
+                                prompt_id=payload["prompt_id"],
+                                endpoint_id=payload["endpoint_id"],
+                                message=message,
+                                model=payload.get("model"),
+                            )
+                            success_count += 1
+                            # 更新活动状态
+                            if run_id in self._active_runs:
+                                self._active_runs[run_id].success_count = success_count
+                                self._active_runs[run_id].completed_count = success_count + failure_count
+                            last_error = None
+                            break
+                        except RuntimeError as exc:
+                            last_error = exc
+                            error_msg = str(exc)
+                            # 检查是否是速率限制错误
+                            if "429" in error_msg and attempt < max_retries - 1:
+                                # 指数退避重试
+                                delay = base_delay * (2**attempt)
+                                await asyncio.sleep(delay)
+                                continue
+                            # 其他错误或重试次数用尽
+                            failure_count += 1
+                            errors.append(f"[尝试 {attempt + 1}/{max_retries}] {error_msg}")
+                            # 更新活动状态
+                            if run_id in self._active_runs:
+                                self._active_runs[run_id].failure_count = failure_count
+                                self._active_runs[run_id].completed_count = success_count + failure_count
+                                self._active_runs[run_id].errors = errors[:20]
+                            if stop_on_error:
+                                stop_event.set()
+                            break
                 queue.task_done()
 
         workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
@@ -149,21 +200,16 @@ class JWTTestService:
         elif failure_count and not success_count:
             status = "failed"
 
-        summary = JwtRunSummary(
-            id=run_id,
-            prompt_id=payload["prompt_id"],
-            endpoint_id=payload["endpoint_id"],
-            model=payload.get("model"),
-            batch_size=batch_size,
-            concurrency=concurrency,
-            stop_on_error=stop_on_error,
-            success_count=success_count,
-            failure_count=failure_count,
-            status=status,
-            started_at=started_at,
-            finished_at=finished_at,
-            errors=errors[:20],
-        )
+        summary.success_count = success_count
+        summary.failure_count = failure_count
+        summary.completed_count = success_count + failure_count
+        summary.status = status
+        summary.finished_at = finished_at
+        summary.errors = errors[:20]
+
+        # 从活动运行中移除
+        self._active_runs.pop(run_id, None)
+
         await self._append_run(summary)
         tests = await self._ai_service.list_prompt_tests_by_run(run_id, limit=batch_size)
         return {
@@ -173,6 +219,18 @@ class JWTTestService:
         }
 
     async def get_run(self, run_id: str) -> dict[str, Any]:
+        # 优先检查活动运行
+        if run_id in self._active_runs:
+            active_summary = self._active_runs[run_id]
+            # 获取当前已完成的测试记录
+            tests = await self._ai_service.list_prompt_tests_by_run(run_id, limit=1000)
+            return {
+                "summary": active_summary.to_dict(),
+                "tests": tests,
+                "is_running": True,
+            }
+
+        # 查询已完成的运行
         runs = await self._read_runs()
         run = next((item for item in runs if item["id"] == run_id), None)
         if not run:
@@ -181,6 +239,7 @@ class JWTTestService:
         return {
             "summary": run,
             "tests": tests,
+            "is_running": False,
         }
 
     def _generate_token(self, username: str) -> str:

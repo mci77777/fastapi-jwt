@@ -1198,10 +1198,29 @@ class AIConfigService:
                 if choices:
                     reply_text = choices[0].get("message", {}).get("content", "") or ""
                 success = True
+        except httpx.HTTPStatusError as exc:
+            latency_ms = (perf_counter() - start) * 1000
+            # 尝试获取响应体中的详细错误信息
+            try:
+                error_detail = exc.response.json()
+                if isinstance(error_detail, dict):
+                    # 提取常见的错误字段
+                    error_msg = (
+                        error_detail.get("error", {}).get("message")
+                        or error_detail.get("message")
+                        or error_detail.get("detail")
+                        or str(exc)
+                    )
+                    error_text = f"{exc.response.status_code} {exc.response.reason_phrase}: {error_msg}"
+                else:
+                    error_text = f"{exc.response.status_code} {exc.response.reason_phrase}: {exc.response.text[:200]}"
+            except Exception:
+                error_text = str(exc)
+            logger.error("Prompt 测试失败 prompt_id=%s endpoint_id=%s error=%s", prompt_id, endpoint_id, error_text)
         except httpx.HTTPError as exc:
             latency_ms = (perf_counter() - start) * 1000
             error_text = str(exc)
-            logger.error("Prompt 测试失败 prompt_id=%s endpoint_id=%s error=%s", prompt_id, endpoint_id, exc)
+            logger.error("Prompt 测试网络错误 prompt_id=%s endpoint_id=%s error=%s", prompt_id, endpoint_id, exc)
         except Exception as exc:  # pragma: no cover
             latency_ms = (perf_counter() - start) * 1000
             error_text = str(exc)

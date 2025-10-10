@@ -73,19 +73,32 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
       if (!endpointId) return
       this.syncingEndpoints.add(endpointId)
       try {
-        await syncModel(endpointId, options)
+        const result = await syncModel(endpointId, options)
+        // 使用返回的数据更新对应的模型
+        if (result?.data) {
+          const index = this.models.findIndex((m) => m.id === endpointId)
+          if (index !== -1) {
+            this.models[index] = result.data
+          }
+        }
+        // 仍然重新加载以确保完整性
+        await this.loadModels()
       } finally {
         this.syncingEndpoints.delete(endpointId)
-        await this.loadModels()
       }
     },
     async syncAll(directionOptions = {}) {
       this.syncAllLoading = true
       try {
-        await syncAllModels(directionOptions)
+        const result = await syncAllModels(directionOptions)
+        // 使用返回的数据更新模型列表
+        if (result?.data && Array.isArray(result.data)) {
+          this.models = result.data
+        }
+        // 重新加载以确保数据完整
+        await this.loadModels()
       } finally {
         this.syncAllLoading = false
-        await this.loadModels()
       }
     },
     async loadMappings(params = {}) {
