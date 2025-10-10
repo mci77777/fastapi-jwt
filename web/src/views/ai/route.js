@@ -17,6 +17,7 @@ export default {
       meta: {
         title: '模型仪表盘',
         icon: 'mdi:view-dashboard-outline',
+        keepAlive: false, // 禁用缓存以避免DOM引用错误
       },
     },
     {
@@ -26,6 +27,7 @@ export default {
       meta: {
         title: '模型目录',
         icon: 'mdi:database-outline',
+        keepAlive: false, // 禁用缓存以避免DOM引用错误
       },
     },
     {
@@ -35,6 +37,7 @@ export default {
       meta: {
         title: '模型映射',
         icon: 'mdi:map-marker-path',
+        keepAlive: false, // 禁用缓存以避免DOM引用错误
       },
     },
     {
@@ -44,6 +47,7 @@ export default {
       meta: {
         title: 'JWT测试',
         icon: 'mdi:test-tube',
+        keepAlive: false, // 禁用缓存以避免DOM引用错误
       },
     },
   ],

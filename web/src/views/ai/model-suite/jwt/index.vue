@@ -59,7 +59,9 @@ const modelDirectory = computed(() => {
   })
   return map
 })
-const globalModelOptions = computed(() => store.modelCandidates.map((item) => ({ label: item, value: item })))
+const globalModelOptions = computed(() =>
+  store.modelCandidates.map((item) => ({ label: item, value: item }))
+)
 
 const buildModelOptions = (endpointId) => {
   const list = endpointId ? modelDirectory.value.get(endpointId) || [] : store.modelCandidates
@@ -68,7 +70,9 @@ const buildModelOptions = (endpointId) => {
 
 const singleModelOptions = computed(() => buildModelOptions(singleForm.endpoint_id))
 const loadModelOptions = computed(() => buildModelOptions(loadForm.endpoint_id))
-const promptOptions = computed(() => prompts.value.map((item) => ({ label: item.name, value: item.id })))
+const promptOptions = computed(() =>
+  prompts.value.map((item) => ({ label: item.name, value: item.id }))
+)
 
 const loadSummary = computed(() => latestRunSummary.value || {})
 const loadTests = computed(() => latestRun.value?.tests || [])
@@ -79,7 +83,11 @@ watch(
     const options = buildModelOptions(endpointId)
     if (!singleForm.model && options.length) {
       singleForm.model = options[0].value
-    } else if (singleForm.model && options.length && !options.some((option) => option.value === singleForm.model)) {
+    } else if (
+      singleForm.model &&
+      options.length &&
+      !options.some((option) => option.value === singleForm.model)
+    ) {
       singleForm.model = options[0].value
     }
   }
@@ -91,7 +99,11 @@ watch(
     const options = buildModelOptions(endpointId)
     if (!loadForm.model && options.length) {
       loadForm.model = options[0].value
-    } else if (loadForm.model && options.length && !options.some((option) => option.value === loadForm.model)) {
+    } else if (
+      loadForm.model &&
+      options.length &&
+      !options.some((option) => option.value === loadForm.model)
+    ) {
       loadForm.model = options[0].value
     }
   }
@@ -142,7 +154,6 @@ onMounted(() => {
 })
 </script>
 
-
 <template>
   <NSpace vertical size="large">
     <NCard title="单次对话模拟" size="small">
@@ -169,19 +180,24 @@ onMounted(() => {
           </NFormItem>
         </NSpace>
         <NFormItem label="对话内容" path="message">
-          <NInput v-model:value="singleForm.message" type="textarea" rows="4" placeholder="请输入用户消息" />
+          <NInput
+            v-model:value="singleForm.message"
+            type="textarea"
+            rows="4"
+            placeholder="请输入用户消息"
+          />
         </NFormItem>
         <NSpace justify="end">
           <NButton type="primary" @click="runSingle">执行模拟</NButton>
         </NSpace>
       </NForm>
       <div v-if="singleResult" class="mt-4">
-        <div class="text-sm text-gray-500 mb-2">生成 JWT：{{ singleResult.jwt_token }}</div>
+        <div class="mb-2 text-sm text-gray-500">生成 JWT：{{ singleResult.jwt_token }}</div>
         <NCard size="small" title="模型回应">
           <div v-if="singleResult.result">
-            <div class="font-semibold mb-2">回复:</div>
+            <div class="mb-2 font-semibold">回复:</div>
             <pre class="whitespace-pre-wrap">{{ singleResult.result.response || '无回复' }}</pre>
-            <div class="text-xs text-gray-500 mt-2">
+            <div class="mt-2 text-xs text-gray-500">
               延迟：{{ singleResult.result.latency_ms?.toFixed?.(0) || '--' }} ms
             </div>
           </div>
@@ -221,11 +237,16 @@ onMounted(() => {
           </NFormItem>
         </NSpace>
         <NFormItem label="压测消息" path="message">
-          <NInput v-model:value="loadForm.message" type="textarea" rows="3" placeholder="请输入压测消息" />
+          <NInput
+            v-model:value="loadForm.message"
+            type="textarea"
+            rows="3"
+            placeholder="请输入压测消息"
+          />
         </NFormItem>
         <NSpace justify="end">
           <NButton type="primary" @click="runLoadTest">执行压测</NButton>
-          <NButton tertiary @click="refreshRun" :disabled="!loadSummary.id">刷新结果</NButton>
+          <NButton tertiary :disabled="!loadSummary.id" @click="refreshRun">刷新结果</NButton>
         </NSpace>
       </NForm>
 
@@ -239,7 +260,7 @@ onMounted(() => {
             <span>开始：{{ loadSummary.started_at }}</span>
             <span>结束：{{ loadSummary.finished_at }}</span>
           </NSpace>
-          <div class="text-sm text-gray-500 mt-2" v-if="latestRun?.jwt_token">
+          <div v-if="latestRun?.jwt_token" class="mt-2 text-sm text-gray-500">
             JWT：{{ latestRun.jwt_token }}
           </div>
         </NCard>
@@ -256,14 +277,14 @@ onMounted(() => {
           </thead>
           <tbody>
             <tr v-if="!loadTests.length">
-              <td colspan="5" class="text-center text-gray-500 py-4">暂无压测记录</td>
+              <td colspan="5" class="py-4 text-center text-gray-500">暂无压测记录</td>
             </tr>
             <tr v-for="(item, index) in loadTests" :key="item.id || index">
               <td>{{ index + 1 }}</td>
               <td>
                 <NTooltip>
                   <template #trigger>
-                    <span class="text-primary cursor-pointer">查看消息</span>
+                    <span class="cursor-pointer text-primary">查看消息</span>
                   </template>
                   <template #default>
                     <div class="max-w-xs whitespace-pre-wrap">{{ item.request_message }}</div>
@@ -271,7 +292,7 @@ onMounted(() => {
                 </NTooltip>
               </td>
               <td>
-                <NTag :type="item.success ? 'success' : 'error'" size="small" bordered={false}>
+                <NTag :type="item.success ? 'success' : 'error'" size="small" :bordered="false">
                   {{ item.success ? '成功' : '失败' }}
                 </NTag>
               </td>
@@ -285,7 +306,6 @@ onMounted(() => {
   </NSpace>
 </template>
 
-
 <style scoped>
 .cursor-pointer {
   cursor: pointer;
@@ -297,4 +317,3 @@ onMounted(() => {
   color: #d03050;
 }
 </style>
-

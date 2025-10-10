@@ -163,20 +163,22 @@ const {
 })
 
 function openEdit(row) {
-  const {
-    api_key_masked = '',
-    created_at,
-    updated_at,
-    model_list,
-    resolved_endpoints,
-    last_checked_at,
-    last_synced_at,
-    status,
-    latency_ms,
-    sync_status,
-    ...rest
-  } = row
-  innerHandleEdit({ ...rest, api_key: '', api_key_masked, auto_sync: false })
+  const sanitized = {
+    ...row,
+    api_key: '',
+    api_key_masked: row.api_key_masked ?? '',
+    auto_sync: false,
+  }
+  delete sanitized.created_at
+  delete sanitized.updated_at
+  delete sanitized.model_list
+  delete sanitized.resolved_endpoints
+  delete sanitized.last_checked_at
+  delete sanitized.last_synced_at
+  delete sanitized.status
+  delete sanitized.latency_ms
+  delete sanitized.sync_status
+  innerHandleEdit(sanitized)
 }
 
 const formRules = {
@@ -210,7 +212,7 @@ function renderStatusTag(row) {
   return h(
     NTag,
     { type, round: true, bordered: false },
-    { default: () => statusLabelMap[status] || status },
+    { default: () => statusLabelMap[status] || status }
   )
 }
 
@@ -225,10 +227,10 @@ function renderModelList(row) {
         h(
           NTag,
           { type: 'info', bordered: false, size: 'small' },
-          { default: () => `${models.length} 个模型` },
+          { default: () => `${models.length} 个模型` }
         ),
       default: () => models.map((model) => h('div', { key: model }, model)),
-    },
+    }
   )
 }
 
@@ -241,13 +243,9 @@ function renderEndpoints(row) {
     {},
     {
       trigger: () =>
-        h(
-          NTag,
-          { type: 'default', bordered: false, size: 'small' },
-          { default: () => '查看路径' },
-        ),
+        h(NTag, { type: 'default', bordered: false, size: 'small' }, { default: () => '查看路径' }),
       default: () => items.map(([key, value]) => h('div', { key }, `${key}: ${value}`)),
-    },
+    }
   )
 }
 
@@ -279,12 +277,14 @@ function setupMonitorTimer() {
   if (!monitorStatus.value.is_running) {
     return
   }
-  const interval = Math.min(Math.max((monitorStatus.value.interval_seconds || 60) * 1000, 5000), 600000)
+  const interval = Math.min(
+    Math.max((monitorStatus.value.interval_seconds || 60) * 1000, 5000),
+    600000
+  )
   monitorStatusTimer = setInterval(() => {
     loadMonitorStatus(true)
   }, interval)
 }
-
 
 async function loadMonitorStatus(triggerTableRefresh = false) {
   try {
@@ -296,7 +296,9 @@ async function loadMonitorStatus(triggerTableRefresh = false) {
       last_run_at: data.last_run_at ?? null,
       last_error: data.last_error ?? null,
     }
-    monitorIntervalSeconds.value = Number(monitorStatus.value.interval_seconds || monitorIntervalSeconds.value)
+    monitorIntervalSeconds.value = Number(
+      monitorStatus.value.interval_seconds || monitorIntervalSeconds.value
+    )
     if (triggerTableRefresh && monitorStatus.value.is_running) {
       $table.value?.handleSearch()
     }
@@ -320,12 +322,11 @@ async function handleStartMonitor() {
     await loadMonitorStatus()
     window.$message?.success(`Monitor started (${monitorIntervalSeconds.value}s/round)`)
   } catch (error) {
-    window.$message?.error(error.message || "Failed to start monitor")
+    window.$message?.error(error.message || 'Failed to start monitor')
   } finally {
     monitorLoading.value = false
   }
 }
-
 
 async function handleStopMonitor() {
   if (monitorLoading.value) return
@@ -333,15 +334,13 @@ async function handleStopMonitor() {
     monitorLoading.value = true
     await api.stopMonitor()
     await loadMonitorStatus()
-    window.$message?.success("Monitor stopped")
+    window.$message?.success('Monitor stopped')
   } catch (error) {
-    window.$message?.error(error.message || "Failed to stop monitor")
+    window.$message?.error(error.message || 'Failed to stop monitor')
   } finally {
     monitorLoading.value = false
   }
 }
-
-
 
 async function handleCheckAll() {
   try {
@@ -493,9 +492,9 @@ const columns = [
             {
               default: () => '检测',
               icon: renderIcon('mdi:stethoscope', { size: 16 }),
-            },
+            }
           ),
-          [[vPermission, 'post/api/v1/llm/models']],
+          [[vPermission, 'post/api/v1/llm/models']]
         ),
         withDirectives(
           h(
@@ -517,11 +516,11 @@ const columns = [
                   {
                     default: () => '同步',
                     icon: renderIcon('mdi:backup-restore', { size: 16 }),
-                  },
+                  }
                 ),
-            },
+            }
           ),
-          [[vPermission, 'post/api/v1/llm/models']],
+          [[vPermission, 'post/api/v1/llm/models']]
         ),
         withDirectives(
           h(
@@ -534,9 +533,9 @@ const columns = [
             {
               default: () => '编辑',
               icon: renderIcon('material-symbols:edit-outline-rounded', { size: 16 }),
-            },
+            }
           ),
-          [[vPermission, 'put/api/v1/llm/models']],
+          [[vPermission, 'put/api/v1/llm/models']]
         ),
         withDirectives(
           h(
@@ -549,9 +548,9 @@ const columns = [
             {
               default: () => '删除',
               icon: renderIcon('material-symbols:delete-outline', { size: 16 }),
-            },
+            }
           ),
-          [[vPermission, 'delete/api/v1/llm/models']],
+          [[vPermission, 'delete/api/v1/llm/models']]
         ),
       ]
       return h(NSpace, { justify: 'center' }, buttons)
@@ -617,7 +616,7 @@ onBeforeUnmount(() => {
         </template>
         <NSpace vertical size="small">
           <div class="flex items-center gap-3">
-            <NTag :type="supabaseTagType" round bordered={false}>
+            <NTag :type="supabaseTagType" round :bordered="false">
               {{ supabaseLabel }}
             </NTag>
             <span v-if="supabaseStatus?.latency_ms">
@@ -632,11 +631,7 @@ onBeforeUnmount(() => {
           </NAlert>
         </NSpace>
       </NCard>
-      <NCard
-        :loading="monitorLoading"
-        size="small"
-        title="Endpoint Monitor"
-      >
+      <NCard :loading="monitorLoading" size="small" title="Endpoint Monitor">
         <NSpace vertical size="small">
           <div class="flex flex-wrap items-center gap-3">
             <NSelect
@@ -665,10 +660,12 @@ onBeforeUnmount(() => {
             </NButton>
           </div>
           <div class="text-sm text-gray-500">
-            <span>Status: {{ monitorStatus.is_running ? "Running" : "Stopped" }}</span>
-            <span class="ml-4">Last run: {{ monitorStatus.last_run_at || "--" }}</span>
+            <span>Status: {{ monitorStatus.is_running ? 'Running' : 'Stopped' }}</span>
+            <span class="ml-4">Last run: {{ monitorStatus.last_run_at || '--' }}</span>
             <span class="ml-4">Interval (s): {{ monitorStatus.interval_seconds }}</span>
-            <span v-if="monitorStatus.last_error" class="ml-4 text-error">Error: {{ monitorStatus.last_error }}</span>
+            <span v-if="monitorStatus.last_error" class="ml-4 text-error"
+              >Error: {{ monitorStatus.last_error }}</span
+            >
           </div>
         </NSpace>
       </NCard>

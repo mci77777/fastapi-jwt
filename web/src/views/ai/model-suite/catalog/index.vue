@@ -131,7 +131,6 @@ onMounted(() => {
 })
 </script>
 
-
 <template>
   <NSpace vertical size="large">
     <NCard title="模型概览" size="small" bordered>
@@ -140,24 +139,28 @@ onMounted(() => {
           <NStatistic label="端点数量" :value="totalEndpoints" />
           <NStatistic label="启用端点" :value="totalActive" />
           <NStatistic
+            v-if="availableModelNames.length"
             label="候选模型"
             :value="availableModelNames.length"
-            v-if="availableModelNames.length"
           />
         </NSpace>
         <NSpace>
-          <NButton secondary @click="loadModels" :loading="modelsLoading">刷新状态</NButton>
-          <NButton type="primary" @click="openSyncAll" :loading="syncAllLoading">全量同步</NButton>
+          <NButton secondary :loading="modelsLoading" @click="loadModels">刷新状态</NButton>
+          <NButton type="primary" :loading="syncAllLoading" @click="openSyncAll">全量同步</NButton>
         </NSpace>
       </NSpace>
       <NDivider />
-      <div class="text-xs text-gray-500" v-if="availableModelNames.length">
+      <div v-if="availableModelNames.length" class="text-xs text-gray-500">
         <span class="mr-2">可用模型：</span>
         <NSpace wrap>
-          <NTag v-for="name in availableModelNames" :key="name" size="small" bordered={false}>{{ name }}</NTag>
+          <NTag v-for="name in availableModelNames" :key="name" size="small" :bordered="false">{{
+            name
+          }}</NTag>
         </NSpace>
       </div>
-      <NAlert v-else type="warning" class="mt-2" show-icon>暂未发现候选模型，请执行一次健康检测或同步。</NAlert>
+      <NAlert v-else type="warning" class="mt-2" show-icon
+        >暂未发现候选模型，请执行一次健康检测或同步。</NAlert
+      >
     </NCard>
 
     <NCard title="模型筛选" size="small">
@@ -187,7 +190,9 @@ onMounted(() => {
     <NCard :loading="modelsLoading" title="模型列表" size="small">
       <div class="mb-4 text-sm text-gray-500">
         <span>当前默认模型：</span>
-        <span v-if="defaultModel" class="font-semibold">{{ defaultModel.name || defaultModel.model }}</span>
+        <span v-if="defaultModel" class="font-semibold">{{
+          defaultModel.name || defaultModel.model
+        }}</span>
         <span v-else class="text-warning">尚未设置</span>
       </div>
       <NTable :loading="modelsLoading" :single-line="false" size="small" striped>
@@ -203,27 +208,35 @@ onMounted(() => {
         </thead>
         <tbody>
           <tr v-if="!models.length">
-            <td colspan="6" class="text-center text-gray-500 py-6">暂无数据</td>
+            <td colspan="6" class="py-6 text-center text-gray-500">暂无数据</td>
           </tr>
           <tr v-for="item in models" :key="item.id">
             <td>
               <div class="flex items-center gap-2">
                 <span>{{ item.name }}</span>
-                <NTag v-if="item.is_default" type="primary" size="small" bordered={false}>默认</NTag>
-                <NTag v-if="item.is_active" type="success" size="small" bordered={false}>启用</NTag>
-                <NTag v-else type="warning" size="small" bordered={false}>停用</NTag>
+                <NTag v-if="item.is_default" type="primary" size="small" :bordered="false"
+                  >默认</NTag
+                >
+                <NTag v-if="item.is_active" type="success" size="small" :bordered="false"
+                  >启用</NTag
+                >
+                <NTag v-else type="warning" size="small" :bordered="false">停用</NTag>
               </div>
             </td>
             <td>
               <div>{{ item.base_url }}</div>
-              <div class="text-xs text-gray-500 mt-1">
-                <template v-if="item.resolved_endpoints && Object.keys(item.resolved_endpoints).length">
+              <div class="mt-1 text-xs text-gray-500">
+                <template
+                  v-if="item.resolved_endpoints && Object.keys(item.resolved_endpoints).length"
+                >
                   <NTooltip>
                     <template #trigger>
-                      <NTag size="small" bordered={false}>查看路径</NTag>
+                      <NTag size="small" :bordered="false">查看路径</NTag>
                     </template>
                     <template #default>
-                      <div v-for="(value, key) in item.resolved_endpoints" :key="key">{{ key }}: {{ value }}</div>
+                      <div v-for="(value, key) in item.resolved_endpoints" :key="key">
+                        {{ key }}: {{ value }}
+                      </div>
                     </template>
                   </NTooltip>
                 </template>
@@ -234,7 +247,9 @@ onMounted(() => {
               <template v-if="item.model_list && item.model_list.length">
                 <NTooltip>
                   <template #trigger>
-                    <NTag type="info" size="small" bordered={false}>{{ item.model_list.length }} 个模型</NTag>
+                    <NTag type="info" size="small" :bordered="false"
+                      >{{ item.model_list.length }} 个模型</NTag
+                    >
                   </template>
                   <template #default>
                     <div v-for="model in item.model_list" :key="model">{{ model }}</div>
@@ -247,19 +262,21 @@ onMounted(() => {
               </template>
             </td>
             <td>
-              <NTag :type="statusType[item.status] || 'default'" round bordered={false}>
+              <NTag :type="statusType[item.status] || 'default'" round :bordered="false">
                 {{ statusLabel[item.status] || item.status || '未知' }}
               </NTag>
             </td>
             <td>{{ item.last_checked_at || '--' }}</td>
             <td>
               <NSpace>
-                <NButton size="small" type="primary" @click="openSetDefault(item)">设为默认</NButton>
+                <NButton size="small" type="primary" @click="openSetDefault(item)"
+                  >设为默认</NButton
+                >
                 <NButton
                   size="small"
-                  @click="openSync(item)"
                   :loading="isEndpointSyncing(item.id)"
                   type="info"
+                  @click="openSync(item)"
                 >
                   同步
                 </NButton>
@@ -270,9 +287,15 @@ onMounted(() => {
       </NTable>
     </NCard>
 
-    <NModal v-model:show="syncDialogVisible" preset="card" :title="syncingAll ? '全量同步' : '同步端点'">
+    <NModal
+      v-model:show="syncDialogVisible"
+      preset="card"
+      :title="syncingAll ? '全量同步' : '同步端点'"
+    >
       <template #header-extra>
-        <span v-if="!syncingAll && syncTarget" class="text-xs text-gray-500">ID: {{ syncTarget.id }}</span>
+        <span v-if="!syncingAll && syncTarget" class="text-xs text-gray-500"
+          >ID: {{ syncTarget.id }}</span
+        >
       </template>
       <div v-if="syncTarget && !syncingAll" class="mb-3 text-sm text-gray-500">
         <div>端点：{{ syncTarget.name }}（{{ syncTarget.base_url }}）</div>
@@ -300,7 +323,11 @@ onMounted(() => {
       <template #footer>
         <NSpace justify="end">
           <NButton @click="syncDialogVisible = false">取消</NButton>
-          <NButton type="primary" @click="submitSync" :loading="syncAllLoading || (syncTarget && isEndpointSyncing(syncTarget.id))">
+          <NButton
+            type="primary"
+            :loading="syncAllLoading || (syncTarget && isEndpointSyncing(syncTarget.id))"
+            @click="submitSync"
+          >
             开始同步
           </NButton>
         </NSpace>
@@ -308,7 +335,6 @@ onMounted(() => {
     </NModal>
   </NSpace>
 </template>
-
 
 <style scoped>
 .text-warning {

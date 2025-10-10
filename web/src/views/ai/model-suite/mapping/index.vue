@@ -46,8 +46,12 @@ const scopeOptions = [
 ]
 
 const endpointOptions = computed(() => store.endpointOptions)
-const modelOptions = computed(() => store.modelCandidates.map((name) => ({ label: name, value: name })))
-const promptOptions = computed(() => prompts.value.map((item) => ({ label: item.name, value: String(item.id), raw: item })))
+const modelOptions = computed(() =>
+  store.modelCandidates.map((name) => ({ label: name, value: name }))
+)
+const promptOptions = computed(() =>
+  prompts.value.map((item) => ({ label: item.name, value: String(item.id), raw: item }))
+)
 
 watch(
   () => formModel.scope_type,
@@ -165,13 +169,12 @@ onMounted(() => {
 })
 </script>
 
-
 <template>
   <NSpace vertical size="large">
     <NCard title="模型映射" size="small" :loading="mappingsLoading">
       <NSpace justify="space-between" align="center" class="mb-3">
         <NButton type="primary" @click="openCreate">新增映射</NButton>
-        <NButton secondary @click="store.loadMappings()" :loading="mappingsLoading">刷新</NButton>
+        <NButton secondary :loading="mappingsLoading" @click="store.loadMappings()">刷新</NButton>
       </NSpace>
       <NTable :loading="mappingsLoading" :single-line="false" class="mt-4" size="small" striped>
         <thead>
@@ -186,24 +189,34 @@ onMounted(() => {
         </thead>
         <tbody>
           <tr v-if="!mappings.length">
-            <td colspan="6" class="text-center text-gray-500 py-6">
+            <td colspan="6" class="py-6 text-center text-gray-500">
               <NEmpty description="暂无映射数据" size="small" />
             </td>
           </tr>
           <tr v-for="item in mappings" :key="item.id">
-            <td><NTag type="info" size="small" bordered={false}>{{ item.scope_type }}</NTag></td>
+            <td>
+              <NTag type="info" size="small" :bordered="false">{{ item.scope_type }}</NTag>
+            </td>
             <td>{{ item.name || item.scope_key }}</td>
             <td>{{ item.default_model || '--' }}</td>
             <td>
               <NSpace wrap>
-                <NTag v-for="model in item.candidates" :key="model" size="small" bordered={false}>{{ model }}</NTag>
+                <NTag
+                  v-for="model in item.candidates"
+                  :key="model"
+                  size="small"
+                  :bordered="false"
+                  >{{ model }}</NTag
+                >
               </NSpace>
             </td>
             <td>{{ item.updated_at || '--' }}</td>
             <td>
               <NSpace>
                 <NButton size="small" @click="openEdit(item)">编辑</NButton>
-                <NButton size="small" type="primary" @click="openDefaultModal(item)">设为默认</NButton>
+                <NButton size="small" type="primary" @click="openDefaultModal(item)"
+                  >设为默认</NButton
+                >
               </NSpace>
             </td>
           </tr>
@@ -211,15 +224,20 @@ onMounted(() => {
       </NTable>
     </NCard>
 
-    <NModal v-model:show="modalVisible" preset="card" :title="isEdit ? '编辑映射' : '新增映射'" class="w-96">
+    <NModal
+      v-model:show="modalVisible"
+      preset="card"
+      :title="isEdit ? '编辑映射' : '新增映射'"
+      class="w-96"
+    >
       <NForm ref="formRef" :model="formModel" label-placement="left" label-width="90">
         <NFormItem label="业务域" path="scope_type">
           <NSelect v-model:value="formModel.scope_type" :options="scopeOptions" />
         </NFormItem>
         <NFormItem v-if="formModel.scope_type === 'prompt'" label="选择 Prompt" path="scope_key">
           <NSelect
-            :loading="promptsLoading"
             v-model:value="formModel.scope_key"
+            :loading="promptsLoading"
             :options="promptOptions"
             filterable
             @update:value="handlePromptChange"
@@ -251,7 +269,13 @@ onMounted(() => {
           />
         </NFormItem>
         <NFormItem label="候选模型" path="candidates">
-          <NSelect v-model:value="formModel.candidates" multiple :options="modelOptions" filterable clearable />
+          <NSelect
+            v-model:value="formModel.candidates"
+            :options="modelOptions"
+            filterable
+            clearable
+            multiple
+          />
         </NFormItem>
       </NForm>
       <template #footer>
@@ -265,7 +289,11 @@ onMounted(() => {
     <NModal v-model:show="defaultModalVisible" preset="dialog" title="选择默认模型">
       <NRadioGroup v-model:value="defaultModalState.value">
         <NSpace vertical>
-          <NRadio v-for="candidate in defaultModalState.candidates" :key="candidate" :value="candidate">
+          <NRadio
+            v-for="candidate in defaultModalState.candidates"
+            :key="candidate"
+            :value="candidate"
+          >
             {{ candidate }}
           </NRadio>
         </NSpace>
@@ -280,10 +308,8 @@ onMounted(() => {
   </NSpace>
 </template>
 
-
 <style scoped>
 .mt-4 {
   margin-top: 16px;
 }
 </style>
-

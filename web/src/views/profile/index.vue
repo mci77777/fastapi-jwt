@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n'
 import CommonPage from '@/components/page/CommonPage.vue'
 import { useUserStore } from '@/store'
 import api from '@/api'
-import { is } from '~/src/utils'
 
 const { t } = useI18n()
 const userStore = useUserStore()

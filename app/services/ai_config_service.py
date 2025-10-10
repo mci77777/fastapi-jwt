@@ -1032,14 +1032,13 @@ class AIConfigService:
             await self._db.execute(
                 """
                 INSERT INTO ai_prompts (
-                    supabase_id, name, content, version, category, description, tools_json,
+                    supabase_id, name, content, version, description, tools_json,
                     is_active, created_at, updated_at, last_synced_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(supabase_id) DO UPDATE SET
                     name=excluded.name,
                     content=excluded.content,
                     version=excluded.version,
-                    category=excluded.category,
                     description=excluded.description,
                     tools_json=excluded.tools_json,
                     is_active=excluded.is_active,
@@ -1051,7 +1050,6 @@ class AIConfigService:
                     item.get("name"),
                     item.get("system_prompt"),
                     item.get("version"),
-                    item.get("category"),
                     item.get("description"),
                     _safe_json_dumps(item.get("tools_json")),
                     1 if item.get("is_active") else 0,

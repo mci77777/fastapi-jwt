@@ -44,7 +44,8 @@ export default {
   syncAllAIModels: (direction = 'push') => request.post('/llm/models/sync', { direction }),
   getSupabaseStatus: () => request.get('/llm/status/supabase'),
   getMonitorStatus: () => request.get('/llm/monitor/status'),
-  startMonitor: (intervalSeconds) => request.post('/llm/monitor/start', { interval_seconds: intervalSeconds }),
+  startMonitor: (intervalSeconds) =>
+    request.post('/llm/monitor/start', { interval_seconds: intervalSeconds }),
   stopMonitor: () => request.post('/llm/monitor/stop'),
   // llm prompts
   getAIPrompts: (params = {}) => request.get('/llm/prompts', { params }),
@@ -54,7 +55,8 @@ export default {
   deleteAIPrompt: (promptId) => request.delete(`/llm/prompts/${promptId}`),
   activateAIPrompt: (promptId) => request.post(`/llm/prompts/${promptId}/activate`),
   syncPrompts: (direction = 'push') => request.post('/llm/prompts/sync', { direction }),
-  getPromptTests: (promptId, params = {}) => request.get(`/llm/prompts/${promptId}/tests`, { params }),
+  getPromptTests: (promptId, params = {}) =>
+    request.get(`/llm/prompts/${promptId}/tests`, { params }),
   // llm test
   testPrompt: (data = {}) => request.post('/llm/prompts/test', data),
   simulateJwtDialog: (data = {}) => request.post('/llm/tests/dialog', data),

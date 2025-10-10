@@ -1,7 +1,6 @@
 <script setup>
-import { computed, h, onMounted, ref, resolveDirective, watch } from 'vue'
+import { computed, h, onMounted, ref, resolveDirective, watch, withDirectives } from 'vue'
 import {
-  NAlert,
   NButton,
   NCard,
   NCheckbox,
@@ -87,7 +86,6 @@ const {
   modalLoading,
   modalForm,
   modalFormRef,
-  modalAction,
   handleAdd,
   handleSave,
   handleEdit: innerHandleEdit,
@@ -132,21 +130,13 @@ const columns = [
       const tags = []
       if (row.is_active) {
         tags.push(
-          h(
-            NTag,
-            { type: 'success', size: 'small', bordered: false },
-            { default: () => '启用' },
-          ),
+          h(NTag, { type: 'success', size: 'small', bordered: false }, { default: () => '启用' })
         )
       }
-      return h(
-        NSpace,
-        { align: 'center', justify: 'center', size: 6 },
-        [
-          h('span', row.name),
-          ...tags,
-        ],
-      )
+      return h(NSpace, { align: 'center', justify: 'center', size: 6 }, [
+        h('span', row.name),
+        ...tags,
+      ])
     },
   },
   {
@@ -195,9 +185,9 @@ const columns = [
             {
               default: () => '测试',
               icon: renderIcon('mdi:robot-love-outline', { size: 16 }),
-            },
+            }
           ),
-          [[vPermission, 'post/api/v1/llm/prompts']],
+          [[vPermission, 'post/api/v1/llm/prompts']]
         ),
         withDirectives(
           h(
@@ -209,9 +199,9 @@ const columns = [
             {
               default: () => '编辑',
               icon: renderIcon('material-symbols:edit-outline-rounded', { size: 16 }),
-            },
+            }
           ),
-          [[vPermission, 'put/api/v1/llm/prompts']],
+          [[vPermission, 'put/api/v1/llm/prompts']]
         ),
         withDirectives(
           h(
@@ -225,9 +215,9 @@ const columns = [
             {
               default: () => '激活',
               icon: renderIcon('mdi:lightning-bolt', { size: 16 }),
-            },
+            }
           ),
-          [[vPermission, 'post/api/v1/llm/prompts/activate']],
+          [[vPermission, 'post/api/v1/llm/prompts/activate']]
         ),
         withDirectives(
           h(
@@ -240,9 +230,9 @@ const columns = [
             {
               default: () => '删除',
               icon: renderIcon('material-symbols:delete-outline', { size: 16 }),
-            },
+            }
           ),
-          [[vPermission, 'delete/api/v1/llm/prompts']],
+          [[vPermission, 'delete/api/v1/llm/prompts']]
         ),
       ]
       return h(NSpace, { justify: 'center' }, buttons)
@@ -504,15 +494,9 @@ onMounted(() => {
       <NSpace vertical size="large">
         <NCard size="small" title="Prompt 信息" bordered>
           <NSpace vertical size="small">
-            <div>
-              <strong>名称：</strong>{{ testPrompt.name }}
-            </div>
-            <div>
-              <strong>版本：</strong>{{ testPrompt.version || '--' }}
-            </div>
-            <div>
-              <strong>分类：</strong>{{ testPrompt.category || '--' }}
-            </div>
+            <div><strong>名称：</strong>{{ testPrompt.name }}</div>
+            <div><strong>版本：</strong>{{ testPrompt.version || '--' }}</div>
+            <div><strong>分类：</strong>{{ testPrompt.category || '--' }}</div>
             <div>
               <strong>内容：</strong>
               <NTooltip placement="bottom">
@@ -533,7 +517,7 @@ onMounted(() => {
               <strong>选择端点</strong>
               <NSelect
                 v-model:value="selectedEndpointId"
-                :options="aiEndpoints.map(item => ({ label: item.name, value: item.id }))"
+                :options="aiEndpoints.map((item) => ({ label: item.name, value: item.id }))"
                 placeholder="请选择 API 端点"
                 clearable
               />
@@ -581,14 +565,12 @@ onMounted(() => {
                 <span>模型：{{ item.model || '--' }}</span>
                 <span>{{ item.created_at }}</span>
               </div>
-              <div class="mt-1">
-                <strong>请求：</strong>{{ item.request_message }}
-              </div>
-              <div class="mt-1">
-                <strong>响应：</strong>{{ item.response_message || '无响应' }}
-              </div>
+              <div class="mt-1"><strong>请求：</strong>{{ item.request_message }}</div>
+              <div class="mt-1"><strong>响应：</strong>{{ item.response_message || '无响应' }}</div>
               <div class="mt-1 text-sm text-gray-500">
-                <span>耗时：{{ item.latency_ms ? `${Math.round(item.latency_ms)} ms` : '--' }}</span>
+                <span
+                  >耗时：{{ item.latency_ms ? `${Math.round(item.latency_ms)} ms` : '--' }}</span
+                >
                 <span class="ml-4">结果：{{ item.success ? '成功' : '失败' }}</span>
                 <span v-if="item.error" class="ml-4" style="color: #d03050">{{ item.error }}</span>
               </div>
