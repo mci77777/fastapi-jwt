@@ -1,0 +1,1 @@
+SegmentLifecycleHandler、RevealMask、入口导出移除 ThinkingBoxLogger 依赖；文档同步；:features:thinkingbox:compileDebugKotlin 通过。

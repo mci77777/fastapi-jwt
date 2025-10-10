@@ -1,0 +1,1 @@
+更新模型管理Spec+Plan：明确在不增加 Supabase/SQLite 表结构前提下，利用现有 JSON 字段与 fallback 完成模型选择、映射及 JWT 压测流程。

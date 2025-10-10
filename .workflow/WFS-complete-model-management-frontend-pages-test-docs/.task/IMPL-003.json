@@ -1,0 +1,62 @@
+{
+  "id": "IMPL-003",
+  "title": "补充JWTTestService测试用例",
+  "status": "pending",
+  "meta": {
+    "type": "test-gen",
+    "agent": "@code-developer"
+  },
+  "context": {
+    "requirements": [
+      "测试simulate_dialog()：验证JWT对话模拟功能",
+      "测试run_load_test()：验证JWT并发压测功能",
+      "测试get_run()：验证压测结果查询功能"
+    ],
+    "focus_paths": [
+      "tests/test_jwt_test_service.py",
+      "app/services/jwt_test_service.py",
+      "tests/test_ai_config_service_push.py"
+    ],
+    "acceptance": [
+      "使用pytest-anyio异步测试框架",
+      "参考test_ai_config_service_push.py的测试模式",
+      "使用monkeypatch模拟AIConfigService依赖",
+      "所有测试用例通过（pytest命令执行成功）"
+    ],
+    "artifacts": []
+  },
+  "flow_control": {
+    "pre_analysis": [
+      {
+        "step": "load_test_patterns",
+        "action": "加载现有测试模式",
+        "commands": [
+          "Read(tests/test_ai_config_service_push.py)",
+          "Read(app/services/jwt_test_service.py)"
+        ],
+        "output_to": "test_patterns"
+      }
+    ],
+    "implementation_approach": {
+      "task_description": "为JWTTestService补充3个测试函数，参考test_ai_config_service_push.py的测试模式",
+      "modification_points": [
+        "使用async def test_*格式定义测试函数",
+        "使用monkeypatch模拟AIConfigService.test_prompt方法",
+        "验证JWT token生成和压测结果正确性"
+      ],
+      "logic_flow": [
+        "分析JWTTestService的核心方法",
+        "参考test_ai_config_service_push.py的测试模式",
+        "编写test_simulate_dialog测试函数",
+        "编写test_run_load_test测试函数",
+        "编写test_get_run测试函数",
+        "运行pytest验证所有测试通过"
+      ]
+    },
+    "target_files": [
+      "tests/test_jwt_test_service.py:test_simulate_dialog:*",
+      "tests/test_jwt_test_service.py:test_run_load_test:*",
+      "tests/test_jwt_test_service.py:test_get_run:*"
+    ]
+  }
+}

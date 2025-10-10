@@ -1,0 +1,62 @@
+{
+  "id": "IMPL-004",
+  "title": "更新模型管理文档",
+  "status": "pending",
+  "meta": {
+    "type": "docs",
+    "agent": "@code-developer"
+  },
+  "context": {
+    "requirements": [
+      "在implementation.md中添加备份机制说明章节",
+      "在implementation.md中添加API参数说明章节（overwrite/delete_missing）",
+      "在testing.md中添加新增测试用例说明章节"
+    ],
+    "focus_paths": [
+      "docs/features/model_management/implementation.md",
+      "docs/features/model_management/testing.md",
+      "app/services/ai_config_service.py"
+    ],
+    "acceptance": [
+      "文档结构清晰，易于阅读",
+      "备份机制说明包含：路径、轮转策略、保留份数",
+      "API参数说明包含：参数名、类型、默认值、作用",
+      "测试说明包含：测试文件、测试函数、测试场景"
+    ],
+    "artifacts": []
+  },
+  "flow_control": {
+    "pre_analysis": [
+      {
+        "step": "load_documentation",
+        "action": "加载现有文档和代码",
+        "commands": [
+          "Read(docs/features/model_management/implementation.md)",
+          "Read(docs/features/model_management/testing.md)",
+          "Read(app/services/ai_config_service.py)"
+        ],
+        "output_to": "documentation_context"
+      }
+    ],
+    "implementation_approach": {
+      "task_description": "在现有文档中增量补充备份机制、API参数和测试用例说明",
+      "modification_points": [
+        "在implementation.md末尾添加"备份机制"章节",
+        "在implementation.md末尾添加"API参数说明"章节",
+        "在testing.md末尾添加"新增测试用例"章节"
+      ],
+      "logic_flow": [
+        "阅读现有文档结构",
+        "分析ai_config_service.py中的备份实现",
+        "在implementation.md中添加备份机制说明",
+        "在implementation.md中添加API参数说明",
+        "在testing.md中添加测试用例说明",
+        "验证文档完整性和可读性"
+      ]
+    },
+    "target_files": [
+      "docs/features/model_management/implementation.md",
+      "docs/features/model_management/testing.md"
+    ]
+  }
+}

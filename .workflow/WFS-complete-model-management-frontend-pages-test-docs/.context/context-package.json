@@ -1,0 +1,247 @@
+{
+  "metadata": {
+    "task_description": "完成模型管理功能的前端页面、功能测试和文档更新",
+    "timestamp": "2025-10-09T00:00:00Z",
+    "keywords": [
+      "Vue",
+      "frontend",
+      "dashboard",
+      "catalog",
+      "mapping",
+      "jwt",
+      "test",
+      "pytest",
+      "AIConfigService",
+      "ModelMappingService",
+      "JWTTestService",
+      "implementation.md",
+      "backup"
+    ],
+    "complexity": "medium",
+    "tech_stack": [
+      "Vue.js",
+      "Python",
+      "FastAPI",
+      "pytest",
+      "Naive UI"
+    ],
+    "session_id": "WFS-complete-model-management-frontend-pages-test-docs"
+  },
+  "assets": [
+    {
+      "type": "vue_page",
+      "path": "web/src/views/ai/model-suite/dashboard/index.vue",
+      "relevance": "Dashboard页面已创建，需要实现功能与后端API集成",
+      "priority": "high",
+      "status": "exists"
+    },
+    {
+      "type": "vue_page",
+      "path": "web/src/views/ai/model-suite/catalog/index.vue",
+      "relevance": "Catalog页面已创建，需要实现模型列表展示和排序",
+      "priority": "high",
+      "status": "exists"
+    },
+    {
+      "type": "vue_page",
+      "path": "web/src/views/ai/model-suite/mapping/index.vue",
+      "relevance": "Mapping页面已创建，需要实现模型映射配置界面",
+      "priority": "high",
+      "status": "exists"
+    },
+    {
+      "type": "vue_page",
+      "path": "web/src/views/ai/model-suite/jwt/index.vue",
+      "relevance": "JWT压测页面已创建，需要实现对话模拟和并发测试界面",
+      "priority": "high",
+      "status": "exists"
+    },
+    {
+      "type": "frontend_api",
+      "path": "web/src/api/aiModelSuite.js",
+      "relevance": "前端API封装完整，包含所有后端接口",
+      "priority": "high",
+      "status": "completed"
+    },
+    {
+      "type": "frontend_store",
+      "path": "web/src/store/modules/aiModelSuite.js",
+      "relevance": "Vuex store状态管理模块",
+      "priority": "high",
+      "status": "exists"
+    },
+    {
+      "type": "backend_service",
+      "path": "app/services/ai_config_service.py",
+      "relevance": "AI配置服务，包含推送/拉取/备份功能",
+      "priority": "high",
+      "status": "completed"
+    },
+    {
+      "type": "backend_service",
+      "path": "app/services/model_mapping_service.py",
+      "relevance": "模型映射服务，管理模型配置",
+      "priority": "high",
+      "status": "completed"
+    },
+    {
+      "type": "backend_service",
+      "path": "app/services/jwt_test_service.py",
+      "relevance": "JWT测试服务，提供对话模拟和压测功能",
+      "priority": "high",
+      "status": "completed"
+    },
+    {
+      "type": "api_route",
+      "path": "app/api/v1/llm_models.py",
+      "relevance": "模型管理API路由",
+      "priority": "high",
+      "status": "completed"
+    },
+    {
+      "type": "api_route",
+      "path": "app/api/v1/llm_mappings.py",
+      "relevance": "模型映射API路由",
+      "priority": "high",
+      "status": "completed"
+    },
+    {
+      "type": "api_route",
+      "path": "app/api/v1/llm_tests.py",
+      "relevance": "测试相关API路由",
+      "priority": "high",
+      "status": "completed"
+    },
+    {
+      "type": "api_route",
+      "path": "app/api/v1/llm_common.py",
+      "relevance": "公共依赖和工具函数",
+      "priority": "medium",
+      "status": "completed"
+    },
+    {
+      "type": "test_file",
+      "path": "tests/test_ai_config_service_push.py",
+      "relevance": "推送功能测试，已完成并通过",
+      "priority": "high",
+      "status": "completed"
+    },
+    {
+      "type": "test_file",
+      "path": "tests/test_model_mapping_service.py",
+      "relevance": "模型映射服务测试文件已创建，需要补充测试用例",
+      "priority": "high",
+      "status": "needs_implementation"
+    },
+    {
+      "type": "test_file",
+      "path": "tests/test_jwt_test_service.py",
+      "relevance": "JWT测试服务测试文件已创建，需要补充测试用例",
+      "priority": "high",
+      "status": "needs_implementation"
+    },
+    {
+      "type": "documentation",
+      "path": "docs/features/model_management/implementation.md",
+      "relevance": "实现文档，需要更新备份机制和新API说明",
+      "priority": "high",
+      "status": "needs_update"
+    },
+    {
+      "type": "documentation",
+      "path": "docs/features/model_management/spec_plan.md",
+      "relevance": "需求规划文档",
+      "priority": "medium",
+      "status": "reference"
+    },
+    {
+      "type": "documentation",
+      "path": "docs/features/model_management/testing.md",
+      "relevance": "测试文档，需要更新新增测试说明",
+      "priority": "medium",
+      "status": "needs_update"
+    },
+    {
+      "type": "config",
+      "path": "app/api/v1/base.py",
+      "relevance": "菜单配置，4个路由已定义",
+      "priority": "medium",
+      "status": "completed"
+    }
+  ],
+  "tech_stack": {
+    "frontend": {
+      "framework": "Vue.js 3",
+      "ui_library": "Naive UI",
+      "state_management": "Vuex",
+      "http_client": "axios"
+    },
+    "backend": {
+      "framework": "FastAPI",
+      "language": "Python 3.12",
+      "database": "SQLite",
+      "testing": "pytest"
+    },
+    "integration": {
+      "api_style": "REST",
+      "auth": "JWT",
+      "sync": "Supabase"
+    }
+  },
+  "patterns": {
+    "code_style": [
+      "YAGNI (You Aren't Gonna Need It)",
+      "SSOT (Single Source of Truth)",
+      "KISS (Keep It Simple, Stupid)"
+    ],
+    "file_structure": [
+      "模块化路由（llm.py → llm_models/mappings/prompts/tests）",
+      "服务层分离（AIConfigService, ModelMappingService, JWTTestService）",
+      "统一响应格式（create_response）"
+    ],
+    "test_patterns": [
+      "使用 pytest-anyio 进行异步测试",
+      "使用 monkeypatch 模拟外部依赖",
+      "DummyHttpClient 模拟 HTTP 请求"
+    ]
+  },
+  "reference_implementations": {
+    "backend_test": "tests/test_ai_config_service_push.py",
+    "api_route": "app/api/v1/llm_models.py",
+    "service_layer": "app/services/ai_config_service.py",
+    "frontend_api": "web/src/api/aiModelSuite.js"
+  },
+  "task_summary": {
+    "scope": [
+      "前端实现：4个Vue页面与后端API集成",
+      "功能测试：补充拉取、映射、JWT服务测试",
+      "文档更新：implementation.md添加备份机制说明",
+      "备份验证：验证备份轮转和回滚操作"
+    ],
+    "context": [
+      "后端已完成：AIConfigService（推送/拉取/备份）、ModelMappingService、JWTTestService",
+      "菜单已添加：4个路由定义在base.py",
+      "前端API已封装：aiModelSuite.js包含所有接口",
+      "推送功能测试已完成：test_ai_config_service_push.py全部通过",
+      "Vue页面文件已创建：需要实现功能逻辑"
+    ],
+    "constraints": [
+      "遵循YAGNI/SSOT/KISS原则",
+      "参考现有实现模式",
+      "测试覆盖率>80%",
+      "构建和测试必须通过"
+    ]
+  },
+  "statistics": {
+    "total_files": 20,
+    "vue_pages": 4,
+    "backend_services": 3,
+    "api_routes": 4,
+    "test_files": 3,
+    "docs_files": 3,
+    "config_files": 3,
+    "completed_files": 13,
+    "needs_implementation": 3,
+    "needs_update": 4
+  }
+}

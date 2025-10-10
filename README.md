@@ -17,32 +17,7 @@
 - **JWT鉴权**：使用 JSON Web Token（JWT）进行身份验证和授权，增强应用的安全性。
 - **细粒度权限控制**：实现按钮和接口级别的权限控制，确保不同用户或角色在界面操作和接口访问时具有不同的权限限制。
 
-### 在线预览
-- [http://47.111.145.81:3000](http://47.111.145.81:3000)
-- username: admin
-- password: 123456
-
-### 登录页
-
-![image](https://github.com/mizhexiaoxiao/vue-fastapi-admin/blob/main/deploy/sample-picture/login.jpg)
-### 工作台
-
-![image](https://github.com/mizhexiaoxiao/vue-fastapi-admin/blob/main/deploy/sample-picture/workbench.jpg)
-
-### 用户管理
-
-![image](https://github.com/mizhexiaoxiao/vue-fastapi-admin/blob/main/deploy/sample-picture/user.jpg)
-### 角色管理
-
-![image](https://github.com/mizhexiaoxiao/vue-fastapi-admin/blob/main/deploy/sample-picture/role.jpg)
-
-### 菜单管理
-
-![image](https://github.com/mizhexiaoxiao/vue-fastapi-admin/blob/main/deploy/sample-picture/menu.jpg)
-
-### API管理
-
-![image](https://github.com/mizhexiaoxiao/vue-fastapi-admin/blob/main/deploy/sample-picture/api.jpg)
+本机直接 python run.py（后端）+ cd web && pnpm dev（前端）进行实时开发，调试链路最短且符合仓库 README。
 
 ### 快速开始
 #### 方法一：dockerhub拉取镜像

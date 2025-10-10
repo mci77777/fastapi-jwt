@@ -1,0 +1,3 @@
+- WHY: 重新构建项目 Docker 并清理陈旧前端产物以减小镜像上下文。
+- HOW: 删除 web/dist 与 web/node_modules，补充 .gitignore（web/node_modules、web/dist），手动启动 dockerd 后执行 docker build。
+- DONE: 获取 vue-fastapi-admin:latest 镜像并运行容器映射 9999 端口，curl /docs 响应 200。

@@ -1,0 +1,62 @@
+{
+  "id": "IMPL-002",
+  "title": "补充ModelMappingService测试用例",
+  "status": "pending",
+  "meta": {
+    "type": "test-gen",
+    "agent": "@code-developer"
+  },
+  "context": {
+    "requirements": [
+      "测试list_mappings()：验证映射列表查询功能",
+      "测试upsert_mapping()：验证映射创建和更新功能",
+      "测试activate_default()：验证默认模型激活功能"
+    ],
+    "focus_paths": [
+      "tests/test_model_mapping_service.py",
+      "app/services/model_mapping_service.py",
+      "tests/test_ai_config_service_push.py"
+    ],
+    "acceptance": [
+      "使用pytest-anyio异步测试框架",
+      "参考test_ai_config_service_push.py的测试模式",
+      "使用monkeypatch模拟文件操作",
+      "所有测试用例通过（pytest命令执行成功）"
+    ],
+    "artifacts": []
+  },
+  "flow_control": {
+    "pre_analysis": [
+      {
+        "step": "load_test_patterns",
+        "action": "加载现有测试模式",
+        "commands": [
+          "Read(tests/test_ai_config_service_push.py)",
+          "Read(app/services/model_mapping_service.py)"
+        ],
+        "output_to": "test_patterns"
+      }
+    ],
+    "implementation_approach": {
+      "task_description": "为ModelMappingService补充3个测试函数，参考test_ai_config_service_push.py的测试模式",
+      "modification_points": [
+        "使用async def test_*格式定义测试函数",
+        "使用monkeypatch模拟文件读写",
+        "验证返回值结构和数据正确性"
+      ],
+      "logic_flow": [
+        "分析ModelMappingService的核心方法",
+        "参考test_ai_config_service_push.py的测试模式",
+        "编写test_list_mappings测试函数",
+        "编写test_upsert_mapping测试函数",
+        "编写test_activate_default测试函数",
+        "运行pytest验证所有测试通过"
+      ]
+    },
+    "target_files": [
+      "tests/test_model_mapping_service.py:test_list_mappings:*",
+      "tests/test_model_mapping_service.py:test_upsert_mapping:*",
+      "tests/test_model_mapping_service.py:test_activate_default:*"
+    ]
+  }
+}

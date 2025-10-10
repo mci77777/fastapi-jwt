@@ -1,0 +1,1 @@
+Codex CLI 的 shell_environment_policy 配置详见 openai/codex 仓库 docs/config.md，可通过 include_only、exclude、set 等字段精细控制环境继承。

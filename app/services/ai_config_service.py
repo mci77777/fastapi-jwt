@@ -1,9 +1,11 @@
 """AI 端点与 Prompt 配置服务。"""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from time import perf_counter
 from typing import Any, Optional
 
@@ -52,13 +54,110 @@ def _safe_json_loads(value: Optional[str]) -> Any:
 class AIConfigService:
     """封装 AI 端点与 Prompt 的本地持久化、状态检测及 Supabase 同步逻辑。"""
 
-    def __init__(self, db: SQLiteManager, settings: Settings) -> None:
+    def __init__(self, db: SQLiteManager, settings: Settings, storage_dir: Path | None = None) -> None:
         self._db = db
         self._settings = settings
+        self._storage_dir = (storage_dir or Path("storage") / "ai_runtime").resolve()
+        self._storage_dir.mkdir(parents=True, exist_ok=True)
+        self._backup_dir = self._storage_dir / "backups"
+        self._backup_dir.mkdir(parents=True, exist_ok=True)
 
     # --------------------------------------------------------------------- #
     # Endpoint 基础方法
     # --------------------------------------------------------------------- #
+    def _backup_latest_path(self, name: str) -> Path:
+        return self._backup_dir / f"{name}-latest.json"
+
+    def _backup_archive_path(self, name: str, slug: str) -> Path:
+        return self._backup_dir / f"{name}-{slug}.json"
+
+    def _list_backup_archives(self, name: str) -> list[Path]:
+        return [
+            path
+            for path in self._backup_dir.glob(f"{name}-*.json")
+            if not path.name.endswith("-latest.json")
+        ]
+
+    async def _trim_backups(self, name: str, *, keep: int) -> None:
+        archives = sorted(
+            self._list_backup_archives(name),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for obsolete in archives[keep:]:
+            try:
+                obsolete.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("删除备份文件失败 path=%s", obsolete)
+
+    async def _write_backup(self, name: str, payload: Any, *, keep: int = 3) -> Path:
+        exported_at = _utc_now()
+        timestamp_slug = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        content = {
+            "exported_at": exported_at,
+            "items": payload,
+        }
+
+        latest_path = self._backup_latest_path(name)
+        archive_path = self._backup_archive_path(name, timestamp_slug)
+
+        async def _write(path: Path) -> None:
+            await asyncio.to_thread(
+                path.write_text,
+                json.dumps(content, ensure_ascii=False, indent=2),
+                "utf-8",
+            )
+
+        await _write(latest_path)
+        await _write(archive_path)
+        await self._trim_backups(name, keep=keep)
+        return latest_path
+
+    async def _collect_local_supabase_ids(self) -> set[int]:
+        rows = await self._db.fetchall("SELECT supabase_id FROM ai_endpoints WHERE supabase_id IS NOT NULL")
+        ids: set[int] = set()
+        for row in rows:
+            supabase_id = row.get("supabase_id")
+            if supabase_id is None:
+                continue
+            try:
+                ids.add(int(supabase_id))
+            except (TypeError, ValueError):
+                continue
+        return ids
+
+    async def _delete_missing_remote_models(
+        self,
+        *,
+        keep_ids: set[int],
+        remote_snapshot: list[dict[str, Any]] | None = None,
+    ) -> None:
+        if not self._supabase_available():
+            return
+        data = remote_snapshot or await self._fetch_supabase_models()
+        remote_ids = {
+            int(item["id"])
+            for item in data
+            if isinstance(item, dict) and item.get("id") is not None
+        }
+        to_delete = [sid for sid in remote_ids if sid not in keep_ids]
+        for supabase_id in to_delete:
+            try:
+                await self._delete_supabase_endpoint(int(supabase_id))
+            except Exception:  # pragma: no cover
+                logger.exception("删除 Supabase 端点失败 supabase_id=%s", supabase_id)
+
+    async def backup_local_endpoints(self) -> Path:
+        rows = await self._db.fetchall("SELECT * FROM ai_endpoints ORDER BY id ASC")
+        snapshot = [self._format_endpoint_row(row) for row in rows]
+        return await self._write_backup("sqlite_endpoints", snapshot)
+
+    async def backup_supabase_endpoints(self) -> Path | None:
+        if not self._supabase_available():
+            return None
+        models = await self._fetch_supabase_models()
+        return await self._write_backup("supabase_endpoints", models)
+
     def _build_resolved_endpoints(self, base_url: str) -> dict[str, str]:
         base = base_url.rstrip("/")
         return {name: f"{base}{path}" for name, path in DEFAULT_ENDPOINT_PATHS.items()}
@@ -222,6 +321,8 @@ class AIConfigService:
             add("sync_status", payload["sync_status"])
         if "last_synced_at" in payload:
             add("last_synced_at", payload["last_synced_at"])
+        if "supabase_id" in payload:
+            add("supabase_id", payload["supabase_id"])
 
         if not updates:
             return existing
@@ -336,82 +437,7 @@ class AIConfigService:
             raise RuntimeError("supabase_not_configured")
         return f"https://{self._settings.supabase_project_id}.supabase.co/rest/v1"
 
-    async def get_endpoint_by_supabase_id(self, supabase_id: int) -> dict[str, Any]:
-        row = await self._db.fetchone("SELECT * FROM ai_endpoints WHERE supabase_id = ?", [supabase_id])
-        if not row:
-            raise ValueError("endpoint_not_found")
-        return self._format_endpoint_row(row)
-
-    async def push_endpoint_to_supabase(self, endpoint_id: int) -> dict[str, Any]:
-        endpoint = await self.get_endpoint(endpoint_id)
-        if not self._supabase_available():
-            return endpoint
-
-        payload = {
-            "name": endpoint["name"],
-            "model": endpoint.get("model"),
-            "base_url": endpoint["base_url"],
-            "description": endpoint.get("description"),
-            "api_key": await self._get_api_key(endpoint_id),
-            "timeout": endpoint["timeout"],
-            "is_active": endpoint["is_active"],
-            "is_default": endpoint["is_default"],
-        }
-        headers = self._supabase_headers()
-        base_url = self._supabase_base_url()
-        supabase_id = endpoint.get("supabase_id")
-
-        async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
-            if supabase_id:
-                response = await client.patch(
-                    f"{base_url}/ai_model?id=eq.{supabase_id}",
-                    headers=headers,
-                    json=payload,
-                )
-            else:
-                response = await client.post(
-                    f"{base_url}/ai_model",
-                    headers=headers,
-                    json=payload,
-                )
-            response.raise_for_status()
-            data = response.json()
-            if isinstance(data, list) and data:
-                supabase_row = data[0]
-            elif isinstance(data, dict):
-                supabase_row = data
-            else:
-                supabase_row = {}
-
-        new_supabase_id = supabase_row.get("id") or supabase_id
-        await self.update_endpoint(
-            endpoint_id,
-            {
-                "supabase_id": new_supabase_id,
-                "sync_status": "synced",
-                "last_synced_at": _utc_now(),
-            },
-        )
-        return await self.get_endpoint(endpoint_id)
-
-    async def push_all_to_supabase(self) -> list[dict[str, Any]]:
-        rows = await self._db.fetchall("SELECT id FROM ai_endpoints")
-        results: list[dict[str, Any]] = []
-        for row in rows:
-            try:
-                results.append(await self.push_endpoint_to_supabase(row["id"]))
-            except Exception as exc:  # pragma: no cover
-                logger.exception("同步端点失败 endpoint_id=%s", row["id"])
-                await self.update_endpoint(
-                    row["id"],
-                    {"sync_status": f"error:{exc}", "last_synced_at": _utc_now()},
-                )
-        return results
-
-    async def pull_endpoints_from_supabase(self) -> list[dict[str, Any]]:
-        if not self._supabase_available():
-            return []
-
+    async def _fetch_supabase_models(self) -> list[dict[str, Any]]:
         headers = self._supabase_headers()
         base_url = self._supabase_base_url()
         async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
@@ -422,17 +448,241 @@ class AIConfigService:
             )
             response.raise_for_status()
             data = response.json()
-        if not isinstance(data, list):
+        if isinstance(data, list):
+            return data
+        return []
+
+    async def _fetch_supabase_model(self, supabase_id: int) -> Optional[dict[str, Any]]:
+        headers = self._supabase_headers()
+        base_url = self._supabase_base_url()
+        async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+            response = await client.get(
+                f"{base_url}/ai_model",
+                headers=headers,
+                params={"id": f"eq.{supabase_id}", "limit": "1"},
+            )
+            response.raise_for_status()
+            data = response.json()
+        if isinstance(data, list) and data:
+            return data[0]
+        if isinstance(data, dict) and data.get("id"):
+            return data
+        return None
+
+    async def _delete_supabase_endpoint(self, supabase_id: int) -> None:
+        headers = self._supabase_headers()
+        base_url = self._supabase_base_url()
+        async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+            response = await client.delete(
+                f"{base_url}/ai_model",
+                headers=headers,
+                params={"id": f"eq.{supabase_id}"},
+            )
+            response.raise_for_status()
+
+    async def get_endpoint_by_supabase_id(self, supabase_id: int) -> dict[str, Any]:
+        row = await self._db.fetchone("SELECT * FROM ai_endpoints WHERE supabase_id = ?", [supabase_id])
+        if not row:
+            raise ValueError("endpoint_not_found")
+        return self._format_endpoint_row(row)
+
+    async def push_endpoint_to_supabase(
+        self,
+        endpoint_id: int,
+        *,
+        overwrite: bool = True,
+        delete_missing: bool = False,
+        skip_backup: bool = False,
+        remote_snapshot: Optional[dict[str, Any]] = None,
+        remote_collection: Optional[list[dict[str, Any]]] = None,
+    ) -> dict[str, Any]:
+        endpoint = await self.get_endpoint(endpoint_id)
+        if not self._supabase_available():
+            return endpoint
+
+        if not skip_backup:
+            try:
+                await self.backup_supabase_endpoints()
+            except Exception:  # pragma: no cover - 备份失败不阻断同步
+                logger.exception("备份 Supabase 端点失败，继续执行同步 endpoint_id=%s", endpoint_id)
+
+        supabase_id = endpoint.get("supabase_id")
+        remote_row = remote_snapshot
+        if supabase_id:
+            if remote_row is None and remote_collection:
+                remote_row = next(
+                    (
+                        item
+                        for item in remote_collection
+                        if str(item.get("id")) == str(supabase_id)
+                    ),
+                    None,
+                )
+            if remote_row is None:
+                try:
+                    remote_row = await self._fetch_supabase_model(int(supabase_id))
+                except Exception:  # pragma: no cover - 读取远端失败不阻断
+                    logger.warning("获取 Supabase 端点信息失败 supabase_id=%s", supabase_id)
+        def _parse_dt(value: Any) -> Optional[datetime]:
+            if not value:
+                return None
+            text = str(value)
+            if text.endswith("Z"):
+                text = text.replace("Z", "+00:00")
+            try:
+                return datetime.fromisoformat(text)
+            except ValueError:
+                return None
+
+        skip_remote_update = False
+        if supabase_id and remote_row and not overwrite:
+            local_updated = _parse_dt(endpoint.get("updated_at"))
+            remote_updated = _parse_dt(remote_row.get("updated_at"))
+            if remote_updated and (not local_updated or remote_updated >= local_updated):
+                skip_remote_update = True
+
+        if skip_remote_update:
+            await self.update_endpoint(
+                endpoint_id,
+                {
+                    "sync_status": "skipped:overwrite_disabled",
+                    "last_synced_at": _utc_now(),
+                },
+            )
+            updated_endpoint = await self.get_endpoint(endpoint_id)
+        else:
+            payload = {
+                "name": endpoint["name"],
+                "model": endpoint.get("model"),
+                "base_url": endpoint["base_url"],
+                "description": endpoint.get("description"),
+                "api_key": await self._get_api_key(endpoint_id),
+                "timeout": endpoint["timeout"],
+                "is_active": endpoint["is_active"],
+                "is_default": endpoint["is_default"],
+            }
+            headers = self._supabase_headers()
+            base_url = self._supabase_base_url()
+
+            async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+                if supabase_id:
+                    response = await client.patch(
+                        f"{base_url}/ai_model?id=eq.{supabase_id}",
+                        headers=headers,
+                        json=payload,
+                    )
+                else:
+                    response = await client.post(
+                        f"{base_url}/ai_model",
+                        headers=headers,
+                        json=payload,
+                    )
+                response.raise_for_status()
+                data = response.json()
+                if isinstance(data, list) and data:
+                    supabase_row = data[0]
+                elif isinstance(data, dict):
+                    supabase_row = data
+                else:
+                    supabase_row = {}
+
+            new_supabase_id = supabase_row.get("id") or supabase_id
+            await self.update_endpoint(
+                endpoint_id,
+                {
+                    "supabase_id": new_supabase_id,
+                    "sync_status": "synced",
+                    "last_synced_at": _utc_now(),
+                },
+            )
+            updated_endpoint = await self.get_endpoint(endpoint_id)
+
+        if delete_missing:
+            keep_ids = await self._collect_local_supabase_ids()
+            await self._delete_missing_remote_models(
+                keep_ids=keep_ids,
+                remote_snapshot=remote_collection,
+            )
+
+        return updated_endpoint
+
+    async def push_all_to_supabase(
+        self,
+        *,
+        overwrite: bool = True,
+        delete_missing: bool = False,
+    ) -> list[dict[str, Any]]:
+        rows = await self._db.fetchall("SELECT id FROM ai_endpoints")
+        if not rows:
+            return []
+
+        prefetched_remote: list[dict[str, Any]] = []
+        if self._supabase_available():
+            try:
+                prefetched_remote = await self._fetch_supabase_models()
+                await self._write_backup("supabase_endpoints", prefetched_remote)
+            except Exception:  # pragma: no cover - 备份失败不影响主流程
+                logger.exception("批量备份 Supabase 端点失败，继续执行推送")
+
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                results.append(
+                    await self.push_endpoint_to_supabase(
+                        row["id"],
+                        overwrite=overwrite,
+                        delete_missing=False,
+                        skip_backup=True,
+                        remote_collection=prefetched_remote if prefetched_remote else None,
+                    )
+                )
+            except Exception as exc:  # pragma: no cover
+                logger.exception("同步端点失败 endpoint_id=%s", row["id"])
+                await self.update_endpoint(
+                    row["id"],
+                    {"sync_status": f"error:{exc}", "last_synced_at": _utc_now()},
+                )
+
+        if delete_missing:
+            keep_ids = await self._collect_local_supabase_ids()
+            await self._delete_missing_remote_models(
+                keep_ids=keep_ids,
+                remote_snapshot=prefetched_remote,
+            )
+
+        return results
+
+    async def pull_endpoints_from_supabase(
+        self,
+        *,
+        overwrite: bool = False,
+        delete_missing: bool = False,
+    ) -> list[dict[str, Any]]:
+        if not self._supabase_available():
+            return []
+
+        try:
+            await self.backup_local_endpoints()
+        except Exception:  # pragma: no cover - 备份失败不阻断拉取
+            logger.exception("备份 SQLite 端点失败，继续执行拉取")
+
+        data = await self._fetch_supabase_models()
+        if not data:
+            if delete_missing:
+                await self._db.execute("DELETE FROM ai_endpoints WHERE supabase_id IS NOT NULL")
             return []
 
         merged: list[dict[str, Any]] = []
+        seen_remote_ids: set[int] = set()
+
         for item in data:
             supabase_id = item.get("id")
             if not supabase_id:
                 continue
+            seen_remote_ids.add(int(supabase_id))
             local = await self._db.fetchone("SELECT * FROM ai_endpoints WHERE supabase_id = ?", [supabase_id])
             remote_updated = item.get("updated_at")
-            if local and local.get("updated_at") and remote_updated:
+            if not overwrite and local and local.get("updated_at") and remote_updated:
                 try:
                     local_time = datetime.fromisoformat(str(local["updated_at"]))
                     remote_time = datetime.fromisoformat(remote_updated.replace("Z", "+00:00"))
@@ -484,6 +734,17 @@ class AIConfigService:
                 ],
             )
             merged.append(await self.get_endpoint_by_supabase_id(supabase_id))
+
+        if delete_missing:
+            if seen_remote_ids:
+                placeholders = ",".join(["?"] * len(seen_remote_ids))
+                await self._db.execute(
+                    f"DELETE FROM ai_endpoints WHERE supabase_id IS NOT NULL AND supabase_id NOT IN ({placeholders})",
+                    list(seen_remote_ids),
+                )
+            else:
+                await self._db.execute("DELETE FROM ai_endpoints WHERE supabase_id IS NOT NULL")
+
         return merged
 
     async def supabase_status(self) -> dict[str, Any]:
@@ -843,6 +1104,33 @@ class AIConfigService:
             LIMIT ?
             """,
             [prompt_id, limit],
+        )
+        return [
+            {
+                "id": row["id"],
+                "prompt_id": row["prompt_id"],
+                "endpoint_id": row["endpoint_id"],
+                "model": row.get("model"),
+                "request_message": row.get("request_message"),
+                "response_message": row.get("response_message"),
+                "success": bool(row.get("success")),
+                "latency_ms": row.get("latency_ms"),
+                "error": row.get("error"),
+                "created_at": row.get("created_at"),
+            }
+            for row in rows
+        ]
+
+    async def list_prompt_tests_by_run(self, run_id: str, limit: int = 1000) -> list[dict[str, Any]]:
+        pattern = f"%run_id={run_id}%"
+        rows = await self._db.fetchall(
+            """
+            SELECT * FROM ai_prompt_tests
+            WHERE request_message LIKE ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            [pattern, limit],
         )
         return [
             {

@@ -57,6 +57,9 @@ export default {
   getPromptTests: (promptId, params = {}) => request.get(`/llm/prompts/${promptId}/tests`, { params }),
   // llm test
   testPrompt: (data = {}) => request.post('/llm/prompts/test', data),
+  simulateJwtDialog: (data = {}) => request.post('/llm/tests/dialog', data),
+  runJwtLoadTest: (data = {}) => request.post('/llm/tests/load', data),
+  getJwtRun: (runId) => request.get(`/llm/tests/runs/${runId}`),
   // depts
   getDepts: (params = {}) => request.get('/dept/list', { params }),
   createDept: (data = {}) => request.post('/dept/create', data),

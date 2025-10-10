@@ -1,0 +1,79 @@
+{
+  "id": "IMPL-001",
+  "title": "实现4个Vue页面功能（Dashboard/Catalog/Mapping/JWT）",
+  "status": "pending",
+  "meta": {
+    "type": "feature",
+    "agent": "@code-developer"
+  },
+  "context": {
+    "requirements": [
+      "实现Dashboard页面：展示模型总览、端点列表、同步状态、快捷操作",
+      "实现Catalog页面：展示所有端点和模型、支持排序和筛选",
+      "实现Mapping页面：支持创建/编辑/激活模型映射关系",
+      "实现JWT页面：支持单次对话模拟和批量并发测试"
+    ],
+    "focus_paths": [
+      "web/src/views/ai/model-suite/dashboard/index.vue",
+      "web/src/views/ai/model-suite/catalog/index.vue",
+      "web/src/views/ai/model-suite/mapping/index.vue",
+      "web/src/views/ai/model-suite/jwt/index.vue",
+      "web/src/api/aiModelSuite.js",
+      "web/src/store/modules/aiModelSuite.js"
+    ],
+    "acceptance": [
+      "所有页面使用Naive UI组件库",
+      "使用Vue 3 Composition API",
+      "调用aiModelSuite.js中的API方法",
+      "支持加载状态和错误处理",
+      "页面可通过菜单正常访问"
+    ],
+    "artifacts": []
+  },
+  "flow_control": {
+    "pre_analysis": [
+      {
+        "step": "load_planning_context",
+        "action": "加载规划上下文",
+        "commands": [
+          "Read(.workflow/WFS-complete-model-management-frontend-pages-test-docs/.process/ANALYSIS_RESULTS.md)",
+          "Read(.workflow/WFS-complete-model-management-frontend-pages-test-docs/.context/context-package.json)"
+        ],
+        "output_to": "planning_context"
+      },
+      {
+        "step": "analyze_existing_patterns",
+        "action": "分析现有Vue页面模式",
+        "commands": [
+          "Read(web/src/views/login/index.vue)",
+          "Read(web/src/api/aiModelSuite.js)",
+          "Read(web/src/store/modules/aiModelSuite.js)"
+        ],
+        "output_to": "vue_patterns"
+      }
+    ],
+    "implementation_approach": {
+      "task_description": "实现4个Vue页面的完整功能，参考现有登录页面模式，使用Naive UI组件和Composition API",
+      "modification_points": [
+        "使用<n-card>、<n-data-table>、<n-button>等Naive UI组件",
+        "使用ref()、computed()等响应式API",
+        "调用aiModelSuite.js中封装好的API方法",
+        "添加loading状态和错误提示"
+      ],
+      "logic_flow": [
+        "加载页面参考模式（login/index.vue）",
+        "实现Dashboard：模型列表 + 同步按钮",
+        "实现Catalog：模型表格 + 排序筛选",
+        "实现Mapping：映射配置表单 + 保存按钮",
+        "实现JWT：测试表单 + 结果展示",
+        "验证所有页面功能可用"
+      ]
+    },
+    "target_files": [
+      "web/src/views/ai/model-suite/dashboard/index.vue",
+      "web/src/views/ai/model-suite/catalog/index.vue",
+      "web/src/views/ai/model-suite/mapping/index.vue",
+      "web/src/views/ai/model-suite/jwt/index.vue"
+    ]
+  }
+}
