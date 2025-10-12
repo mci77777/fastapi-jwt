@@ -1,0 +1,67 @@
+# Prometheus 告警规则 - Dashboard 重构监控
+# 生成时间: 2025-10-12
+
+groups:
+  - name: dashboard_alerts
+    interval: 30s
+    rules:
+      # 高错误率告警
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "高错误率检测 (实例 {{ $labels.instance }})"
+          description: "错误率超过 5%，当前值: {{ $value }}"
+
+      # 高延迟告警
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "高延迟检测 (实例 {{ $labels.instance }})"
+          description: "P95 延迟超过 2s，当前值: {{ $value }}s"
+
+      # WebSocket 连接数异常
+      - alert: WebSocketConnectionsHigh
+        expr: websocket_connections_active > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WebSocket 连接数过高 (实例 {{ $labels.instance }})"
+          description: "活跃连接数超过 1000，当前值: {{ $value }}"
+
+      # 服务不可用
+      - alert: ServiceDown
+        expr: up{job="vue-fastapi-admin"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "服务不可用 (实例 {{ $labels.instance }})"
+          description: "服务已停止响应超过 1 分钟"
+
+      # 内存使用率过高
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / 1024 / 1024 / 1024 > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "内存使用率过高 (实例 {{ $labels.instance }})"
+          description: "内存使用超过 2GB，当前值: {{ $value }}GB"
+
+      # Dashboard 统计数据更新延迟
+      - alert: DashboardStatsStale
+        expr: time() - dashboard_stats_last_update_timestamp > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dashboard 统计数据过期 (实例 {{ $labels.instance }})"
+          description: "统计数据超过 5 分钟未更新"
+

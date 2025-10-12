@@ -34,7 +34,7 @@ if __name__ == "__main__":
     LOGGING_CONFIG["loggers"][""] = {
         "handlers": ["default"],
         "level": "INFO",
-        "propagate": False,
+        "propagate": True,
     }
 
     # 创建自定义 socket 配置以绕过端口 9999 的权限限制

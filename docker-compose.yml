@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  # Vue FastAPI Admin 主服务
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vue-fastapi-admin:dashboard-v1
+    container_name: vue-fastapi-admin
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      # 应用基本配置
+      - APP_NAME=GymBro API
+      - APP_DESCRIPTION=GymBro 对话与认证服务
+      - APP_VERSION=0.1.0
+      - DEBUG=false
+      
+      # CORS 配置
+      - CORS_ALLOW_ORIGINS=*
+      - CORS_ALLOW_METHODS=*
+      - CORS_ALLOW_HEADERS=*
+      - CORS_ALLOW_CREDENTIALS=true
+      
+      # Supabase 配置（需替换为实际值）
+      - SUPABASE_PROJECT_ID=${SUPABASE_PROJECT_ID}
+      - SUPABASE_JWKS_URL=${SUPABASE_JWKS_URL}
+      - SUPABASE_ISSUER=${SUPABASE_ISSUER}
+      - SUPABASE_AUDIENCE=${SUPABASE_AUDIENCE}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      
+      # 匿名用户支持
+      - ANON_ENABLED=true
+      
+      # JWT 配置
+      - JWKS_CACHE_TTL_SECONDS=900
+      - JWT_LEEWAY_SECONDS=30
+      - JWT_CLOCK_SKEW_SECONDS=120
+      - JWT_MAX_FUTURE_IAT_SECONDS=120
+      - JWT_REQUIRE_NBF=false
+      - JWT_ALLOWED_ALGORITHMS=ES256,RS256,HS256
+      
+      # HTTP 配置
+      - HTTP_TIMEOUT_SECONDS=10.0
+      - SSE_HEARTBEAT_SECONDS=15.0
+      - TRACE_HEADER_NAME=x-trace-id
+      
+      # 限流配置
+      - RATE_LIMIT_ENABLED=true
+      - RATE_LIMIT_PER_USER_QPS=10
+      - RATE_LIMIT_PER_USER_DAILY=1000
+      - RATE_LIMIT_PER_IP_QPS=20
+      - RATE_LIMIT_PER_IP_DAILY=2000
+      - RATE_LIMIT_ANONYMOUS_QPS=5
+      - RATE_LIMIT_ANONYMOUS_DAILY=1000
+      
+      # SSE 并发控制
+      - SSE_MAX_CONCURRENT_PER_USER=2
+      - SSE_MAX_CONCURRENT_PER_CONVERSATION=1
+      
+      # 策略网关
+      - POLICY_GATE_ENABLED=true
+      
+    volumes:
+      # 持久化数据库文件
+      - ./data:/opt/vue-fastapi-admin/data
+      # 持久化日志文件
+      - ./logs:/opt/vue-fastapi-admin/logs
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/v1/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    networks:
+      - app-network
+
+  # Prometheus 监控（可选）
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - app-network
+    depends_on:
+      - app
+
+  # Grafana 可视化（可选）
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./deploy/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - app-network
+    depends_on:
+      - prometheus
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+

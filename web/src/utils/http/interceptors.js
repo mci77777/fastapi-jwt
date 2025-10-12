@@ -23,6 +23,13 @@ export function reqReject(error) {
 
 export function resResolve(response) {
   const { data, status, statusText } = response
+
+  // 如果响应数据没有 code 字段，且 HTTP 状态码是 2xx，则认为是成功的
+  if (data && typeof data === 'object' && !('code' in data) && status >= 200 && status < 300) {
+    return Promise.resolve(data)
+  }
+
+  // 如果有 code 字段，检查是否为 200
   if (data?.code !== 200) {
     const code = data?.code ?? status
     /** 根据code处理对应的操作，并返回处理后的message */

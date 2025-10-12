@@ -1,0 +1,29 @@
+# Prometheus 配置 - Dashboard 重构监控
+# 生成时间: 2025-10-12
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'vue-fastapi-admin'
+    environment: 'production'
+
+# 告警规则文件
+rule_files:
+  - 'alerts.yml'
+
+# 抓取配置
+scrape_configs:
+  # Vue FastAPI Admin 主服务
+  - job_name: 'vue-fastapi-admin'
+    static_configs:
+      - targets: ['app:80']
+    metrics_path: '/api/v1/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Prometheus 自监控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+

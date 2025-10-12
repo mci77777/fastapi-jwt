@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -12,11 +11,10 @@ from pydantic import BaseModel, Field
 from app.auth import AuthenticatedUser, get_current_user
 from app.auth.jwt_verifier import get_jwt_verifier
 from app.core.exceptions import create_error_response
+from app.log import logger
 from app.services.dashboard_broker import DashboardBroker
 from app.services.log_collector import LogCollector
 from app.services.metrics_collector import MetricsCollector
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["dashboard"])
 
@@ -38,20 +36,31 @@ async def get_current_user_ws(token: str) -> AuthenticatedUser:
     Raises:
         HTTPException: 验证失败
     """
+    import sys
+    print(f"[WS_DEBUG_AUTH] get_current_user_ws called, token length: {len(token) if token else 0}", file=sys.stderr, flush=True)
+    logger.info("[WS_DEBUG_AUTH] get_current_user_ws called, token length: %d", len(token) if token else 0)
+
     if not token:
+        logger.warning("WebSocket JWT verification failed: token is empty")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "unauthorized", "message": "Token is required"},
         )
 
+    # 添加调试日志：记录 token 前 50 字符
+    logger.debug("WebSocket JWT verification: token=%s...", token[:50] if len(token) > 50 else token)
+
     verifier = get_jwt_verifier()
     try:
         user = verifier.verify_token(token)
+        logger.info("[WS_DEBUG_AUTH] WebSocket JWT verification success: uid=%s user_type=%s", user.uid, user.user_type)
         return user
-    except HTTPException:
+    except HTTPException as exc:
+        logger.warning("WebSocket JWT verification failed: HTTPException status=%s detail=%s",
+                      exc.status_code, exc.detail)
         raise
     except Exception as exc:
-        logger.error("WebSocket JWT verification failed: %s", exc)
+        logger.error("WebSocket JWT verification failed: unexpected error=%s", exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "unauthorized", "message": "Invalid token"},
@@ -61,43 +70,63 @@ async def get_current_user_ws(token: str) -> AuthenticatedUser:
 @router.websocket("/ws/dashboard")
 async def dashboard_websocket(
     websocket: WebSocket,
-    request: Request,
     token: str = Query(..., description="JWT token"),
 ) -> None:
     """Dashboard WebSocket 端点，实时推送统计数据。
 
     Args:
         websocket: WebSocket 连接
-        request: FastAPI 请求对象
         token: JWT token（查询参数）
 
     连接流程:
-        1. JWT 验证
-        2. 检查用户类型（匿名用户禁止访问）
-        3. 接受连接并注册到连接池
-        4. 每 10 秒推送一次统计数据
-        5. 断线时清理连接
+        1. 接受连接
+        2. JWT 验证
+        3. 检查用户类型（匿名用户禁止访问）
+        4. 注册到连接池
+        5. 每 10 秒推送一次统计数据
+        6. 断线时清理连接
     """
+    # 在接受连接之前就记录日志（绕过所有日志系统，直接写入文件）
+    import sys
+    from datetime import datetime
+    with open("ws_debug.log", "a", encoding="utf-8") as f:
+        f.write(f"[{datetime.now().isoformat()}] [WS_DEBUG_ENTRY] WebSocket endpoint called, token length: {len(token) if token else 0}\n")
+
+    print(f"[WS_DEBUG_ENTRY] WebSocket endpoint called, token length: {len(token) if token else 0}", file=sys.stderr, flush=True)
+    logger.info("[WS_DEBUG_ENTRY] WebSocket endpoint called, token length: %d", len(token) if token else 0)
+
+    # 先接受连接（必须在任何操作之前）
+    await websocket.accept()
+    print(f"[WS_DEBUG] WebSocket connection accepted, token length: {len(token) if token else 0}", file=sys.stderr, flush=True)
+    logger.info("[WS_DEBUG] WebSocket connection accepted, token length: %d", len(token) if token else 0)
+
     # JWT 验证
     try:
         user = await get_current_user_ws(token)
+        logger.info("[WS_DEBUG] JWT verification success: uid=%s, user_type=%s", user.uid, user.user_type)
     except HTTPException as exc:
+        logger.warning("[WS_DEBUG] JWT verification failed (HTTPException): status=%s, detail=%s", exc.status_code, exc.detail)
         await websocket.close(code=1008, reason="Unauthorized")
         logger.warning("WebSocket connection rejected: unauthorized")
+        return
+    except Exception as exc:
+        logger.error("[WS_DEBUG] JWT verification failed (Exception): %s", exc, exc_info=True)
+        logger.exception("WebSocket JWT verification error: %s", exc)
+        await websocket.close(code=1011, reason="Internal server error")
         return
 
     # 检查用户类型（匿名用户禁止访问）
     if user.user_type == "anonymous":
+        logger.warning("[WS_DEBUG] WebSocket connection rejected: anonymous user uid=%s", user.uid)
         await websocket.close(code=1008, reason="Anonymous users not allowed")
         logger.warning("WebSocket connection rejected: anonymous user uid=%s", user.uid)
         return
 
-    # 接受连接
-    await websocket.accept()
+    logger.info("[WS_DEBUG] WebSocket connection fully accepted: uid=%s, user_type=%s", user.uid, user.user_type)
     logger.info("WebSocket connection accepted uid=%s user_type=%s", user.uid, user.user_type)
 
-    # 获取服务
-    broker: DashboardBroker = request.app.state.dashboard_broker
+    # 获取服务（从 websocket.app.state）
+    broker: DashboardBroker = websocket.app.state.dashboard_broker
 
     # 注册连接到连接池
     await broker.add_connection(user.uid, websocket)
@@ -160,12 +189,12 @@ class LogEntry(BaseModel):
     line: int = Field(..., description="行号")
 
 
-@router.get("/stats/dashboard", response_model=DashboardStatsResponse)
+@router.get("/stats/dashboard")
 async def get_dashboard_stats(
     request: Request,
     time_window: str = Query("24h", regex="^(1h|24h|7d)$", description="时间窗口"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> DashboardStatsResponse:
+) -> Dict[str, Any]:
     """获取 Dashboard 聚合统计数据。
 
     Args:
@@ -174,11 +203,11 @@ async def get_dashboard_stats(
         current_user: 当前用户
 
     Returns:
-        Dashboard 统计数据
+        Dashboard 统计数据（包装在统一响应格式中）
     """
     broker: DashboardBroker = request.app.state.dashboard_broker
     stats = await broker.get_dashboard_stats(time_window)
-    return DashboardStatsResponse(**stats)
+    return {"code": 200, "data": stats, "msg": "success"}
 
 
 @router.get("/stats/daily-active-users")
@@ -275,7 +304,7 @@ async def get_recent_logs(
         current_user: 当前用户
 
     Returns:
-        日志列表
+        日志列表（包装在统一响应格式中）
     """
     # 仅管理员可查看日志（简化实现，后续可扩展 RBAC）
     if current_user.user_type == "anonymous":
@@ -286,7 +315,7 @@ async def get_recent_logs(
 
     log_collector: LogCollector = request.app.state.log_collector
     logs = log_collector.get_recent_logs(level=level, limit=limit)
-    return {"level": level, "limit": limit, "count": len(logs), "logs": logs}
+    return {"code": 200, "data": {"level": level, "limit": limit, "count": len(logs), "logs": logs}, "msg": "success"}
 
 
 # ============================================================================
@@ -309,11 +338,11 @@ class DashboardConfigResponse(BaseModel):
     updated_at: Optional[str] = Field(None, description="最后更新时间")
 
 
-@router.get("/stats/config", response_model=DashboardConfigResponse)
+@router.get("/stats/config")
 async def get_dashboard_config(
     request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> DashboardConfigResponse:
+) -> Dict[str, Any]:
     """获取 Dashboard 配置。
 
     Args:
@@ -321,25 +350,25 @@ async def get_dashboard_config(
         current_user: 当前用户
 
     Returns:
-        Dashboard 配置
+        Dashboard 配置（包装在统一响应格式中）
     """
     # 从 app.state 获取配置（如果不存在则使用默认值）
     if not hasattr(request.app.state, "dashboard_config"):
         request.app.state.dashboard_config = {
-            "config": DashboardConfig(),
+            "config": DashboardConfig().dict(),
             "updated_at": None,
         }
 
     config_data = request.app.state.dashboard_config
-    return DashboardConfigResponse(**config_data)
+    return {"code": 200, "data": config_data, "msg": "success"}
 
 
-@router.put("/stats/config", response_model=DashboardConfigResponse)
+@router.put("/stats/config")
 async def update_dashboard_config(
     request: Request,
     config: DashboardConfig,
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> DashboardConfigResponse:
+) -> Dict[str, Any]:
     """更新 Dashboard 配置。
 
     Args:
@@ -348,7 +377,7 @@ async def update_dashboard_config(
         current_user: 当前用户
 
     Returns:
-        更新后的配置
+        更新后的配置（包装在统一响应格式中）
     """
     # 仅管理员可更新配置（简化实现，后续可扩展 RBAC）
     if current_user.user_type == "anonymous":
@@ -359,10 +388,10 @@ async def update_dashboard_config(
 
     # 更新配置
     request.app.state.dashboard_config = {
-        "config": config,
+        "config": config.dict(),
         "updated_at": datetime.utcnow().isoformat(),
     }
 
     logger.info("Dashboard config updated by user_id=%s config=%s", current_user.uid, config.dict())
 
-    return DashboardConfigResponse(**request.app.state.dashboard_config)
+    return {"code": 200, "data": request.app.state.dashboard_config, "msg": "success"}

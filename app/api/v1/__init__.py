@@ -1,4 +1,5 @@
 """v1 版本路由集合。"""
+import logging
 from fastapi import APIRouter
 
 from .base import router as base_router
@@ -8,9 +9,12 @@ from .llm import router as llm_router
 from .messages import router as messages_router
 from .metrics import router as metrics_router
 
+logger = logging.getLogger(__name__)
+
 v1_router = APIRouter()
 v1_router.include_router(base_router)
 v1_router.include_router(dashboard_router)
+logger.info("[ROUTER_INIT] Dashboard router registered with %d routes", len(dashboard_router.routes))
 v1_router.include_router(health_router)
 v1_router.include_router(llm_router)
 v1_router.include_router(messages_router)

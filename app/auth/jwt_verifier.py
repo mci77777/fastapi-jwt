@@ -170,21 +170,46 @@ class JWTVerifier:
                                          trace_id=trace_id, kid=kid, algorithm=algorithm)
             raise self._create_unauthorized_error("unsupported_alg", f"Unsupported algorithm: {algorithm}")
 
-        try:
-            key_dict = self._cache.get_key(kid)
-        except Exception as exc:  # pragma: no cover - 依赖外部配置
-            self._log_verification_failure("jwks_key_not_found", f"JWKS key retrieval failed: {exc}",
-                                         trace_id=trace_id, kid=kid, algorithm=algorithm)
-            raise self._create_unauthorized_error("jwks_key_not_found", "Signing key not found") from exc
+        # 选择密钥来源：
+        # - HS256 优先使用 SUPABASE_JWT_SECRET（对称密钥）或静态 JWK（kty=oct）
+        # - 其他算法使用 JWKS 公钥
+        public_key = None
+        if algorithm == "HS256":
+            secret = self._settings.supabase_jwt_secret
+            if secret:
+                public_key = secret  # HMAC 对称密钥
+            else:
+                # 回退到静态 JWK（kty=oct）
+                try:
+                    key_dict = self._cache.get_key(kid)
+                    algorithm_cls = jwt.algorithms.get_default_algorithms()[algorithm]
+                    public_key = algorithm_cls.from_jwk(json.dumps(key_dict))
+                except Exception as exc:  # pragma: no cover - 依赖外部配置
+                    self._log_verification_failure(
+                        "hmac_key_not_found",
+                        f"HS256 secret/JWK retrieval failed: {exc}",
+                        trace_id=trace_id,
+                        kid=kid,
+                        algorithm=algorithm,
+                    )
+                    raise self._create_unauthorized_error("hmac_key_not_found", "HMAC signing key not found") from exc
+        else:
+            try:
+                key_dict = self._cache.get_key(kid)
+            except Exception as exc:  # pragma: no cover - 依赖外部配置
+                self._log_verification_failure(
+                    "jwks_key_not_found", f"JWKS key retrieval failed: {exc}", trace_id=trace_id, kid=kid, algorithm=algorithm
+                )
+                raise self._create_unauthorized_error("jwks_key_not_found", "Signing key not found") from exc
 
-        try:
-            algorithm_cls = jwt.algorithms.get_default_algorithms()[algorithm]
-        except KeyError as exc:
-            self._log_verification_failure("unsupported_alg", f"Unsupported algorithm: {algorithm}",
-                                         trace_id=trace_id, kid=kid, algorithm=algorithm)
-            raise self._create_unauthorized_error("unsupported_alg", f"Unsupported algorithm: {algorithm}") from exc
-
-        public_key = algorithm_cls.from_jwk(json.dumps(key_dict))
+            try:
+                algorithm_cls = jwt.algorithms.get_default_algorithms()[algorithm]
+                public_key = algorithm_cls.from_jwk(json.dumps(key_dict))
+            except KeyError as exc:
+                self._log_verification_failure(
+                    "unsupported_alg", f"Unsupported algorithm: {algorithm}", trace_id=trace_id, kid=kid, algorithm=algorithm
+                )
+                raise self._create_unauthorized_error("unsupported_alg", f"Unsupported algorithm: {algorithm}") from exc
 
         audience = (
             self._settings.required_audience
@@ -297,9 +322,20 @@ class JWTVerifier:
     def _expected_issuers(self) -> List[str]:
         values: List[str] = []
         if self._settings.supabase_issuer:
-            values.append(str(self._settings.supabase_issuer))
-        values.extend(str(item) for item in self._settings.allowed_issuers)
-        return values
+            base = str(self._settings.supabase_issuer).rstrip("/")
+            # include base and /auth/v1,/auth/v2 variants; also include origin without /auth for tolerance
+            values.append(base)
+            if not base.endswith("/auth/v1"):
+                values.append(f"{base}/auth/v1")
+            if not base.endswith("/auth/v2"):
+                values.append(f"{base}/auth/v2")
+            # derive origin (strip trailing /auth/* if present)
+            if "/auth/" in base:
+                origin = base.split("/auth/", 1)[0]
+                values.append(origin)
+        values.extend(str(item).rstrip("/") for item in self._settings.allowed_issuers)
+        # de-duplicate while preserving order
+        return list(dict.fromkeys(values))  # de-dup
 
     def _create_unauthorized_error(self, code: str, message: str, hint: Optional[str] = None) -> HTTPException:
         """创建统一格式的401错误响应。"""

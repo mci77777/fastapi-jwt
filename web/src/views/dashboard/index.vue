@@ -1,257 +1,276 @@
 <script setup>
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
-import {
-  NButton,
-  NCard,
-  NDivider,
-  NEmpty,
-  NGrid,
-  NGridItem,
-  NSpace,
-  NTable,
-  NTag,
-  NTooltip,
-} from 'naive-ui'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { NButton, NSpace, useMessage } from 'naive-ui'
 import { storeToRefs } from 'pinia'
+import { useUserStore } from '@/store'
+import { getToken } from '@/utils'
 
-import { useAiModelSuiteStore, useUserStore } from '@/store'
-import api from '@/api'
+// Dashboard 组件
+import StatsBanner from '@/components/dashboard/StatsBanner.vue'
+import LogWindow from '@/components/dashboard/LogWindow.vue'
+import UserActivityChart from '@/components/dashboard/UserActivityChart.vue'
+import WebSocketClient from '@/components/dashboard/WebSocketClient.vue'
+import RealTimeIndicator from '@/components/dashboard/RealTimeIndicator.vue'
+import PollingConfig from '@/components/dashboard/PollingConfig.vue'
+import StatDetailModal from '@/components/dashboard/StatDetailModal.vue'
+import HeroIcon from '@/components/common/HeroIcon.vue'
 
-defineOptions({ name: 'GlobalWorkbench' })
+// Dashboard API
+import {
+  getDashboardStats,
+  getRecentLogs,
+  getStatsConfig,
+  updateStatsConfig,
+  createWebSocketUrl
+} from '@/api/dashboard'
 
-const store = useAiModelSuiteStore()
+defineOptions({ name: 'DashboardIndex' })
+
 const userStore = useUserStore()
-const { models, mappings, modelsLoading, mappingsLoading } = storeToRefs(store)
 const { userInfo } = storeToRefs(userStore)
-const router = useRouter()
+const message = useMessage()
 
-const totalEndpoints = computed(() => models.value.length)
-const defaultEndpoint = computed(() => models.value.find((item) => item.is_default))
-const activeEndpoints = computed(() => models.value.filter((item) => item.is_active).length)
-const syncedEndpoints = computed(
-  () => models.value.filter((item) => item.sync_status === 'synced').length
-)
-const monitoredEndpoints = computed(
-  () => models.value.filter((item) => item.status === 'online').length
-)
-const aggregatedModels = computed(() => store.modelCandidates.length)
-const mappingScopeStats = computed(() => {
-  const stats = new Map()
-  mappings.value.forEach((item) => {
-    const current = stats.get(item.scope_type) || 0
-    stats.set(item.scope_type, current + 1)
-  })
-  return Array.from(stats.entries()).map(([scope, count]) => ({ scope, count }))
-})
+// 响应式状态
+const connectionStatus = ref('disconnected') // 'connected' | 'disconnected' | 'connecting' | 'error' | 'polling'
+const statsLoading = ref(false)
+const logsLoading = ref(false)
+const showConfigModal = ref(false)
+const showStatDetailModal = ref(false)
+const selectedStat = ref(null)
 
-function goToCatalog() {
-  router.push('/ai/catalog')
-}
-
-function goToMapping() {
-  router.push('/ai/mapping')
-}
-
-function goToJwt() {
-  router.push('/ai/jwt')
-}
-
-// 系统模块快捷入口
-const systemModules = [
+// 统计数据（图标已改为 Heroicons 名称）
+const stats = ref([
   {
-    name: '用户管理',
-    path: '/system/user',
-    icon: '👥',
-    desc: '管理系统用户账户',
+    id: 1,
+    icon: 'user-group',
+    label: '日活用户数',
+    value: 0,
+    trend: 0,
     color: '#18a058',
+    detail: '今日活跃用户数量'
   },
   {
-    name: '角色管理',
-    path: '/system/role',
-    icon: '🎭',
-    desc: '配置角色权限',
+    id: 2,
+    icon: 'cpu-chip',
+    label: 'AI 请求数',
+    value: 0,
+    trend: 0,
     color: '#2080f0',
+    detail: '今日 AI API 调用总次数'
   },
   {
-    name: '菜单管理',
-    path: '/system/menu',
-    icon: '📋',
-    desc: '维护系统菜单',
+    id: 3,
+    icon: 'currency-dollar',
+    label: 'Token 使用量',
+    value: '--',
+    trend: 0,
     color: '#f0a020',
+    detail: 'Token 消耗总量（后续追加）'
   },
   {
-    name: 'API权限',
-    path: '/system/api',
-    icon: '🔌',
-    desc: '管理API访问权限',
-    color: '#d03050',
-  },
-  {
-    name: '审计日志',
-    path: '/system/auditlog',
-    icon: '📝',
-    desc: '查看系统操作日志',
-    color: '#8a2be2',
-  },
-  {
-    name: 'AI配置',
-    path: '/system/ai',
-    icon: '⚙️',
-    desc: 'AI服务配置管理',
+    id: 4,
+    icon: 'signal',
+    label: 'API 连通性',
+    value: '0/0',
+    trend: 0,
     color: '#00bcd4',
+    detail: 'API 供应商在线状态'
   },
-]
+  {
+    id: 5,
+    icon: 'key',
+    label: 'JWT 可获取性',
+    value: '0%',
+    trend: 0,
+    color: '#8a2be2',
+    detail: 'JWT 获取成功率'
+  }
+])
 
-function navigateToModule(path) {
-  router.push(path)
-}
+// 日志数据
+const logs = ref([])
 
-// 系统健康状态
-const systemHealth = ref({
-  status: 'unknown',
-  service: 'GymBro',
-  loading: false,
+// 图表数据
+const chartTimeRange = ref('24h')
+const chartData = ref([])
+
+// Dashboard 配置
+const dashboardConfig = ref({
+  websocket_push_interval: 10,
+  http_poll_interval: 30,
+  log_retention_size: 100
 })
 
-// 系统统计数据（从 Prometheus 指标解析）
-const systemStats = ref({
-  totalRequests: 0,
-  errorRate: 0,
-  activeConnections: 0,
-  rateLimitBlocks: 0,
+// WebSocket URL
+const wsUrl = computed(() => {
+  const token = getToken()
+  if (!token) return ''
+  return createWebSocketUrl(token)
 })
 
-// Supabase 状态
-const supabaseStatus = ref(null)
-
-// 监控状态
-const monitorStatus = ref({
-  is_running: false,
-  interval_seconds: 60,
-  last_run_at: null,
-})
-
+// HTTP 轮询定时器
 let pollingTimer = null
 
-const endpointRows = computed(() =>
-  models.value.map((item) => ({
-    ...item,
-    candidateCount: Array.isArray(item.model_list) ? item.model_list.length : 0,
-  }))
-)
-
-const mappingRows = computed(() =>
-  mappings.value.map((item) => ({
-    ...item,
-    candidateCount: Array.isArray(item.candidates) ? item.candidates.length : 0,
-  }))
-)
-
-async function loadHealthStatus() {
+/**
+ * 加载 Dashboard 统计数据
+ */
+async function loadDashboardStats() {
   try {
-    systemHealth.value.loading = true
-    const response = await api.getHealthStatus()
-    systemHealth.value.status = response.data?.status || 'unknown'
-    systemHealth.value.service = response.data?.service || 'GymBro'
+    statsLoading.value = true
+    const response = await getDashboardStats({ time_window: '24h' })
+
+    // 处理响应格式（兼容两种格式）
+    // 格式1: {code: 200, data: {...}}
+    // 格式2: {...} (直接返回数据)
+    let data = response
+    if (response.data && typeof response.data === 'object') {
+      data = response.data
+    }
+
+    // 更新统计数据
+    stats.value[0].value = data.daily_active_users || 0
+    stats.value[1].value = data.ai_requests?.total || 0
+    stats.value[2].value = data.token_usage || '--'
+    stats.value[3].value = `${data.api_connectivity?.healthy_endpoints || 0}/${data.api_connectivity?.total_endpoints || 0}`
+    stats.value[4].value = `${data.jwt_availability?.success_rate?.toFixed(1) || 0}%`
+
+    // 更新 API 连通性率
+    if (data.api_connectivity) {
+      const rate = data.api_connectivity.connectivity_rate || 0
+      stats.value[3].trend = rate - 100
+    }
   } catch (error) {
-    systemHealth.value.status = 'error'
+    console.error('加载统计数据失败:', error)
+    message.error('加载统计数据失败')
   } finally {
-    systemHealth.value.loading = false
+    statsLoading.value = false
   }
 }
 
-async function loadSystemMetrics() {
+/**
+ * 加载最近日志
+ */
+async function loadRecentLogs() {
   try {
-    const response = await api.getSystemMetrics()
-    let metricsText = ''
+    logsLoading.value = true
+    const response = await getRecentLogs({ level: 'WARNING', limit: 100 })
 
-    if (typeof response === 'string') {
-      metricsText = response
-    } else if (response.data) {
-      metricsText = response.data
-    } else if (response.error) {
-      metricsText = response.error
+    // 处理响应格式（兼容两种格式）
+    let data = response
+    if (response.data && typeof response.data === 'object') {
+      data = response.data
     }
 
-    const authTotal = parseMetric(metricsText, 'auth_requests_total')
-    const authErrors = parseMetric(metricsText, 'jwt_validation_errors_total')
-    const activeConns = parseMetric(metricsText, 'active_connections')
-    const rateLimitBlocks = parseMetric(metricsText, 'rate_limit_blocks_total')
-
-    systemStats.value = {
-      totalRequests: authTotal,
-      errorRate: authTotal > 0 ? ((authErrors / authTotal) * 100).toFixed(2) : 0,
-      activeConnections: activeConns,
-      rateLimitBlocks: rateLimitBlocks,
+    if (Array.isArray(data.logs)) {
+      logs.value = data.logs.map((log, index) => ({
+        id: index,
+        ...log
+      }))
+    } else if (Array.isArray(data)) {
+      logs.value = data.map((log, index) => ({
+        id: index,
+        ...log
+      }))
     }
   } catch (error) {
-    if (error.error && typeof error.error === 'string') {
-      const metricsText = error.error
-      const authTotal = parseMetric(metricsText, 'auth_requests_total')
-      const authErrors = parseMetric(metricsText, 'jwt_validation_errors_total')
-      const activeConns = parseMetric(metricsText, 'active_connections')
-      const rateLimitBlocks = parseMetric(metricsText, 'rate_limit_blocks_total')
+    console.error('加载日志失败:', error)
+  } finally {
+    logsLoading.value = false
+  }
+}
 
-      systemStats.value = {
-        totalRequests: authTotal,
-        errorRate: authTotal > 0 ? ((authErrors / authTotal) * 100).toFixed(2) : 0,
-        activeConnections: activeConns,
-        rateLimitBlocks: rateLimitBlocks,
-      }
+/**
+ * 加载 Dashboard 配置
+ */
+async function loadDashboardConfig() {
+  try {
+    const response = await getStatsConfig()
+
+    // 处理响应格式（兼容两种格式）
+    let data = response
+    if (response.data && typeof response.data === 'object') {
+      data = response.data
     }
-  }
-}
 
-function parseMetric(metricsText, metricName) {
-  const regex = new RegExp(`${metricName}(?:{[^}]*})?\\s+(\\d+(?:\\.\\d+)?)`, 'g')
-  let total = 0
-  let match
-  while ((match = regex.exec(metricsText)) !== null) {
-    total += parseFloat(match[1])
-  }
-  return total
-}
-
-async function loadSupabaseStatus() {
-  try {
-    const response = await api.getSupabaseStatus()
-    supabaseStatus.value = response.data || null
-  } catch (error) {
-    supabaseStatus.value = { status: 'offline', detail: error.message }
-  }
-}
-
-async function loadMonitorStatus() {
-  try {
-    const response = await api.getMonitorStatus()
-    const data = response.data || {}
-    monitorStatus.value = {
-      is_running: !!data.is_running,
-      interval_seconds: data.interval_seconds ?? 60,
-      last_run_at: data.last_run_at ?? null,
+    if (data.config) {
+      dashboardConfig.value = { ...data.config }
     }
   } catch (error) {
-    monitorStatus.value.is_running = false
+    console.error('加载配置失败:', error)
   }
 }
 
-async function loadAllStatus() {
-  await Promise.all([
-    loadHealthStatus(),
-    loadSystemMetrics(),
-    loadSupabaseStatus(),
-    loadMonitorStatus(),
-  ])
+/**
+ * WebSocket 消息处理
+ */
+function handleWebSocketMessage(data) {
+  if (data.type === 'stats_update' && data.data) {
+    const statsData = data.data
+
+    // 更新统计数据
+    stats.value[0].value = statsData.daily_active_users || 0
+    stats.value[1].value = statsData.ai_requests?.total || 0
+    stats.value[2].value = statsData.token_usage || '--'
+    stats.value[3].value = `${statsData.api_connectivity?.healthy_endpoints || 0}/${statsData.api_connectivity?.total_endpoints || 0}`
+    stats.value[4].value = `${statsData.jwt_availability?.success_rate?.toFixed(1) || 0}%`
+  }
 }
 
+/**
+ * WebSocket 连接成功
+ */
+function handleWebSocketConnected() {
+  connectionStatus.value = 'connected'
+  message.success('实时连接已建立')
+
+  // 停止 HTTP 轮询
+  stopPolling()
+}
+
+/**
+ * WebSocket 断开连接
+ */
+function handleWebSocketDisconnected() {
+  connectionStatus.value = 'disconnected'
+
+  // 降级为 HTTP 轮询
+  startPolling()
+}
+
+/**
+ * WebSocket 错误
+ */
+function handleWebSocketError(error) {
+  console.error('WebSocket 错误:', error)
+  connectionStatus.value = 'error'
+
+  // 降级为 HTTP 轮询
+  startPolling()
+}
+
+/**
+ * 启动 HTTP 轮询
+ */
 function startPolling() {
-  loadAllStatus()
+  if (pollingTimer) return
+
+  connectionStatus.value = 'polling'
+  message.warning('WebSocket 不可用，已降级为轮询模式')
+
+  // 立即加载一次
+  loadDashboardStats()
+  loadRecentLogs()
+
+  // 定时轮询
   pollingTimer = setInterval(() => {
-    loadAllStatus()
-  }, 10000)
+    loadDashboardStats()
+    loadRecentLogs()
+  }, dashboardConfig.value.http_poll_interval * 1000)
 }
 
+/**
+ * 停止 HTTP 轮询
+ */
 function stopPolling() {
   if (pollingTimer) {
     clearInterval(pollingTimer)
@@ -259,16 +278,78 @@ function stopPolling() {
   }
 }
 
-onMounted(() => {
-  if (!models.value.length) {
-    store.loadModels()
-  }
-  if (!mappings.value.length) {
-    store.loadMappings()
-  }
-  store.loadPrompts()
+/**
+ * 点击统计卡片（打开详情弹窗）
+ */
+function handleStatClick(stat) {
+  selectedStat.value = stat
+  showStatDetailModal.value = true
+}
 
-  startPolling()
+/**
+ * 点击日志项
+ */
+function handleLogClick() {
+  // LogWindow 组件内部已处理复制逻辑
+}
+
+/**
+ * 切换日志级别
+ */
+function handleLogFilterChange() {
+  loadRecentLogs()
+}
+
+/**
+ * 刷新日志
+ */
+function handleLogRefresh() {
+  loadRecentLogs()
+}
+
+/**
+ * 切换图表时间范围
+ */
+function handleTimeRangeChange(range) {
+  chartTimeRange.value = range
+  // 这里可以加载对应时间范围的数据
+}
+
+/**
+ * 打开配置弹窗
+ */
+function openConfigModal() {
+  showConfigModal.value = true
+}
+
+/**
+ * 保存配置
+ */
+async function handleConfigSave(config) {
+  try {
+    await updateStatsConfig(config)
+    dashboardConfig.value = { ...config }
+    message.success('配置已保存')
+
+    // 如果是轮询模式，重启轮询
+    if (connectionStatus.value === 'polling') {
+      stopPolling()
+      startPolling()
+    }
+  } catch (error) {
+    console.error('保存配置失败:', error)
+    message.error('保存配置失败')
+  }
+}
+
+// 生命周期钩子
+onMounted(() => {
+  nextTick(() => {
+    // 加载初始数据
+    loadDashboardStats()
+    loadRecentLogs()
+    loadDashboardConfig()
+  })
 })
 
 onBeforeUnmount(() => {
@@ -277,771 +358,164 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="workbench-container">
-    <div class="hero-header">
-      <div class="hero-content">
-        <div class="hero-main">
-          <h1 class="hero-title">
-            <span class="wave-emoji">👋</span>
-            {{ userInfo?.username || '管理员' }}，欢迎回来
-          </h1>
-          <p class="hero-subtitle">GymBro 管理控制台 - 全局工作台</p>
-        </div>
-        <div class="hero-stats">
-          <div class="hero-stat-item">
-            <div class="stat-value">
-              <span
-                :style="{
-                  color: systemHealth.status === 'ok' ? '#18a058' : '#d03050',
-                }"
-              >
-                {{ systemHealth.status === 'ok' ? '✓' : '✗' }}
-              </span>
-            </div>
-            <div class="stat-label">系统状态</div>
-          </div>
-          <div class="hero-stat-divider"></div>
-          <div class="hero-stat-item">
-            <div class="stat-value">{{ systemStats.totalRequests }}</div>
-            <div class="stat-label">总请求数</div>
-          </div>
-          <div class="hero-stat-divider"></div>
-          <div class="hero-stat-item">
-            <div class="stat-value">{{ systemStats.errorRate }}%</div>
-            <div class="stat-label">错误率</div>
-          </div>
-          <div class="hero-stat-divider"></div>
-          <div class="hero-stat-item">
-            <div class="stat-value">{{ systemStats.activeConnections }}</div>
-            <div class="stat-label">活跃连接</div>
-          </div>
-        </div>
+  <div class="dashboard-container">
+    <!-- WebSocket 客户端（无 UI） -->
+    <WebSocketClient
+      v-if="wsUrl"
+      :url="wsUrl"
+      :token="getToken()"
+      @message="handleWebSocketMessage"
+      @connected="handleWebSocketConnected"
+      @disconnected="handleWebSocketDisconnected"
+      @error="handleWebSocketError"
+    />
+
+    <!-- 顶部工具栏 -->
+    <div class="dashboard-header">
+      <div class="header-left">
+        <h1 class="dashboard-title">Dashboard</h1>
+        <RealTimeIndicator :status="connectionStatus" />
+      </div>
+      <div class="header-right">
+        <NSpace :size="12">
+          <NButton size="small" @click="loadDashboardStats">
+            <template #icon>
+              <HeroIcon name="arrow-path" :size="16" />
+            </template>
+            刷新
+          </NButton>
+          <NButton size="small" @click="openConfigModal">
+            <template #icon>
+              <HeroIcon name="cog-6-tooth" :size="16" />
+            </template>
+            配置
+          </NButton>
+        </NSpace>
       </div>
     </div>
 
-    <NCard title="🚀 快捷入口" size="small" class="modules-card">
-      <div class="modules-grid">
-        <div
-          v-for="module in systemModules"
-          :key="module.path"
-          class="module-card"
-          @click="navigateToModule(module.path)"
-        >
-          <div class="module-icon" :style="{ backgroundColor: module.color }">
-            {{ module.icon }}
-          </div>
-          <div class="module-info">
-            <div class="module-name">{{ module.name }}</div>
-            <div class="module-desc">{{ module.desc }}</div>
-          </div>
-        </div>
+    <!-- 统计横幅 -->
+    <StatsBanner :stats="stats" :loading="statsLoading" @stat-click="handleStatClick" />
+
+    <!-- 主内容区域：Grid 两列布局 -->
+    <div class="dashboard-main">
+      <!-- 左侧：Log 小窗 -->
+      <div class="dashboard-left">
+        <LogWindow
+          :logs="logs"
+          :loading="logsLoading"
+          @log-click="handleLogClick"
+          @filter-change="handleLogFilterChange"
+          @refresh="handleLogRefresh"
+        />
       </div>
-    </NCard>
 
-    <NCard title="📊 系统监控" size="small" class="monitoring-card">
-      <NGrid cols="2 640:4" responsive="screen" x-gap="16" y-gap="16">
-        <NGridItem>
-          <div class="mini-stat-card">
-            <div class="mini-stat-icon">🔐</div>
-            <div class="mini-stat-content">
-              <div class="mini-stat-value">{{ systemStats.totalRequests }}</div>
-              <div class="mini-stat-label">认证请求</div>
-            </div>
-          </div>
-        </NGridItem>
-        <NGridItem>
-          <div class="mini-stat-card">
-            <div class="mini-stat-icon">⚠️</div>
-            <div class="mini-stat-content">
-              <div class="mini-stat-value">{{ systemStats.errorRate }}%</div>
-              <div class="mini-stat-label">错误率</div>
-            </div>
-          </div>
-        </NGridItem>
-        <NGridItem>
-          <div class="mini-stat-card">
-            <div class="mini-stat-icon">🔗</div>
-            <div class="mini-stat-content">
-              <div class="mini-stat-value">{{ systemStats.activeConnections }}</div>
-              <div class="mini-stat-label">活跃连接</div>
-            </div>
-          </div>
-        </NGridItem>
-        <NGridItem>
-          <div class="mini-stat-card">
-            <div class="mini-stat-icon">🛡️</div>
-            <div class="mini-stat-content">
-              <div class="mini-stat-value">{{ systemStats.rateLimitBlocks }}</div>
-              <div class="mini-stat-label">限流拦截</div>
-            </div>
-          </div>
-        </NGridItem>
-      </NGrid>
-      <NDivider style="margin: 20px 0" />
-      <NSpace vertical :size="12">
-        <div class="status-row">
-          <span class="status-label">Supabase:</span>
-          <NTag
-            :type="supabaseStatus?.status === 'online' ? 'success' : 'error'"
-            size="small"
-            :bordered="false"
-          >
-            {{ supabaseStatus?.status || '未知' }}
-          </NTag>
-          <span v-if="supabaseStatus?.latency_ms" class="status-detail">
-            {{ supabaseStatus.latency_ms.toFixed(0) }}ms
-          </span>
-        </div>
-        <div class="status-row">
-          <span class="status-label">端点监控:</span>
-          <NTag
-            :type="monitorStatus.is_running ? 'success' : 'default'"
-            size="small"
-            :bordered="false"
-          >
-            {{ monitorStatus.is_running ? '运行中' : '已停止' }}
-          </NTag>
-          <span v-if="monitorStatus.last_run_at" class="status-detail">
-            最近: {{ monitorStatus.last_run_at }}
-          </span>
-        </div>
-        <div class="status-row">
-          <span class="status-label">用户类型:</span>
-          <NTag
-            :type="userInfo?.user_type === 'permanent' ? 'success' : 'warning'"
-            size="small"
-            :bordered="false"
-          >
-            {{ userInfo?.user_type === 'permanent' ? '永久用户' : '匿名用户' }}
-          </NTag>
-        </div>
-      </NSpace>
-    </NCard>
-
-    <NCard title="🤖 AI模型能力" size="small" class="ai-card">
-      <NGrid cols="2 640:3 960:6" responsive="screen" x-gap="16" y-gap="16">
-        <NGridItem>
-          <div class="mini-stat-card">
-            <div class="mini-stat-icon">📊</div>
-            <div class="mini-stat-content">
-              <div class="mini-stat-value">{{ totalEndpoints }}</div>
-              <div class="mini-stat-label">端点数量</div>
-            </div>
-          </div>
-        </NGridItem>
-        <NGridItem>
-          <div class="mini-stat-card">
-            <div class="mini-stat-icon">✅</div>
-            <div class="mini-stat-content">
-              <div class="mini-stat-value">{{ activeEndpoints }}</div>
-              <div class="mini-stat-label">已启用</div>
-            </div>
-          </div>
-        </NGridItem>
-        <NGridItem>
-          <div class="mini-stat-card">
-            <div class="mini-stat-icon">🔄</div>
-            <div class="mini-stat-content">
-              <div class="mini-stat-value">{{ syncedEndpoints }}</div>
-              <div class="mini-stat-label">已同步</div>
-            </div>
-          </div>
-        </NGridItem>
-        <NGridItem>
-          <div class="mini-stat-card">
-            <div class="mini-stat-icon">🟢</div>
-            <div class="mini-stat-content">
-              <div class="mini-stat-value">{{ monitoredEndpoints }}</div>
-              <div class="mini-stat-label">在线</div>
-            </div>
-          </div>
-        </NGridItem>
-        <NGridItem v-if="aggregatedModels">
-          <div class="mini-stat-card">
-            <div class="mini-stat-icon">🤖</div>
-            <div class="mini-stat-content">
-              <div class="mini-stat-value">{{ aggregatedModels }}</div>
-              <div class="mini-stat-label">候选模型</div>
-            </div>
-          </div>
-        </NGridItem>
-        <NGridItem v-if="defaultEndpoint">
-          <div class="mini-stat-card highlight">
-            <div class="mini-stat-icon">⭐</div>
-            <div class="mini-stat-content">
-              <div class="mini-stat-value mini-stat-text">
-                {{ defaultEndpoint.name || defaultEndpoint.model }}
-              </div>
-              <div class="mini-stat-label">默认端点</div>
-            </div>
-          </div>
-        </NGridItem>
-      </NGrid>
-      <NDivider style="margin: 20px 0" />
-      <div class="action-buttons">
-        <NButton type="primary" size="medium" @click="goToCatalog">
-          <template #icon>
-            <span>📦</span>
-          </template>
-          管理端点
-        </NButton>
-        <NButton type="info" size="medium" @click="goToMapping">
-          <template #icon>
-            <span>🗺️</span>
-          </template>
-          模型映射
-        </NButton>
-        <NButton type="success" size="medium" @click="goToJwt">
-          <template #icon>
-            <span>🔬</span>
-          </template>
-          JWT测试
-        </NButton>
+      <!-- 右侧：用户活跃度图表 -->
+      <div class="dashboard-right">
+        <UserActivityChart
+          :time-range="chartTimeRange"
+          :data="chartData"
+          :loading="statsLoading"
+          @time-range-change="handleTimeRangeChange"
+        />
       </div>
-    </NCard>
+    </div>
 
-    <NCard
-      title="📊 端点状态"
-      size="small"
-      :loading="modelsLoading"
-      class="status-card modern-card"
-    >
-      <template v-if="endpointRows.length">
-        <div class="table-wrapper">
-          <NTable :single-line="false" size="small" striped>
-            <thead>
-              <tr>
-                <th style="min-width: 180px">名称</th>
-                <th style="min-width: 200px">基础地址</th>
-                <th style="width: 100px; text-align: center">候选模型</th>
-                <th style="width: 100px; text-align: center">状态</th>
-                <th style="width: 140px">最后检测</th>
-                <th style="width: 100px; text-align: center">同步</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="endpoint in endpointRows" :key="endpoint.id">
-                <td>
-                  <div class="endpoint-name">
-                    <div class="name-row">
-                      <span class="name-text">{{ endpoint.name }}</span>
-                      <NSpace :size="4" style="margin-left: 8px">
-                        <NTag
-                          v-if="endpoint.is_default"
-                          type="primary"
-                          size="tiny"
-                          :bordered="false"
-                        >
-                          默认
-                        </NTag>
-                        <NTag
-                          v-if="endpoint.is_active"
-                          type="success"
-                          size="tiny"
-                          :bordered="false"
-                        >
-                          启用
-                        </NTag>
-                      </NSpace>
-                    </div>
-                    <div class="model-text">{{ endpoint.model || '未指定模型' }}</div>
-                  </div>
-                </td>
-                <td>
-                  <NTooltip trigger="hover">
-                    <template #trigger>
-                      <span class="url-text">{{ endpoint.base_url }}</span>
-                    </template>
-                    <template #default>
-                      <div
-                        v-for="(url, key) in endpoint.resolved_endpoints"
-                        :key="key"
-                        class="tooltip-line"
-                      >
-                        <strong>{{ key }}</strong
-                        >：{{ url }}
-                      </div>
-                    </template>
-                  </NTooltip>
-                </td>
-                <td style="text-align: center">
-                  <span v-if="endpoint.candidateCount" class="count-badge">
-                    {{ endpoint.candidateCount }}
-                  </span>
-                  <span v-else class="text-gray-400">--</span>
-                </td>
-                <td style="text-align: center">
-                  <NTag
-                    :type="
-                      endpoint.status === 'online'
-                        ? 'success'
-                        : endpoint.status === 'offline'
-                        ? 'error'
-                        : 'warning'
-                    "
-                    size="small"
-                    :bordered="false"
-                  >
-                    {{ endpoint.status || '未知' }}
-                  </NTag>
-                </td>
-                <td>
-                  <span class="time-text">{{ endpoint.last_checked_at || '--' }}</span>
-                </td>
-                <td style="text-align: center">
-                  <NTag
-                    :type="endpoint.sync_status === 'synced' ? 'success' : 'warning'"
-                    size="small"
-                    :bordered="false"
-                  >
-                    {{ endpoint.sync_status || '未同步' }}
-                  </NTag>
-                </td>
-              </tr>
-            </tbody>
-          </NTable>
-        </div>
-      </template>
-      <NEmpty v-else description="暂无端点信息" />
-    </NCard>
+    <!-- 配置弹窗 -->
+    <PollingConfig
+      v-model:show="showConfigModal"
+      :config="dashboardConfig"
+      @save="handleConfigSave"
+    />
 
-    <NCard
-      title="🗺️ 映射覆盖"
-      size="small"
-      :loading="mappingsLoading"
-      class="mapping-card modern-card"
-    >
-      <div v-if="mappingScopeStats.length" class="scope-stats">
-        <span class="stats-label">按业务域统计：</span>
-        <NSpace wrap :size="8">
-          <NTag
-            v-for="item in mappingScopeStats"
-            :key="item.scope"
-            type="info"
-            :bordered="false"
-            size="small"
-          >
-            {{ item.scope }}：{{ item.count }}
-          </NTag>
-        </NSpace>
-      </div>
-      <template v-if="mappingRows.length">
-        <div class="table-wrapper">
-          <NTable :single-line="false" size="small" striped>
-            <thead>
-              <tr>
-                <th style="width: 120px; text-align: center">业务域</th>
-                <th style="min-width: 160px">对象名称</th>
-                <th style="min-width: 140px">默认模型</th>
-                <th>候选模型</th>
-                <th style="width: 140px">更新时间</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="mapping in mappingRows" :key="mapping.id">
-                <td style="text-align: center">
-                  <NTag type="info" size="small" :bordered="false">
-                    {{ mapping.scope_type }}
-                  </NTag>
-                </td>
-                <td>
-                  <span class="name-text">{{ mapping.name || mapping.scope_key }}</span>
-                </td>
-                <td>
-                  <span class="model-text">{{ mapping.default_model || '--' }}</span>
-                </td>
-                <td>
-                  <NSpace wrap :size="6">
-                    <NTag
-                      v-for="model in mapping.candidates"
-                      :key="model"
-                      size="small"
-                      :bordered="false"
-                      type="default"
-                    >
-                      {{ model }}
-                    </NTag>
-                  </NSpace>
-                </td>
-                <td>
-                  <span class="time-text">{{ mapping.updated_at || '--' }}</span>
-                </td>
-              </tr>
-            </tbody>
-          </NTable>
-        </div>
-      </template>
-      <NEmpty v-else description="暂无映射记录" />
-    </NCard>
+    <!-- 统计详情弹窗 -->
+    <StatDetailModal v-model:show="showStatDetailModal" :stat="selectedStat" />
   </div>
 </template>
 
+
+
 <style scoped>
-.workbench-container {
+.dashboard-container {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   padding: 4px;
+  min-height: 100vh;
 }
 
-.hero-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 16px;
-  padding: 40px 32px;
-  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
-  margin-bottom: 4px;
-  position: relative;
-  overflow: hidden;
-}
-
-.hero-header::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  right: -20%;
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
-  border-radius: 50%;
-}
-
-.hero-content {
-  position: relative;
-  z-index: 1;
+/* 顶部工具栏 */
+.dashboard-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 24px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
 }
 
-.hero-main {
-  flex: 1;
-  min-width: 300px;
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
-.hero-title {
+.dashboard-title {
   margin: 0;
-  font-size: 36px;
+  font-size: 24px;
   font-weight: 700;
   color: white;
   letter-spacing: -0.5px;
+}
+
+.header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
 }
 
-.wave-emoji {
-  display: inline-block;
-  animation: wave 2s infinite;
-  transform-origin: 70% 70%;
-}
-
-@keyframes wave {
-  0%,
-  100% {
-    transform: rotate(0deg);
-  }
-  10%,
-  30% {
-    transform: rotate(14deg);
-  }
-  20% {
-    transform: rotate(-8deg);
-  }
-  40% {
-    transform: rotate(14deg);
-  }
-  50% {
-    transform: rotate(10deg);
-  }
-  60% {
-    transform: rotate(0deg);
-  }
-}
-
-.hero-subtitle {
-  margin: 8px 0 0 0;
-  font-size: 16px;
-  color: rgba(255, 255, 255, 0.9);
-  font-weight: 400;
-}
-
-.hero-stats {
-  display: flex;
-  gap: 24px;
-  align-items: center;
-}
-
-.hero-stat-item {
-  text-align: center;
-}
-
-.stat-value {
-  font-size: 32px;
-  font-weight: 700;
-  color: white;
-  line-height: 1;
-  margin-bottom: 6px;
-}
-
-.stat-label {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
-  font-weight: 500;
-}
-
-.hero-stat-divider {
-  width: 1px;
-  height: 40px;
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.modules-grid {
+/* 主内容区域：Grid 两列布局 */
+.dashboard-main {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-columns: 300px 1fr;
+  gap: 20px;
+  min-height: 600px;
 }
 
-.module-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px;
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.module-card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
-  border-color: transparent;
-}
-
-.module-icon {
-  width: 52px;
-  height: 52px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 26px;
-  border-radius: 12px;
-  color: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  flex-shrink: 0;
-}
-
-.module-info {
-  flex: 1;
+.dashboard-left {
   min-width: 0;
 }
 
-.module-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 4px;
-}
-
-.module-desc {
-  font-size: 12px;
-  color: #6b7280;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mini-stat-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  transition: all 0.3s ease;
-  height: 100%;
-}
-
-.mini-stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border-color: #2080f0;
-}
-
-.mini-stat-card.highlight {
-  background: linear-gradient(135deg, #fff5e6 0%, #ffffff 100%);
-  border-color: #f0a020;
-}
-
-.mini-stat-icon {
-  font-size: 28px;
-  flex-shrink: 0;
-}
-
-.mini-stat-content {
-  flex: 1;
+.dashboard-right {
   min-width: 0;
 }
 
-.mini-stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: #333;
-  line-height: 1.2;
+/* 响应式布局 */
+@media (max-width: 1200px) {
+  .dashboard-main {
+    grid-template-columns: 250px 1fr;
+  }
 }
 
-.mini-stat-value.mini-stat-text {
-  font-size: 14px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+@media (max-width: 768px) {
+  .dashboard-main {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
 
-.mini-stat-label {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 4px;
-}
+  .dashboard-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
 
-.action-buttons {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
+  .header-left {
+    width: 100%;
+  }
 
-.table-wrapper {
-  overflow-x: auto;
-}
-
-.endpoint-name {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.name-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.name-text {
-  font-weight: 500;
-  color: #333;
-}
-
-.model-text {
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.url-text {
-  color: #2080f0;
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-}
-
-.url-text:hover {
-  color: #4098fc;
-}
-
-.count-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  background-color: #f0f0f0;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.time-text {
-  font-size: 12px;
-  color: #666;
-}
-
-.tooltip-line {
-  padding: 2px 0;
-  line-height: 1.6;
-}
-
-.tooltip-line strong {
-  color: #2080f0;
-}
-
-.scope-stats {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding: 12px;
-  background-color: #fafafa;
-  border-radius: 6px;
-}
-
-.stats-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: #6b7280;
-}
-
-.text-gray-400 {
-  color: #9ca3af;
-}
-.text-gray-500 {
-  color: #6b7280;
-}
-.text-primary {
-  color: #2080f0;
-}
-.cursor-pointer {
-  cursor: pointer;
-}
-.mt-1 {
-  margin-top: 4px;
-}
-.mr-2 {
-  margin-right: 8px;
-}
-.flex {
-  display: flex;
-}
-.items-center {
-  align-items: center;
-}
-.gap-2 {
-  gap: 8px;
-}
-
-.monitoring-card {
-  margin-bottom: 24px;
-}
-
-.status-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  background-color: #fafafa;
-  border-radius: 6px;
-}
-
-.status-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: #6b7280;
-  min-width: 80px;
-}
-
-.status-detail {
-  font-size: 12px;
-  color: #9ca3af;
-  margin-left: auto;
+  .header-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 </style>
