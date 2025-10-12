@@ -6,8 +6,6 @@
 $ErrorActionPreference = 'Stop'
 $BACKEND_PORT = 9999
 $FRONTEND_PORT = 3101
-$BACKEND_HEALTH_URL = "http://localhost:$BACKEND_PORT/api/v1/healthz"
-$FRONTEND_URL = "http://localhost:$FRONTEND_PORT"
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
@@ -73,29 +71,27 @@ function Clear-Port {
     return $true
 }
 
-# Function to wait for service health
-function Wait-ServiceHealth {
-    param($Url, $Name, $MaxRetries = 30)
+# Function to wait for port to be listening
+function Wait-PortListening {
+    param($Port, $Name, $MaxRetries = 30)
 
-    Write-Host "[$Name] Waiting for service to be ready..." -ForegroundColor Yellow
+    Write-Host "[$Name] Waiting for port $Port to be ready..." -ForegroundColor Yellow
 
     for ($i = 1; $i -le $MaxRetries; $i++) {
-        try {
-            $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
-            if ($response.StatusCode -eq 200) {
-                Write-Host "[$Name] Service is ready! (attempt $i/$MaxRetries)" -ForegroundColor Green
-                return $true
-            }
-        } catch {
-            # Service not ready yet, continue waiting
-            if ($i % 5 -eq 0) {
-                Write-Host "[$Name] Still waiting... (attempt $i/$MaxRetries)" -ForegroundColor DarkYellow
-            }
+        $connections = netstat -ano | Select-String ":$Port " | Select-String "LISTENING"
+
+        if ($connections) {
+            Write-Host "[$Name] Service is ready on port $Port! (attempt $i/$MaxRetries)" -ForegroundColor Green
+            return $true
+        }
+
+        if ($i % 5 -eq 0) {
+            Write-Host "[$Name] Still waiting... (attempt $i/$MaxRetries)" -ForegroundColor DarkYellow
         }
 
         if ($i -eq $MaxRetries) {
             Write-Host "[$Name] Service failed to start (timeout after $MaxRetries seconds)" -ForegroundColor Red
-            Write-Host "[$Name] Last error: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "[$Name] Check the service terminal window for error messages" -ForegroundColor Yellow
             return $false
         }
 
@@ -162,10 +158,10 @@ Write-Host "  API Docs: http://localhost:$BACKEND_PORT/docs" -ForegroundColor Wh
 
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot'; Write-Host 'Starting backend server...' -ForegroundColor Cyan; python run.py"
 
-# Wait for backend to be ready (increased timeout for first start)
-if (-not (Wait-ServiceHealth -Url $BACKEND_HEALTH_URL -Name "Backend" -MaxRetries 60)) {
+# Wait for backend to be ready (check port instead of HTTP)
+if (-not (Wait-PortListening -Port $BACKEND_PORT -Name "Backend" -MaxRetries 30)) {
     Write-Host ""
-    Write-Host "Backend failed to start within 60 seconds." -ForegroundColor Red
+    Write-Host "Backend failed to start within 30 seconds." -ForegroundColor Red
     Write-Host "Possible reasons:" -ForegroundColor Yellow
     Write-Host "  1. Check the backend PowerShell window for error messages" -ForegroundColor Yellow
     Write-Host "  2. Database initialization may be taking longer than expected" -ForegroundColor Yellow
@@ -182,10 +178,10 @@ Write-Host "  URL: http://localhost:$FRONTEND_PORT" -ForegroundColor White
 
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\web'; Write-Host 'Starting frontend server...' -ForegroundColor Cyan; pnpm dev"
 
-# Wait for frontend to be ready (increased timeout for dependency installation)
-if (-not (Wait-ServiceHealth -Url $FRONTEND_URL -Name "Frontend" -MaxRetries 60)) {
+# Wait for frontend to be ready (check port instead of HTTP)
+if (-not (Wait-PortListening -Port $FRONTEND_PORT -Name "Frontend" -MaxRetries 30)) {
     Write-Host ""
-    Write-Host "Frontend failed to start within 60 seconds." -ForegroundColor Red
+    Write-Host "Frontend failed to start within 30 seconds." -ForegroundColor Red
     Write-Host "Possible reasons:" -ForegroundColor Yellow
     Write-Host "  1. Check the frontend PowerShell window for error messages" -ForegroundColor Yellow
     Write-Host "  2. First run may take longer (installing node_modules)" -ForegroundColor Yellow
