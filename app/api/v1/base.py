@@ -71,9 +71,16 @@ def create_test_jwt_token(username: str) -> str:
     }
 
     # 使用Supabase JWT secret签名
+    jwt_secret = settings.supabase_jwt_secret
+    if not jwt_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="JWT secret is not configured"
+        )
+    
     token = jwt.encode(
         payload,
-        settings.supabase_jwt_secret,
+        jwt_secret,
         algorithm="HS256"
     )
 
@@ -188,6 +195,55 @@ async def get_user_menu(
     # 临时硬编码菜单，实际应该从数据库查询
     menus = [
         {
+            "name": "Dashboard",
+            "path": "/dashboard",
+            "component": "/dashboard",
+            "icon": "mdi:view-dashboard-outline",
+            "order": 0,
+            "is_hidden": False,
+            "redirect": None,
+            "keepalive": False,
+        },
+        {
+            "name": "AI模型管理",
+            "path": "/ai",
+            "component": "/ai",
+            "icon": "mdi:robot-outline",
+            "order": 5,
+            "is_hidden": False,
+            "redirect": None,
+            "keepalive": False,
+            "children": [
+                {
+                    "name": "模型目录",
+                    "path": "catalog",
+                    "component": "/ai/model-suite/catalog",
+                    "icon": "mdi:database-cog",
+                    "order": 1,
+                    "is_hidden": False,
+                    "keepalive": False,
+                },
+                {
+                    "name": "模型映射",
+                    "path": "mapping",
+                    "component": "/ai/model-suite/mapping",
+                    "icon": "mdi:graph-outline",
+                    "order": 2,
+                    "is_hidden": False,
+                    "keepalive": False,
+                },
+                {
+                    "name": "JWT测试",
+                    "path": "jwt",
+                    "component": "/ai/model-suite/jwt",
+                    "icon": "mdi:chat-processing-outline",
+                    "order": 3,
+                    "is_hidden": False,
+                    "keepalive": False,
+                },
+            ],
+        },
+        {
             "name": "系统管理",
             "path": "/system",
             "component": "/system",
@@ -212,42 +268,6 @@ async def get_user_menu(
                     "component": "/system/ai/prompt",
                     "icon": "carbon:prompt-template",
                     "order": 2,
-                    "is_hidden": False,
-                    "keepalive": False,
-                },
-                {
-                    "name": "模型总览",
-                    "path": "ai/model-suite/dashboard",
-                    "component": "/ai/model-suite/dashboard",
-                    "icon": "mdi:view-dashboard-outline",
-                    "order": 1,
-                    "is_hidden": False,
-                    "keepalive": False,
-                },
-                {
-                    "name": "模型目录",
-                    "path": "ai/model-suite/catalog",
-                    "component": "/ai/model-suite/catalog",
-                    "icon": "mdi:database-cog",
-                    "order": 2,
-                    "is_hidden": False,
-                    "keepalive": False,
-                },
-                {
-                    "name": "模型映射",
-                    "path": "ai/model-suite/mapping",
-                    "component": "/ai/model-suite/mapping",
-                    "icon": "mdi:graph-outline",
-                    "order": 3,
-                    "is_hidden": False,
-                    "keepalive": False,
-                },
-                {
-                    "name": "JWT 对话压测",
-                    "path": "ai/model-suite/jwt",
-                    "component": "/ai/model-suite/jwt",
-                    "icon": "mdi:chat-processing-outline",
-                    "order": 4,
                     "is_hidden": False,
                     "keepalive": False,
                 },

@@ -98,7 +98,7 @@ async function handleLogin() {
       Reflect.deleteProperty(query, 'redirect')
       router.push({ path, query })
     } else {
-      router.push('/')
+      router.push('/ai/model-suite/dashboard')
     }
   } catch (e) {
     console.error('login error', e.error)

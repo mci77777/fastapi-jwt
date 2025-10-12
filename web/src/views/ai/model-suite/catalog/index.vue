@@ -143,7 +143,7 @@ onMounted(() => {
 
 <template>
   <NSpace vertical size="large">
-    <NCard title="模型概览" size="small" bordered>
+    <NCard title="Dashboard 概览" size="small" bordered>
       <NSpace justify="space-between" align="center" wrap>
         <NSpace wrap>
           <NStatistic label="端点数量" :value="totalEndpoints" />
@@ -163,11 +163,7 @@ onMounted(() => {
       <div v-if="availableModelNames.length" class="text-xs text-gray-500">
         <div class="flex items-center justify-between">
           <span class="mr-2">可用模型（{{ availableModelNames.length }}）：</span>
-          <NButton
-            text
-            size="tiny"
-            @click="showAllModels = !showAllModels"
-          >
+          <NButton text size="tiny" @click="showAllModels = !showAllModels">
             {{ showAllModels ? '收起' : '展开全部' }}
           </NButton>
         </div>
@@ -182,7 +178,7 @@ onMounted(() => {
             :key="name"
             size="small"
             :bordered="false"
-            class="mr-1 mb-1"
+            class="mb-1 mr-1"
           >
             {{ name }}
           </NTag>
@@ -329,9 +325,7 @@ onMounted(() => {
         </NButton>
       </div>
       <div v-if="showMore && models.length > pageSize" class="mt-4 text-center">
-        <NButton text @click="showMore = false">
-          收起
-        </NButton>
+        <NButton text @click="showMore = false"> 收起 </NButton>
       </div>
     </NCard>
 

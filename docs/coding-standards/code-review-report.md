@@ -416,7 +416,7 @@ async function handleSubmit() {
 ```vue
 <script setup>
 /**
- * AI 模型仪表盘组件
+ * AI 模型 Dashboard 组件
  *
  * 功能：
  * - 显示端点统计信息（总数、启用、同步、在线）

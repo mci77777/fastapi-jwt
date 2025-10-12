@@ -11,8 +11,15 @@
 - `deployment/README.md`：Supabase 匿名 JWT 部署摘要。
 - `features/ai_endpoint/plan.md`：AI Endpoint 规划及测试摘要。
 - `features/ai_endpoint/implementation.md`：AI API 管理功能的双层存储、同步与测试说明（2025-10）。
+- `features/model_management/`：AI模型管理功能文档（2025-01）
+  - `implementation.md`：实现细节，包括Dashboard首页、路由配置、已知问题修复
+  - `spec_plan.md`：功能规划与实施计划
+  - `testing.md`：测试用例与验证步骤
 - `jwt改` 与 `jwt改造`：JWT 改造阶段归档摘要。
 - `runbooks/README.md`：运行手册速查。
 - `task/README.md`：匿名 E2E 任务摘要。
+
+## 最近更新
+- **2025-01-11**: Dashboard作为系统首页实现完成，修复登录后动态路由加载时序问题
 
 详细记录已在各摘要下注明，可通过 git 历史或备份目录追溯原始文档。

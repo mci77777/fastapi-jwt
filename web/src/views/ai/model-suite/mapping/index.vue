@@ -216,9 +216,7 @@ onMounted(() => {
                   </NSpace>
                 </div>
                 <div v-else>
-                  <NTag size="small" :bordered="false">
-                    {{ item.candidates.length }} 个模型
-                  </NTag>
+                  <NTag size="small" :bordered="false"> {{ item.candidates.length }} 个模型 </NTag>
                   <NTooltip>
                     <template #trigger>
                       <NButton text size="tiny" type="info" class="ml-2">查看全部</NButton>

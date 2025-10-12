@@ -317,8 +317,9 @@ onBeforeUnmount(() => {
               :show-indicator="true"
             />
             <div class="mt-2 text-sm text-gray-500">
-              进度: {{ loadSummary.completed_count || 0 }} / {{ loadSummary.batch_size || 0 }}
-              (成功: {{ loadSummary.success_count || 0 }}, 失败: {{ loadSummary.failure_count || 0 }})
+              进度: {{ loadSummary.completed_count || 0 }} /
+              {{ loadSummary.batch_size || 0 }} (成功: {{ loadSummary.success_count || 0 }}, 失败:
+              {{ loadSummary.failure_count || 0 }})
             </div>
           </NCard>
         </div>

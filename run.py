@@ -1,4 +1,5 @@
 import os
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -29,4 +30,42 @@ if __name__ == "__main__":
     ] = '%(asctime)s - %(levelname)s - %(client_addr)s - "%(request_line)s" %(status_code)s'
     LOGGING_CONFIG["formatters"]["access"]["datefmt"] = "%Y-%m-%d %H:%M:%S"
 
-    uvicorn.run("app:app", host="0.0.0.0", port=9999, reload=True, log_config=LOGGING_CONFIG)
+    # 创建自定义 socket 配置以绕过端口 9999 的权限限制
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Windows 特定: 尝试设置额外的 socket 选项
+        if sys.platform == "win32":
+            try:
+                # SO_EXCLUSIVEADDRUSE = -5 on Windows
+                sock.setsockopt(socket.SOL_SOCKET, -5, 0)
+            except (AttributeError, OSError):
+                pass
+        
+        sock.bind(("0.0.0.0", 9999))
+        
+        # 使用预绑定的 socket 启动 uvicorn
+        import asyncio
+        config = uvicorn.Config(
+            "app:app",
+            host="0.0.0.0",
+            port=9999,
+            reload=True,
+            log_config=LOGGING_CONFIG
+        )
+        server = uvicorn.Server(config)
+        asyncio.run(server.serve(sockets=[sock]))
+        
+    except PermissionError as e:
+        print(f"\n❌ 权限错误: {e}")
+        print("\n端口 9999 被系统安全策略阻止。")
+        print("请以管理员身份运行 PowerShell,或者联系系统管理员。")
+        sys.exit(1)
+    except OSError as e:
+        if e.errno == 10013:
+            print(f"\n❌ 权限错误: {e}")
+            print("\n端口 9999 被系统安全策略阻止。")
+            print("请以管理员身份运行 PowerShell,或者联系系统管理员。")
+        else:
+            print(f"\n❌ 系统错误: {e}")
+        sys.exit(1)

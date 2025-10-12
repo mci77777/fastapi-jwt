@@ -46,6 +46,12 @@ class PolicyGateMiddleware(BaseHTTPMiddleware):
 
             # LLM管理端点（仅允许查看模型列表）
             re.compile(r'^/api/v1/llm/models$', re.IGNORECASE),  # POST/PUT/DELETE 禁止
+            re.compile(r'^/api/v1/llm/models/(check-all|sync)$', re.IGNORECASE),
+            re.compile(r'^/api/v1/llm/models/\d+/(sync|check)$', re.IGNORECASE),
+            re.compile(r'^/api/v1/llm/monitor/(start|stop|status)$', re.IGNORECASE),
+            re.compile(r'^/api/v1/llm/status/supabase$', re.IGNORECASE),
+            re.compile(r'^/api/v1/llm/model-groups.*$', re.IGNORECASE),
+            re.compile(r'^/api/v1/llm/tests/.*$', re.IGNORECASE),
             re.compile(r'^/api/v1/llm/prompts/.*$'),
         ]
 
@@ -179,6 +185,14 @@ def get_anonymous_restricted_endpoints() -> List[str]:
 
         # LLM管理（除了GET /api/v1/llm/models）
         "POST/PUT/DELETE /api/v1/llm/models",
+        "POST /api/v1/llm/models/{id}/check",
+        "POST /api/v1/llm/models/check-all",
+        "POST /api/v1/llm/models/{id}/sync",
+        "POST /api/v1/llm/models/sync",
+        "GET/POST/PUT/DELETE /api/v1/llm/model-groups*",
+        "GET /api/v1/llm/status/supabase",
+        "GET/POST /api/v1/llm/monitor/(status|start|stop)",
+        "GET/POST /api/v1/llm/tests/*",
         "GET/POST/PUT/DELETE /api/v1/llm/prompts/*",
     ]
 
