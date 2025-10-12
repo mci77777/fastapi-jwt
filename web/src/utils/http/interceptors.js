@@ -50,13 +50,26 @@ export async function resReject(error) {
   }
   const { data, status } = error.response
 
-  if (data?.code === 401) {
+  // 修复：检查 HTTP 状态码 401（Token 过期）
+  if (status === 401 || data?.code === 401) {
     try {
-      const userStore = useUserStore()
-      userStore.logout()
-    } catch (error) {
-      console.log('resReject error', error)
-      return
+      // 清除本地存储
+      localStorage.removeItem('token')
+      localStorage.removeItem('userInfo')
+
+      // 显示友好提示
+      window.$message?.error('登录已过期，请重新登录')
+
+      // 重定向到登录页
+      window.location.href = '/login'
+
+      // 阻止后续错误处理
+      return Promise.reject({ code: 401, message: 'Token expired', error: data })
+    } catch (err) {
+      console.error('Token 过期处理失败:', err)
+      // 即使出错也要重定向到登录页
+      window.location.href = '/login'
+      return Promise.reject({ code: 401, message: 'Token expired', error: data })
     }
   }
   // 后端返回的response数据
