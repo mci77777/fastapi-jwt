@@ -193,6 +193,7 @@ async def get_user_menu(
     logger.info("=== get_user_menu called === v3")
 
     # 临时硬编码菜单，实际应该从数据库查询
+    # 菜单配置：Dashboard (0) → 系统管理 (5) → AI模型管理 (10)
     menus = [
         {
             "name": "Dashboard",
