@@ -46,6 +46,10 @@ async def lifespan(app: FastAPI):
     app.state.dashboard_broker = DashboardBroker(app.state.metrics_collector)
     app.state.sync_service = SyncService(sqlite_manager)
 
+    # AI 服务层（注入 SQLiteManager 用于统计记录）
+    app.state.message_broker = MessageEventBroker()
+    app.state.ai_service = AIService(db_manager=sqlite_manager)
+
     try:
         yield
     finally:
@@ -91,8 +95,7 @@ def create_app() -> FastAPI:
         allow_credentials=settings.cors_allow_credentials,
     )
 
-    app.state.message_broker = MessageEventBroker()
-    app.state.ai_service = AIService()
+    # AIService 和 MessageEventBroker 已在 lifespan() 中初始化
 
     register_exception_handlers(app)
 

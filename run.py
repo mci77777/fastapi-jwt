@@ -30,6 +30,13 @@ if __name__ == "__main__":
     ] = '%(asctime)s - %(levelname)s - %(client_addr)s - "%(request_line)s" %(status_code)s'
     LOGGING_CONFIG["formatters"]["access"]["datefmt"] = "%Y-%m-%d %H:%M:%S"
 
+    # 配置根日志器以显示应用日志
+    LOGGING_CONFIG["loggers"][""] = {
+        "handlers": ["default"],
+        "level": "INFO",
+        "propagate": False,
+    }
+
     # 创建自定义 socket 配置以绕过端口 9999 的权限限制
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

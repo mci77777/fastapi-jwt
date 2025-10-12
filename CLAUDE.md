@@ -1,6 +1,13 @@
 # GymBro FastAPI + Vue3 Admin - Copilot 指令
 
 > 现代化全栈 RBAC 管理平台：FastAPI + Vue3 + JWT 认证 + 限流 + 策略访问控制
+# 调试文档
+```
+D:\GymBro\vue-fastapi-admin\docs\dashboard-refactor\ARCHITECTURE_OVERVIEW.md
+D:\GymBro\vue-fastapi-admin\docs\dashboard-refactor\CODE_REVIEW_AND_GAP_ANALYSIS.md
+D:\GymBro\vue-fastapi-admin\docs\dashboard-refactor\IMPLEMENTATION_PLAN.md
+D:\GymBro\vue-fastapi-admin\docs\dashboard-refactor\IMPLEMENTATION_SPEC.md
+```
 
 ## 🏗️ 架构总览
 

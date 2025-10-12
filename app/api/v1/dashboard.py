@@ -74,7 +74,7 @@ async def dashboard_websocket(
     连接流程:
         1. JWT 验证
         2. 检查用户类型（匿名用户禁止访问）
-        3. 接受连接
+        3. 接受连接并注册到连接池
         4. 每 10 秒推送一次统计数据
         5. 断线时清理连接
     """
@@ -98,6 +98,9 @@ async def dashboard_websocket(
 
     # 获取服务
     broker: DashboardBroker = request.app.state.dashboard_broker
+
+    # 注册连接到连接池
+    await broker.add_connection(user.uid, websocket)
 
     try:
         while True:
@@ -124,6 +127,9 @@ async def dashboard_websocket(
             await websocket.close(code=1011, reason="Internal server error")
         except Exception:
             pass
+    finally:
+        # 确保无论如何都清理连接
+        await broker.remove_connection(user.uid)
 
 
 # ============================================================================
@@ -282,3 +288,81 @@ async def get_recent_logs(
     logs = log_collector.get_recent_logs(level=level, limit=limit)
     return {"level": level, "limit": limit, "count": len(logs), "logs": logs}
 
+
+# ============================================================================
+# 配置管理端点
+# ============================================================================
+
+
+class DashboardConfig(BaseModel):
+    """Dashboard 配置。"""
+
+    websocket_push_interval: int = Field(10, ge=1, le=300, description="WebSocket 推送间隔（秒）")
+    http_poll_interval: int = Field(30, ge=5, le=600, description="HTTP 轮询间隔（秒）")
+    log_retention_size: int = Field(100, ge=10, le=1000, description="日志保留条数")
+
+
+class DashboardConfigResponse(BaseModel):
+    """Dashboard 配置响应。"""
+
+    config: DashboardConfig = Field(..., description="当前配置")
+    updated_at: Optional[str] = Field(None, description="最后更新时间")
+
+
+@router.get("/stats/config", response_model=DashboardConfigResponse)
+async def get_dashboard_config(
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> DashboardConfigResponse:
+    """获取 Dashboard 配置。
+
+    Args:
+        request: FastAPI 请求对象
+        current_user: 当前用户
+
+    Returns:
+        Dashboard 配置
+    """
+    # 从 app.state 获取配置（如果不存在则使用默认值）
+    if not hasattr(request.app.state, "dashboard_config"):
+        request.app.state.dashboard_config = {
+            "config": DashboardConfig(),
+            "updated_at": None,
+        }
+
+    config_data = request.app.state.dashboard_config
+    return DashboardConfigResponse(**config_data)
+
+
+@router.put("/stats/config", response_model=DashboardConfigResponse)
+async def update_dashboard_config(
+    request: Request,
+    config: DashboardConfig,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> DashboardConfigResponse:
+    """更新 Dashboard 配置。
+
+    Args:
+        request: FastAPI 请求对象
+        config: 新配置
+        current_user: 当前用户
+
+    Returns:
+        更新后的配置
+    """
+    # 仅管理员可更新配置（简化实现，后续可扩展 RBAC）
+    if current_user.user_type == "anonymous":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "forbidden", "message": "Anonymous users cannot update config"},
+        )
+
+    # 更新配置
+    request.app.state.dashboard_config = {
+        "config": config,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+    logger.info("Dashboard config updated by user_id=%s config=%s", current_user.uid, config.dict())
+
+    return DashboardConfigResponse(**request.app.state.dashboard_config)

@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
+from time import perf_counter
 from typing import Any, AsyncIterator, Dict, Optional
 from uuid import uuid4
 
@@ -66,9 +68,14 @@ class MessageEventBroker:
 class AIService:
     """封装 AI 模型调用与聊天记录持久化。"""
 
-    def __init__(self, provider: Optional[AuthProvider] = None) -> None:
+    def __init__(
+        self,
+        provider: Optional[AuthProvider] = None,
+        db_manager: Optional[Any] = None,
+    ) -> None:
         self._settings = get_settings()
         self._provider = provider or get_auth_provider()
+        self._db = db_manager  # SQLiteManager 实例（用于记录统计）
 
     @staticmethod
     def new_message_id() -> str:
@@ -89,6 +96,11 @@ class AIService:
             ),
         )
 
+        # 记录 AI 请求统计（Phase 1）
+        start_time = perf_counter()
+        success = False
+        model_used: Optional[str] = None
+
         try:
             user_details = await anyio.to_thread.run_sync(
                 self._provider.get_user_details,
@@ -104,6 +116,9 @@ class AIService:
                 ),
             )
             await broker.close(message_id)
+            # 记录失败的请求（用户信息获取失败）
+            latency_ms = (perf_counter() - start_time) * 1000
+            await self._record_ai_request(user.uid, None, None, latency_ms, success=False)
             return
 
         await broker.publish(
@@ -116,6 +131,13 @@ class AIService:
 
         try:
             reply_text = await self._generate_reply(message, user, user_details)
+            # 提取使用的模型名称
+            provider = (self._settings.ai_provider or "").lower()
+            if provider == "openai":
+                model_used = self._settings.ai_model or "gpt-4o-mini"
+            else:
+                model_used = "default"
+
             async for chunk in self._stream_chunks(reply_text):
                 await broker.publish(
                     message_id,
@@ -142,6 +164,7 @@ class AIService:
                     data={"message_id": message_id, "reply": reply_text},
                 ),
             )
+            success = True
         except Exception as exc:  # pragma: no cover - 运行时防护
             logger.exception("AI 会话处理失败 message_id=%s", message_id)
             await broker.publish(
@@ -152,6 +175,9 @@ class AIService:
                 ),
             )
         finally:
+            # 记录 AI 请求统计
+            latency_ms = (perf_counter() - start_time) * 1000
+            await self._record_ai_request(user.uid, None, model_used, latency_ms, success)
             await broker.close(message_id)
 
     async def _generate_reply(
@@ -218,3 +244,59 @@ class AIService:
     def _default_reply(self, message: AIMessageInput, user_details: UserDetails) -> str:
         name = user_details.display_name or user_details.email or user_details.uid
         return f"嗨 {name}，我们已收到你的消息：{message.text}"
+
+    async def _record_ai_request(
+        self,
+        user_id: str,
+        endpoint_id: Optional[int],
+        model: Optional[str],
+        latency_ms: float,
+        success: bool,
+    ) -> None:
+        """记录 AI 请求统计到 ai_request_stats 表。
+
+        Args:
+            user_id: 用户 ID
+            endpoint_id: 端点 ID（当前为 None，后续可扩展）
+            model: 模型名称
+            latency_ms: 请求延迟（毫秒）
+            success: 是否成功
+        """
+        if not self._db:
+            # 未注入 SQLiteManager，跳过记录
+            return
+
+        try:
+            today = datetime.now().date().isoformat()
+
+            await self._db.execute(
+                """
+                INSERT INTO ai_request_stats (
+                    user_id, endpoint_id, model, request_date,
+                    count, total_latency_ms, success_count, error_count
+                )
+                VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+                ON CONFLICT(user_id, endpoint_id, model, request_date)
+                DO UPDATE SET
+                    count = count + 1,
+                    total_latency_ms = total_latency_ms + ?,
+                    success_count = success_count + ?,
+                    error_count = error_count + ?,
+                    updated_at = CURRENT_TIMESTAMP
+            """,
+                [
+                    user_id,
+                    endpoint_id,
+                    model or "unknown",
+                    today,
+                    latency_ms,
+                    1 if success else 0,
+                    0 if success else 1,
+                    latency_ms,
+                    1 if success else 0,
+                    0 if success else 1,
+                ],
+            )
+        except Exception as exc:
+            # 不阻塞主流程，仅记录日志
+            logger.warning("Failed to record AI request stats: %s", exc)
