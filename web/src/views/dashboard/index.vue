@@ -122,7 +122,7 @@ const quickAccessCards = [
     icon: 'rectangle-stack',
     title: '模型目录',
     description: '查看和管理 AI 模型',
-    path: '/ai/models',
+    path: '/ai/catalog',
     iconColor: '#667eea',
   },
   {
@@ -133,14 +133,7 @@ const quickAccessCards = [
     iconColor: '#2080f0',
   },
 
-  // 测试与日志卡片（2 个放在一起）
-  {
-    icon: 'clipboard-document-list',
-    title: '审计日志',
-    description: '查看模型日志和历史记录',
-    path: '/ai/catalog',
-    iconColor: '#8a2be2',
-  },
+  // 测试工具
   {
     icon: 'key',
     title: 'JWT 测试',
