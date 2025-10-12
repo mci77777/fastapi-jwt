@@ -1,0 +1,881 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard v6 - Claude Anthropic Console Style</title>
+    <style>
+        /* ========== 基础重置与字体栈 ========== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* Claude 官方字体栈：标题用 Serif，正文用 Sans-serif */
+        :root {
+            /* Claude 品牌色板 */
+            --claude-terra-cotta: #da7756;      /* 品牌主色 Terra Cotta */
+            --claude-button-orange: #bd5d3a;    /* 按钮/高亮色 */
+            --claude-bg-warm: #eeece2;          /* 暖白背景 */
+            --claude-card-bg: #fefdfb;          /* 卡片背景（更白） */
+            --claude-text-dark: #3d3929;        /* 深棕文本 */
+            --claude-text-gray: #78716c;        /* 灰色辅助文本 */
+            --claude-border: #e8dfd6;           /* 边框色 */
+            --claude-hover-bg: #fef3e2;         /* 悬停背景（淡橙） */
+            --claude-black: #000000;            /* 纯黑（强调） */
+
+            /* 字体栈 */
+            --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+            --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+            /* 圆角与阴影 */
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --shadow-soft: 0 2px 12px rgba(218, 119, 86, 0.08);
+            --shadow-hover: 0 4px 20px rgba(218, 119, 86, 0.15);
+            --shadow-float: 0 8px 32px rgba(218, 119, 86, 0.12);
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--claude-bg-warm);
+            color: var(--claude-text-dark);
+            padding: 24px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* ========== 页头（Serif 标题） ========== */
+        .header {
+            text-align: center;
+            background: var(--claude-card-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-xl);
+            padding: 32px 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-soft);
+            transition: box-shadow 0.3s ease;
+        }
+
+        .header:hover {
+            box-shadow: var(--shadow-hover);
+        }
+
+        .header h1 {
+            font-family: var(--font-serif);
+            color: var(--claude-terra-cotta);
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            letter-spacing: -0.02em;
+        }
+
+        .header p {
+            font-family: var(--font-sans);
+            color: var(--claude-text-gray);
+            font-size: 15px;
+            font-weight: 400;
+        }
+
+        /* ========== 统计横幅（悬浮卡片） ========== */
+        .stats-banner {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, var(--claude-terra-cotta) 0%, var(--claude-button-orange) 100%);
+            color: white;
+            padding: 24px 20px;
+            border-radius: var(--radius-lg);
+            text-align: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-6px) scale(1.02);
+            box-shadow: var(--shadow-float);
+        }
+
+        .stat-card h3 {
+            font-family: var(--font-sans);
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 12px;
+            opacity: 0.92;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-card .value {
+            font-family: var(--font-serif);
+            font-size: 32px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        /* ========== 标签页容器（圆角卡片） ========== */
+        .tabs-container {
+            background: var(--claude-card-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-soft);
+            overflow: hidden;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .tabs-container:hover {
+            box-shadow: var(--shadow-hover);
+        }
+
+        /* ========== 标签页头部（流畅动画） ========== */
+        .tabs-header {
+            display: flex;
+            background: var(--claude-bg-warm);
+            border-bottom: 1px solid var(--claude-border);
+            position: relative;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 16px 24px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-family: var(--font-sans);
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--claude-text-gray);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            z-index: 1;
+        }
+
+        .tab-button:hover {
+            background: var(--claude-hover-bg);
+            color: var(--claude-terra-cotta);
+        }
+
+        .tab-button.active {
+            color: var(--claude-terra-cotta);
+            background: var(--claude-card-bg);
+            font-weight: 600;
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--claude-terra-cotta);
+            border-radius: 3px 3px 0 0;
+            animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: scaleX(0);
+                opacity: 0;
+            }
+            to {
+                transform: scaleX(1);
+                opacity: 1;
+            }
+        }
+
+        /* ========== 标签页内容区域 ========== */
+        .tab-content {
+            padding: 32px;
+            min-height: 600px;
+            display: none;
+            animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ========== 快速访问横向滚动（呼吸留白） ========== */
+        .quick-access-scroll {
+            display: flex;
+            gap: 16px;
+            overflow-x: auto;
+            padding-bottom: 12px;
+            margin-bottom: 32px;
+            scroll-behavior: smooth;
+        }
+
+        .quick-access-scroll::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .quick-access-scroll::-webkit-scrollbar-track {
+            background: var(--claude-bg-warm);
+            border-radius: 3px;
+        }
+
+        .quick-access-scroll::-webkit-scrollbar-thumb {
+            background: var(--claude-terra-cotta);
+            border-radius: 3px;
+            transition: background 0.2s ease;
+        }
+
+        .quick-access-scroll::-webkit-scrollbar-thumb:hover {
+            background: var(--claude-button-orange);
+        }
+
+        .quick-access-card {
+            background: var(--claude-card-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-lg);
+            padding: 20px 24px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            min-width: 200px;
+            flex-shrink: 0;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .quick-access-card:hover {
+            border-color: var(--claude-terra-cotta);
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-4px) scale(1.02);
+        }
+
+        .quick-access-card .icon {
+            font-size: 28px;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .quick-access-card h3 {
+            font-family: var(--font-sans);
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--claude-text-dark);
+            margin-bottom: 6px;
+        }
+
+        .quick-access-card p {
+            font-family: var(--font-sans);
+            font-size: 13px;
+            color: var(--claude-text-gray);
+            line-height: 1.4;
+        }
+
+        /* ========== 控制面板（2 列网格） ========== */
+        .control-panel {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .control-card {
+            background: var(--claude-card-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            box-shadow: var(--shadow-soft);
+            transition: all 0.3s ease;
+        }
+
+        .control-card:hover {
+            box-shadow: var(--shadow-hover);
+        }
+
+        .control-card h3 {
+            font-family: var(--font-sans);
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--claude-text-dark);
+            margin-bottom: 16px;
+        }
+
+        .control-card select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-sans);
+            font-size: 14px;
+            background: var(--claude-card-bg);
+            color: var(--claude-text-dark);
+            transition: all 0.2s ease;
+        }
+
+        .control-card select:focus {
+            outline: none;
+            border-color: var(--claude-terra-cotta);
+            box-shadow: 0 0 0 4px rgba(218, 119, 86, 0.12);
+        }
+
+        .control-card input[type="text"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-sans);
+            font-size: 14px;
+            background: var(--claude-card-bg);
+            color: var(--claude-text-dark);
+            margin-bottom: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .control-card input[type="text"]:focus {
+            outline: none;
+            border-color: var(--claude-terra-cotta);
+            box-shadow: 0 0 0 4px rgba(218, 119, 86, 0.12);
+            transform: translateY(-1px);
+        }
+
+        .control-card button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, var(--claude-terra-cotta) 0%, var(--claude-button-orange) 100%);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-family: var(--font-sans);
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .control-card button:hover {
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-2px) scale(1.02);
+        }
+
+        .control-card button:active {
+            transform: translateY(0) scale(0.98);
+        }
+
+
+        /* ========== 模型映射列表 ========== */
+        .mapping-list {
+            margin-top: 16px;
+            max-height: 240px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .mapping-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .mapping-list::-webkit-scrollbar-track {
+            background: var(--claude-bg-warm);
+            border-radius: 3px;
+        }
+
+        .mapping-list::-webkit-scrollbar-thumb {
+            background: var(--claude-terra-cotta);
+            border-radius: 3px;
+        }
+
+        .mapping-item {
+            background: var(--claude-bg-warm);
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.25s ease;
+        }
+
+        .mapping-item:hover {
+            border-color: var(--claude-terra-cotta);
+            background: var(--claude-hover-bg);
+            transform: translateX(4px);
+        }
+
+        .mapping-item .text {
+            flex: 1;
+            font-family: var(--font-sans);
+            font-size: 13px;
+        }
+
+        .mapping-item .text .from {
+            color: var(--claude-text-gray);
+            font-family: var(--font-sans);
+        }
+
+        .mapping-item .text .arrow {
+            color: var(--claude-terra-cotta);
+            margin: 0 10px;
+            font-weight: 600;
+        }
+
+        .mapping-item .text .to {
+            color: var(--claude-text-dark);
+            font-weight: 600;
+        }
+
+        .mapping-item button {
+            padding: 6px 14px;
+            background: var(--claude-border);
+            color: var(--claude-text-dark);
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-family: var(--font-sans);
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .mapping-item button:hover {
+            background: var(--claude-terra-cotta);
+            color: white;
+            transform: scale(1.05);
+        }
+
+        /* ========== Tools 列表 ========== */
+        .tools-list {
+            margin-top: 16px;
+        }
+
+        .tool-item {
+            background: var(--claude-bg-warm);
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            transition: all 0.25s ease;
+        }
+
+        .tool-item:hover {
+            border-color: var(--claude-terra-cotta);
+            background: var(--claude-hover-bg);
+        }
+
+        .tool-item label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: var(--font-sans);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--claude-text-dark);
+            cursor: pointer;
+        }
+
+        .tool-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--claude-terra-cotta);
+        }
+
+        .tool-item .desc {
+            font-family: var(--font-sans);
+            font-size: 12px;
+            color: var(--claude-text-gray);
+            margin-top: 6px;
+            margin-left: 30px;
+            line-height: 1.4;
+        }
+
+        /* ========== 状态标签 ========== */
+        .status {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 16px;
+            font-family: var(--font-sans);
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .status.online {
+            background: rgba(218, 119, 86, 0.15);
+            color: var(--claude-terra-cotta);
+            border: 1px solid var(--claude-terra-cotta);
+        }
+
+        /* ========== 监控网格 ========== */
+        .monitoring-grid {
+            display: grid;
+            grid-template-columns: 60% 40%;
+            gap: 24px;
+        }
+
+        /* ========== 日志窗口 ========== */
+        .log-window {
+            background: var(--claude-bg-warm);
+            border: 1px solid var(--claude-border);
+            color: var(--claude-text-dark);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            height: 500px;
+            overflow-y: auto;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .log-window::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .log-window::-webkit-scrollbar-track {
+            background: var(--claude-bg-warm);
+            border-radius: 4px;
+        }
+
+        .log-window::-webkit-scrollbar-thumb {
+            background: var(--claude-terra-cotta);
+            border-radius: 4px;
+        }
+
+        .log-entry {
+            margin-bottom: 10px;
+            padding: 6px 0;
+            line-height: 1.5;
+        }
+
+        .log-entry .timestamp {
+            color: var(--claude-text-gray);
+        }
+
+        .log-entry .level-info {
+            color: var(--claude-terra-cotta);
+            font-weight: 600;
+        }
+
+        .log-entry .level-error {
+            color: #dc2626;
+            font-weight: 600;
+        }
+
+
+        /* ========== 指标面板 ========== */
+        .metrics-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .metric-card {
+            background: var(--claude-card-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            text-align: center;
+            box-shadow: var(--shadow-soft);
+            transition: all 0.3s ease;
+        }
+
+        .metric-card:hover {
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-2px);
+        }
+
+        .metric-card h3 {
+            font-family: var(--font-sans);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--claude-text-gray);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .metric-card .value {
+            font-family: var(--font-serif);
+            font-size: 36px;
+            font-weight: 600;
+            color: var(--claude-terra-cotta);
+            letter-spacing: -0.02em;
+        }
+
+        /* ========== 图表类型按钮 ========== */
+        .chart-types {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .chart-type-btn {
+            padding: 12px 24px;
+            background: var(--claude-card-bg);
+            border: 1px solid var(--claude-border);
+            color: var(--claude-text-gray);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-family: var(--font-sans);
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .chart-type-btn:hover {
+            border-color: var(--claude-terra-cotta);
+            color: var(--claude-terra-cotta);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .chart-type-btn.active {
+            background: linear-gradient(135deg, var(--claude-terra-cotta) 0%, var(--claude-button-orange) 100%);
+            color: white;
+            border-color: var(--claude-terra-cotta);
+            box-shadow: var(--shadow-float);
+            transform: translateY(-2px) scale(1.02);
+        }
+
+        /* ========== 图表容器 ========== */
+        .chart-container {
+            background: var(--claude-card-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-soft);
+            transition: all 0.3s ease;
+        }
+
+        .chart-container:hover {
+            box-shadow: var(--shadow-hover);
+        }
+
+        .chart-container h3 {
+            font-family: var(--font-serif);
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--claude-text-dark);
+            margin-bottom: 20px;
+            letter-spacing: -0.01em;
+        }
+
+        .chart-placeholder {
+            height: 380px;
+            background: linear-gradient(135deg, var(--claude-bg-warm) 0%, var(--claude-hover-bg) 100%);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--claude-text-gray);
+            font-family: var(--font-sans);
+            font-size: 15px;
+            text-align: center;
+            line-height: 1.6;
+            border: 1px dashed var(--claude-border);
+        }
+
+        .chart-area {
+            display: none;
+            animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .chart-area.active {
+            display: block;
+        }
+
+        /* ========== 趋势网格 ========== */
+        .trend-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .trend-card {
+            background: var(--claude-card-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            text-align: center;
+            box-shadow: var(--shadow-soft);
+            transition: all 0.3s ease;
+        }
+
+        .trend-card:hover {
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-4px);
+        }
+
+        .trend-card h4 {
+            font-family: var(--font-sans);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--claude-text-gray);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .trend-card .value {
+            font-family: var(--font-serif);
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--claude-terra-cotta);
+            letter-spacing: -0.02em;
+        }
+
+        .trend-card .change {
+            font-family: var(--font-sans);
+            font-size: 13px;
+            color: var(--claude-button-orange);
+            margin-top: 6px;
+            font-weight: 500;
+        }
+
+        /* ========== 页脚 ========== */
+        .footer {
+            text-align: center;
+            background: var(--claude-card-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: var(--radius-xl);
+            padding: 24px;
+            margin-top: 32px;
+            box-shadow: var(--shadow-soft);
+            color: var(--claude-text-gray);
+            font-family: var(--font-sans);
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        .footer strong {
+            color: var(--claude-terra-cotta);
+            font-weight: 600;
+        }
+
+        /* ========== 章节标题（Serif） ========== */
+        .section-title {
+            font-family: var(--font-serif);
+            color: var(--claude-terra-cotta);
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 24px;
+            letter-spacing: -0.01em;
+        }
+
+
+    </style>
+</head>
+<body>
+    <div class=container>
+        <div class=header><h1>Dashboard v6 - Claude Anthropic Style</h1><p>Warm Design | Orange Accent | Elegant Typography</p></div>
+        <div class=stats-banner>
+            <div class=stat-card><h3>Daily Users</h3><div class=value>1,234</div></div>
+            <div class=stat-card><h3>AI Requests</h3><div class=value>5,678</div></div>
+            <div class=stat-card><h3>API Status</h3><div class=value>98%</div></div>
+            <div class=stat-card><h3>JWT Availability</h3><div class=value>100%</div></div>
+            <div class=stat-card><h3>Avg Latency</h3><div class=value>120ms</div></div>
+        </div>
+        <div class=tabs-container>
+            <div class=tabs-header>
+                <button class=tab-button active onclick=switchTab(0)>🚀 Control Center</button>
+                <button class=tab-button onclick=switchTab(1)>📊 Monitoring</button>
+                <button class=tab-button onclick=switchTab(2)>📈 Analytics</button>
+            </div>
+            <div class=tab-content active>
+                <h2 style=margin-bottom: 20px; color: #d97706; font-size: 18px; font-weight: 600; font-family: 'Georgia', serif;>Quick Access</h2>
+                <div class=quick-access-scroll>
+                    <div class=quick-access-card><div class=icon>🤖</div><h3>Models</h3><p>Manage AI Models</p></div>
+                    <div class=quick-access-card><div class=icon>🗺️</div><h3>Mapping</h3><p>Model Mapping</p></div>
+                    <div class=quick-access-card><div class=icon>📝</div><h3>Prompts</h3><p>Prompt Library</p></div>
+                    <div class=quick-access-card><div class=icon>🔑</div><h3>JWT Test</h3><p>Auth Testing</p></div>
+                    <div class=quick-access-card><div class=icon>⚙️</div><h3>API Config</h3><p>API Settings</p></div>
+                    <div class=quick-access-card><div class=icon>📄</div><h3>Audit Log</h3><p>System Logs</p></div>
+                </div>
+                <h2 style=margin: 30px 0 20px 0; color: #d97706; font-size: 18px; font-weight: 600; font-family: 'Georgia', serif;>Control Panel</h2>
+                <div class=control-panel>
+                    <div class=control-card><h3>Model Switcher</h3><select><option>GPT-4 (OpenAI)</option><option>Claude-3 (Anthropic)</option><option>Gemini Pro (Google)</option></select><p style=margin-top: 10px; font-size: 12px; color: #78716c;>https://api.openai.com/v1</p></div>
+                    <div class=control-card><h3>Prompt Selector</h3><select><option>Default Chat Prompt</option><option>Code Assistant</option><option>Translation</option></select><div class=tools-list><div class=tool-item><label><input type=checkbox checked> web_search</label><div class=desc>Enable web search capability</div></div><div class=tool-item><label><input type=checkbox checked> code_interpreter</label><div class=desc>Execute Python code</div></div><div class=tool-item><label><input type=checkbox> image_generation</label><div class=desc>Generate images with DALL-E</div></div></div></div>
+                    <div class=control-card><h3>Model Mapping</h3><input type=text placeholder=Provider Model Name (e.g., gpt-4-turbo-preview)><input type=text placeholder=App Display Name (e.g., GPT-4 Turbo)><button>Add Mapping</button><div class=mapping-list><div class=mapping-item><div class=text><span class=from>gpt-4-turbo-preview</span><span class=arrow>→</span><span class=to>GPT-4 Turbo</span></div><button>Delete</button></div><div class=mapping-item><div class=text><span class=from>claude-3-opus-20240229</span><span class=arrow>→</span><span class=to>Claude 3 Opus</span></div><button>Delete</button></div><div class=mapping-item><div class=text><span class=from>gemini-pro</span><span class=arrow>→</span><span class=to>Gemini Pro</span></div><button>Delete</button></div></div></div>
+                    <div class=control-card><h3>API Monitor</h3><button style=width: 100%; margin-bottom: 10px;>Start Monitoring</button><p style=font-size: 12px; color: #78716c;>Interval: 60s | Status: <span class=status online>Online</span></p></div>
+                </div>
+            </div>
+            <div class=tab-content>
+                <h2 style=margin-bottom: 20px; color: #d97706; font-size: 18px; font-weight: 600; font-family: 'Georgia', serif;>Real-Time Monitoring</h2>
+                <div class=monitoring-grid>
+                    <div><h3 style=margin-bottom: 12px; font-size: 14px; color: #3e2723; font-weight: 600;>System Logs</h3><div class=log-window><div class=log-entry><span class=timestamp>[2025-01-12 14:30:01]</span> <span class=level-info>[INFO]</span> <span>Dashboard stats updated successfully</span></div><div class=log-entry><span class=timestamp>[2025-01-12 14:30:02]</span> <span class=level-info>[INFO]</span> <span>WebSocket connection established: user_123</span></div><div class=log-entry><span class=timestamp>[2025-01-12 14:30:03]</span> <span class=level-info>[INFO]</span> <span>AI request completed: model=gpt-4, latency=120ms</span></div><div class=log-entry><span class=timestamp>[2025-01-12 14:30:04]</span> <span class=level-error>[ERROR]</span> <span>Rate limit exceeded for user: anon_456</span></div><div class=log-entry><span class=timestamp>[2025-01-12 14:30:05]</span> <span class=level-info>[INFO]</span> <span>Supabase health check: OK (latency=45ms)</span></div><div class=log-entry><span class=timestamp>[2025-01-12 14:30:06]</span> <span class=level-info>[INFO]</span> <span>Model switched to: Claude-3 (Anthropic)</span></div><div class=log-entry><span class=timestamp>[2025-01-12 14:30:07]</span> <span class=level-info>[INFO]</span> <span>Prompt activated: Code Assistant</span></div><div class=log-entry><span class=timestamp>[2025-01-12 14:30:08]</span> <span class=level-info>[INFO]</span> <span>API monitoring started (interval: 60s)</span></div><div class=log-entry><span class=timestamp>[2025-01-12 14:30:09]</span> <span class=level-info>[INFO]</span> <span>User activity chart data refreshed</span></div><div class=log-entry><span class=timestamp>[2025-01-12 14:30:10]</span> <span class=level-info>[INFO]</span> <span>Server metrics collected: CPU=45%, Memory=1.2GB</span></div></div></div>
+                    <div class=metrics-panel><h3 style=margin-bottom: 12px; font-size: 14px; color: #3e2723; font-weight: 600;>Metrics</h3><div class=metric-card><h3>Total Requests</h3><div class=value>12,345</div></div><div class=metric-card><h3>Error Rate</h3><div class=value>0.5%</div></div><div class=metric-card><h3>Active Connections</h3><div class=value>234</div></div><div class=metric-card><h3>Supabase</h3><span class=status online>Online</span><p style=margin-top: 8px; font-size: 11px; color: #78716c;>Latency: 45ms</p></div></div>
+                </div>
+            </div>
+            <div class=tab-content>
+                <h2 style=margin-bottom: 20px; color: #d97706; font-size: 18px; font-weight: 600; font-family: 'Georgia', serif;>Data Visualization</h2>
+                <div class=chart-types>
+                    <button class=chart-type-btn active onclick=switchChart(0)>📈 Line Chart</button>
+                    <button class=chart-type-btn onclick=switchChart(1)>📊 Bar Chart</button>
+                    <button class=chart-type-btn onclick=switchChart(2)>🥧 Pie Chart</button>
+                    <button class=chart-type-btn onclick=switchChart(3)>🔥 Heatmap</button>
+                    <button class=chart-type-btn onclick=switchChart(4)>🎯 Funnel</button>
+                </div>
+                <div class=chart-area active><div class=chart-container><h3>User Activity Trend (Past 7 Days)</h3><div class=chart-placeholder>📈 ECharts Line Chart Placeholder<br>(User Activity Trend)</div></div></div>
+                <div class=chart-area><div class=chart-container><h3>Daily AI Requests Comparison</h3><div class=chart-placeholder>📊 ECharts Bar Chart Placeholder<br>(Daily AI Requests)</div></div></div>
+                <div class=chart-area><div class=chart-container><h3>API Provider Usage Distribution</h3><div class=chart-placeholder>🥧 ECharts Pie Chart Placeholder<br>(API Provider Usage %)</div></div></div>
+                <div class=chart-area><div class=chart-container><h3>Request Time Distribution Heatmap</h3><div class=chart-placeholder>🔥 ECharts Heatmap Placeholder<br>(Request Time Distribution)</div></div></div>
+                <div class=chart-area><div class=chart-container><h3>User Conversion Funnel</h3><div class=chart-placeholder>🎯 ECharts Funnel Chart Placeholder<br>(Visit → Register → Use AI)</div></div></div>
+                <h2 style=margin: 30px 0 20px 0; color: #d97706; font-size: 18px; font-weight: 600; font-family: 'Georgia', serif;>Key Metrics Trend</h2>
+                <div class=trend-grid>
+                    <div class=trend-card><h4>Daily Users</h4><div class=value>1,234</div><div class=change>↑ 12.5% vs Yesterday</div></div>
+                    <div class=trend-card><h4>AI Requests</h4><div class=value>5,678</div><div class=change>↑ 8.3% vs Yesterday</div></div>
+                    <div class=trend-card><h4>Avg Latency</h4><div class=value>120ms</div><div class=change>↓ 5.2% vs Yesterday</div></div>
+                    <div class=trend-card><h4>Success Rate</h4><div class=value>99.5%</div><div class=change>↑ 0.3% vs Yesterday</div></div>
+                </div>
+            </div>
+        </div>
+        <div class=footer>
+            <p><strong>DESIGN STYLE</strong>: Claude Anthropic Inspired | Warm Theme (#f7f5f2) | Orange Accent (#d97706) | Serif + Sans-serif Typography</p>
+            <p><strong>KEY FEATURES</strong>: Horizontal Scroll Quick Access | Model Mapping Control | Tools Instruction Append | Multi-Chart Analytics</p>
+            <p><strong>AESTHETIC</strong>: Warm | Elegant | Readable | Thoughtful Interface</p>
+            <p>Dashboard v6 - Claude Style | Last Updated: 2025-01-12</p>
+        </div>
+    </div>
+    <script>
+        function switchTab(index) {
+            const buttons = document.querySelectorAll('.tab-button');
+            const contents = document.querySelectorAll('.tab-content');
+            buttons.forEach((btn, i) => {
+                if (i === index) {
+                    btn.classList.add('active');
+                    contents[i].classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                    contents[i].classList.remove('active');
+                }
+            });
+        }
+        function switchChart(index) {
+            const buttons = document.querySelectorAll('.chart-type-btn');
+            const charts = document.querySelectorAll('.chart-area');
+            buttons.forEach((btn, i) => {
+                if (i === index) {
+                    btn.classList.add('active');
+                    charts[i].classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                    charts[i].classList.remove('active');
+                }
+            });
+        }
+    </script>
+</body>
+</html>

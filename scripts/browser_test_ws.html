@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket JWT 测试工具</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #4CAF50;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .danger {
+            background: #f44336;
+        }
+        .danger:hover {
+            background: #da190b;
+        }
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 13px;
+        }
+        .log {
+            max-height: 400px;
+            overflow-y: auto;
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid transparent;
+        }
+        .log-success {
+            border-left-color: #4CAF50;
+            color: #4CAF50;
+        }
+        .log-error {
+            border-left-color: #f44336;
+            color: #f44336;
+        }
+        .log-info {
+            border-left-color: #2196F3;
+            color: #2196F3;
+        }
+        .log-warning {
+            border-left-color: #ff9800;
+            color: #ff9800;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status-connected {
+            background: #4CAF50;
+            color: white;
+        }
+        .status-disconnected {
+            background: #f44336;
+            color: white;
+        }
+        .status-connecting {
+            background: #ff9800;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 WebSocket JWT 测试工具</h1>
+        
+        <div class="section">
+            <h2>步骤 1: 获取 JWT Token</h2>
+            <button onclick="getTokenFromStorage()">从 localStorage 获取 Token</button>
+            <button onclick="decodeToken()">解码 Token</button>
+            <div style="margin-top: 10px;">
+                <input type="text" id="tokenInput" placeholder="或手动粘贴 JWT token...">
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>步骤 2: Token 信息</h2>
+            <pre id="tokenInfo">等待获取 token...</pre>
+        </div>
+
+        <div class="section">
+            <h2>步骤 3: WebSocket 连接</h2>
+            <button onclick="connectWebSocket()">连接 WebSocket</button>
+            <button onclick="disconnectWebSocket()" class="danger">断开连接</button>
+            <span id="wsStatus" class="status status-disconnected">未连接</span>
+            <div style="margin-top: 10px;">
+                <input type="text" id="wsUrl" value="ws://localhost:9999/api/v1/ws/dashboard" style="width: 70%;">
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>步骤 4: 实时日志</h2>
+            <button onclick="clearLog()">清空日志</button>
+            <button onclick="copyLog()">复制日志</button>
+            <div id="logContainer" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentToken = '';
+
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            const timestamp = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            entry.textContent = `[${timestamp}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('logContainer').innerHTML = '';
+        }
+
+        function copyLog() {
+            const logText = document.getElementById('logContainer').innerText;
+            navigator.clipboard.writeText(logText).then(() => {
+                log('日志已复制到剪贴板', 'success');
+            });
+        }
+
+        function getTokenFromStorage() {
+            try {
+                const stored = localStorage.getItem('ACCESS_TOKEN');
+                if (!stored) {
+                    log('❌ localStorage 中没有 ACCESS_TOKEN', 'error');
+                    return;
+                }
+                const parsed = JSON.parse(stored);
+                currentToken = parsed.value || '';
+                if (!currentToken) {
+                    log('❌ ACCESS_TOKEN.value 为空', 'error');
+                    return;
+                }
+                document.getElementById('tokenInput').value = currentToken;
+                log(`✅ 成功获取 token (长度: ${currentToken.length})`, 'success');
+                decodeToken();
+            } catch (e) {
+                log(`❌ 获取 token 失败: ${e.message}`, 'error');
+            }
+        }
+
+        function decodeToken() {
+            const token = document.getElementById('tokenInput').value || currentToken;
+            if (!token) {
+                log('❌ 请先获取或输入 token', 'error');
+                return;
+            }
+            currentToken = token;
+
+            try {
+                const parts = token.split('.');
+                if (parts.length !== 3) {
+                    throw new Error('Invalid JWT format');
+                }
+
+                const decode = (str) => {
+                    const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+                    return JSON.parse(atob(base64));
+                };
+
+                const header = decode(parts[0]);
+                const payload = decode(parts[1]);
+
+                const info = {
+                    'Token 预览': token.slice(0, 50) + '...',
+                    'Header': header,
+                    'Payload': {
+                        iss: payload.iss,
+                        aud: payload.aud,
+                        sub: payload.sub?.slice(0, 20) + '...',
+                        role: payload.role,
+                        exp: new Date(payload.exp * 1000).toLocaleString('zh-CN'),
+                        iat: new Date(payload.iat * 1000).toLocaleString('zh-CN'),
+                    }
+                };
+
+                document.getElementById('tokenInfo').textContent = JSON.stringify(info, null, 2);
+                
+                log(`✅ Token 解码成功`, 'success');
+                log(`  算法: ${header.alg}`, 'info');
+                log(`  签发者: ${payload.iss}`, 'info');
+                log(`  受众: ${payload.aud}`, 'info');
+                
+                if (header.alg === 'ES256') {
+                    log(`  ✅ 使用 ES256 算法（真实 Supabase JWT）`, 'success');
+                } else if (header.alg === 'HS256') {
+                    log(`  ⚠️  使用 HS256 算法（可能是测试 token）`, 'warning');
+                }
+
+            } catch (e) {
+                log(`❌ Token 解码失败: ${e.message}`, 'error');
+            }
+        }
+
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('⚠️  WebSocket 已连接', 'warning');
+                return;
+            }
+
+            const token = document.getElementById('tokenInput').value || currentToken;
+            if (!token) {
+                log('❌ 请先获取或输入 token', 'error');
+                return;
+            }
+
+            const wsUrl = document.getElementById('wsUrl').value;
+            const fullUrl = `${wsUrl}?token=${token}`;
+            
+            log(`🔌 正在连接: ${wsUrl}`, 'info');
+            updateStatus('connecting');
+
+            ws = new WebSocket(fullUrl);
+
+            ws.onopen = () => {
+                log('✅ WebSocket 连接成功！', 'success');
+                updateStatus('connected');
+            };
+
+            ws.onmessage = (event) => {
+                log(`📨 收到消息: ${event.data}`, 'info');
+                try {
+                    const data = JSON.parse(event.data);
+                    log(`  类型: ${data.type || 'unknown'}`, 'info');
+                } catch (e) {
+                    // 非 JSON 消息
+                }
+            };
+
+            ws.onerror = (error) => {
+                log(`❌ WebSocket 错误: ${error}`, 'error');
+                updateStatus('disconnected');
+            };
+
+            ws.onclose = (event) => {
+                log(`🔌 WebSocket 关闭: code=${event.code}, reason=${event.reason || '无'}`, 'warning');
+                updateStatus('disconnected');
+            };
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                log('🔌 主动断开连接', 'info');
+                updateStatus('disconnected');
+            }
+        }
+
+        function updateStatus(status) {
+            const statusEl = document.getElementById('wsStatus');
+            statusEl.className = 'status';
+            if (status === 'connected') {
+                statusEl.className += ' status-connected';
+                statusEl.textContent = '已连接';
+            } else if (status === 'connecting') {
+                statusEl.className += ' status-connecting';
+                statusEl.textContent = '连接中...';
+            } else {
+                statusEl.className += ' status-disconnected';
+                statusEl.textContent = '未连接';
+            }
+        }
+
+        // 页面加载时自动尝试获取 token
+        window.addEventListener('load', () => {
+            log('🚀 WebSocket JWT 测试工具已就绪', 'success');
+            log('💡 提示: 请先打开前端应用 (http://localhost:3101) 并登录', 'info');
+        });
+    </script>
+</body>
+</html>
+

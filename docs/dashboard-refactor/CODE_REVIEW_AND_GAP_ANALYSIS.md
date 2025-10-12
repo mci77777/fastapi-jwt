@@ -1,456 +1,572 @@
-# Dashboard 重构 - 现有代码库审查与差距分析
+# Dashboard 重构 - 代码审查与差距分析
 
-> **生成时间**: 2025-01-XX  
-> **审查范围**: 后端服务层、数据库、API 路由、前端组件、状态管理、样式约定  
-> **目标**: 在实施 Dashboard 重构前，全面理解现有架构，避免重复造轮与冲突
-
----
-
-## 📋 目录
-
-1. [现状 TREE（Current State）](#现状-tree)
-2. [目标 TREE（Target State）](#目标-tree)
-3. [差距分析（Gap Analysis）](#差距分析)
-4. [风险评估（Risk Assessment）](#风险评估)
-5. [复用清单（Reusable Components）](#复用清单)
+**文档版本**: v2.0  
+**最后更新**: 2025-01-12 | **变更**: 基于核心功能缺失诊断重写  
+**状态**: 待实施
 
 ---
 
-## 🌲 现状 TREE
+## 📋 文档目的
 
-### 后端文件结构
-
-```
-app/
-├── core/
-│   ├── application.py          # ✅ 应用工厂 + lifespan 钩子
-│   ├── middleware.py            # ✅ TraceIDMiddleware
-│   ├── policy_gate.py           # ✅ PolicyGateMiddleware
-│   ├── rate_limiter.py          # ✅ RateLimitMiddleware
-│   ├── sse_guard.py             # ✅ SSEConcurrencyGuard（可复用）
-│   ├── exceptions.py            # ✅ create_error_response()
-│   └── metrics.py               # ✅ Prometheus 指标收集
-├── services/
-│   ├── ai_config_service.py     # ✅ AIConfigService（单例，app.state 注入）
-│   ├── model_mapping_service.py # ✅ ModelMappingService
-│   ├── jwt_test_service.py      # ✅ JWTTestService
-│   ├── monitor_service.py       # ✅ EndpointMonitor（定时任务模式）
-│   └── ai_service.py            # ✅ MessageEventBroker（SSE 推送模式）
-├── db/
-│   └── sqlite_manager.py        # ✅ SQLiteManager（表创建、迁移、查询）
-├── api/
-│   └── v1/
-│       ├── __init__.py          # ✅ v1_router 聚合
-│       ├── base.py              # ✅ 登录、用户信息、菜单
-│       ├── health.py            # ✅ 健康探针
-│       ├── messages.py          # ✅ SSE 流式消息
-│       ├── metrics.py           # ✅ Prometheus 指标导出
-│       ├── llm.py               # ✅ LLM 路由聚合
-│       ├── llm_models.py        # ✅ 模型 CRUD + 监控控制
-│       ├── llm_prompts.py       # ✅ Prompt CRUD
-│       ├── llm_mappings.py      # ✅ 模型映射 CRUD
-│       ├── llm_tests.py         # ✅ JWT 测试
-│       └── llm_common.py        # ✅ 通用依赖（get_service, create_response）
-└── auth/
-    ├── dependencies.py          # ✅ get_current_user()
-    └── jwt_verifier.py          # ✅ JWTVerifier
-```
-
-### 前端文件结构
-
-```
-web/src/
-├── main.js                      # ✅ 应用入口
-├── App.vue                      # ✅ 根组件
-├── router/
-│   ├── index.js                 # ✅ 路由配置 + 动态路由
-│   └── routes/
-│       └── index.js             # ✅ basicRoutes + asyncRoutes
-├── store/
-│   ├── index.js                 # ✅ Pinia 初始化
-│   └── modules/
-│       ├── user/index.js        # ✅ useUserStore
-│       ├── permission/index.js  # ✅ usePermissionStore
-│       ├── tags/index.js        # ✅ useTagsStore
-│       ├── app/index.js         # ✅ useAppStore
-│       └── aiModelSuite.js      # ✅ useAiModelSuiteStore
-├── api/
-│   ├── index.js                 # ✅ 统一 API 导出
-│   └── aiModelSuite.js          # ✅ AI 模型套件 API
-├── utils/
-│   ├── http/
-│   │   ├── index.js             # ✅ axios 封装
-│   │   ├── interceptors.js      # ✅ 请求/响应拦截器
-│   │   └── helpers.js           # ✅ resolveResError()
-│   └── auth.js                  # ✅ token 管理
-├── components/
-│   ├── common/
-│   │   └── AppProvider.vue      # ✅ Naive UI 全局配置
-│   ├── icon/
-│   │   └── TheIcon.vue          # ✅ 图标组件
-│   ├── page/
-│   │   └── CommonPage.vue       # ✅ 通用页面容器
-│   └── table/
-│       ├── CrudTable.vue        # ✅ CRUD 表格
-│       └── CrudModal.vue        # ✅ CRUD 弹窗
-├── views/
-│   ├── dashboard/
-│   │   └── index.vue            # ✅ 现有 Dashboard（10 秒轮询）
-│   ├── system/
-│   │   ├── ai/index.vue         # ✅ AI 配置管理
-│   │   ├── user/index.vue       # ✅ 用户管理
-│   │   └── api/index.vue        # ✅ API 管理
-│   └── login/index.vue          # ✅ 登录页
-├── styles/
-│   ├── reset.css                # ✅ 样式重置
-│   └── global.scss              # ✅ 全局样式
-└── settings/
-    └── theme.json               # ✅ Naive UI 主题配置
-```
-
-### 现有服务层架构
-
-```mermaid
-graph TD
-    A[FastAPI App] -->|lifespan| B[SQLiteManager]
-    A -->|lifespan| C[AIConfigService]
-    A -->|lifespan| D[EndpointMonitor]
-    A -->|lifespan| E[ModelMappingService]
-    A -->|lifespan| F[JWTTestService]
-    A -->|create_app| G[MessageEventBroker]
-    A -->|create_app| H[AIService]
-    
-    C -->|依赖| B
-    D -->|依赖| C
-    E -->|依赖| C
-    F -->|依赖| C
-    
-    I[API 路由] -->|request.app.state| C
-    I -->|request.app.state| D
-    I -->|request.app.state| E
-    I -->|request.app.state| F
-    I -->|request.app.state| G
-    I -->|request.app.state| H
-```
-
-### 现有数据库表
-
-**SQLite 表**:
-- `ai_endpoints` - AI 端点配置
-- `ai_prompts` - Prompt 配置
-- `ai_prompt_tests` - Prompt 测试记录
-
-**Supabase 表**（远端备份）:
-- `ai_model` - AI 模型配置
-- `ai_prompt` - Prompt 配置
-- `users` - 用户信息
-- `chat_sessions` - 对话会话
-- `chat_raw` - 对话原始数据
-- `audit_logs` - 审计日志
-- `user_metrics` - 用户指标
-
-### 现有 API 端点
-
-**健康探针**:
-- `GET /api/v1/healthz` - 总体健康状态
-- `GET /api/v1/livez` - 存活探针
-- `GET /api/v1/readyz` - 就绪探针
-
-**认证与用户**:
-- `POST /api/v1/base/access_token` - 登录
-- `GET /api/v1/base/userinfo` - 用户信息
-- `GET /api/v1/base/usermenu` - 用户菜单
-- `GET /api/v1/base/userapi` - 用户 API 权限
-
-**AI 模型管理**:
-- `GET /api/v1/llm/models` - 模型列表
-- `POST /api/v1/llm/models` - 创建模型
-- `PUT /api/v1/llm/models` - 更新模型
-- `DELETE /api/v1/llm/models/{id}` - 删除模型
-- `POST /api/v1/llm/models/{id}/check` - 检测模型
-- `POST /api/v1/llm/models/{id}/sync` - 同步模型
-- `POST /api/v1/llm/models/sync` - 批量同步
-- `GET /api/v1/llm/monitor/status` - 监控状态
-- `POST /api/v1/llm/monitor/start` - 启动监控
-- `POST /api/v1/llm/monitor/stop` - 停止监控
-
-**消息流**:
-- `POST /api/v1/messages` - 创建消息
-- `GET /api/v1/messages/{id}/events` - SSE 流式事件
-
-**监控指标**:
-- `GET /api/v1/metrics` - Prometheus 指标
+本文档基于 **Dashboard 核心功能缺失诊断报告**，分析现有代码与目标功能的差距，包括：
+- LSP 扫描清单（可复用组件）
+- 缺失功能清单（5 大核心功能）
+- 影响面扫描（新增/修改文件）
+- 依赖层级图（4 层依赖关系）
+- 潜在风险点
 
 ---
 
-## 🎯 目标 TREE
+## 🔍 LSP 扫描清单（可复用组件）
 
-### 后端新增/修改文件
+### 1. 模型切换组件
 
-```
-app/
-├── services/
-│   ├── metrics_collector.py     # [NEW] 统计数据聚合服务
-│   ├── log_collector.py         # [NEW] 日志收集服务
-│   ├── dashboard_broker.py      # [NEW] WebSocket 推送服务
-│   └── sync_service.py          # [NEW] 数据同步服务（SQLite → Supabase）
-├── api/v1/
-│   ├── dashboard.py             # [NEW] Dashboard API 路由
-│   └── __init__.py              # [MODIFIED] 注册 dashboard_router
-├── db/
-│   └── sqlite_manager.py        # [MODIFIED] 新增 3 张表
-└── core/
-    └── application.py           # [MODIFIED] 注册新服务 + 定时任务
-```
+**位置**：`web/src/views/ai/model-suite/catalog/index.vue`
 
-### 前端新增/修改文件
+**现有功能**：
+- ✅ 模型列表展示（表格形式）
+- ✅ 设为默认模型（`setDefaultModel()` 方法）
+- ✅ 同步模型到 Supabase
+- ✅ 状态管理（`useAiModelSuiteStore`）
 
-```
-web/src/
-├── components/dashboard/
-│   ├── StatsBanner.vue          # [NEW] 统计横幅
-│   ├── LogWindow.vue            # [NEW] Log 小窗
-│   ├── UserActivityChart.vue    # [NEW] 用户活跃度图表
-│   ├── WebSocketClient.vue      # [NEW] WebSocket 客户端封装
-│   ├── PollingConfig.vue        # [NEW] 轮询间隔配置
-│   └── RealTimeIndicator.vue    # [NEW] 实时状态指示器
-├── views/dashboard/
-│   └── index.vue                # [MODIFIED] 替换为新 Dashboard
-├── api/
-│   └── dashboard.js             # [NEW] Dashboard API 封装
-└── store/modules/
-    └── dashboard.js             # [NEW] Dashboard 状态管理
+**可复用逻辑**：
+```vue
+<!-- catalog/index.vue 第 120-135 行 -->
+<n-button @click="handleSetDefault(row)">设为默认</n-button>
+
+<script setup>
+const store = useAiModelSuiteStore()
+
+async function handleSetDefault(model) {
+  await store.setDefaultModel(model)
+  window.$message.success('已设为默认模型')
+  await store.loadModels()
+}
+</script>
 ```
 
-### 新增数据库表
-
-**SQLite**:
-- `dashboard_stats` - Dashboard 统计数据（30 天保留）
-- `user_activity_stats` - 用户活跃度统计（30 天保留）
-- `ai_request_stats` - AI 请求统计（30 天保留）
-
-**Supabase**:
-- `dashboard_stats` - Dashboard 统计数据（远端备份，30 天保留）
-
-### 新增 API 端点
-
-**WebSocket**:
-- `WebSocket /ws/dashboard` - 实时推送统计数据
-
-**REST API**:
-- `GET /api/v1/stats/dashboard` - 聚合统计数据
-- `GET /api/v1/stats/daily-active-users` - 日活用户数
-- `GET /api/v1/stats/ai-requests` - AI 请求统计
-- `GET /api/v1/stats/api-connectivity` - API 连通性
-- `GET /api/v1/stats/jwt-availability` - JWT 可获取性
-- `GET /api/v1/logs/recent` - 最近日志
-- `GET /api/v1/stats/config` - 配置查询
-- `PUT /api/v1/stats/config` - 配置更新
+**提取方案**：
+- 创建 `ModelSwitcher.vue` 组件
+- 复用 `useAiModelSuiteStore` 状态管理
+- 复用 `setDefaultModel()` 方法
+- 简化 UI 为下拉选择器（而非表格）
 
 ---
 
-## 🔍 差距分析
+### 2. Prompt 选择器
 
-### 需要新增的文件（14 个）
+**位置**：`web/src/views/ai/model-suite/mapping/index.vue`
 
-#### 后端（4 个）
+**现有功能**：
+- ✅ Prompt 下拉选择（第 54-56 行）
+- ✅ Prompt 列表获取（`fetchPrompts()` API）
 
-1. **`app/services/metrics_collector.py`**
-   - **功能**: 聚合统计数据（日活、AI 请求、Token 使用、API 连通性、JWT 可获取性）
-   - **依赖**: `SQLiteManager`, `EndpointMonitor`
-   - **模式**: 单例，通过 `app.state` 注入
+**可复用逻辑**：
+```vue
+<!-- mapping/index.vue 第 54-56 行 -->
+<n-select
+  v-model:value="formData.prompt_id"
+  :options="promptOptions"
+  placeholder="选择 Prompt"
+/>
 
-2. **`app/services/log_collector.py`**
-   - **功能**: 收集 Python logger 输出（内存队列，最大 100 条）
-   - **依赖**: 无
-   - **模式**: 单例，通过 `app.state` 注入
+<script setup>
+const promptOptions = ref([])
 
-3. **`app/services/dashboard_broker.py`**
-   - **功能**: 管理 WebSocket 连接，定时推送统计数据
-   - **依赖**: `MetricsCollector`
-   - **模式**: 单例，通过 `app.state` 注入
-   - **复用**: 参考 `MessageEventBroker` 的 SSE 实现模式
+async function loadPrompts() {
+  const res = await fetchPrompts()
+  promptOptions.value = res.data.map(p => ({
+    label: p.name,
+    value: p.id
+  }))
+}
+</script>
+```
 
-4. **`app/services/sync_service.py`**
-   - **功能**: 定时同步 SQLite → Supabase（每小时）
-   - **依赖**: `SQLiteManager`, Supabase 客户端
-   - **模式**: 单例，通过 `app.state` 注入
-   - **复用**: 参考 `AIConfigService` 的同步机制
-
-5. **`app/api/v1/dashboard.py`**
-   - **功能**: Dashboard API 路由（WebSocket + REST）
-   - **依赖**: `MetricsCollector`, `LogCollector`, `DashboardBroker`
-   - **模式**: FastAPI APIRouter
-   - **复用**: 参考 `llm_models.py` 的路由注册模式
-
-#### 前端（9 个）
-
-6. **`web/src/components/dashboard/StatsBanner.vue`**
-   - **功能**: 统计横幅（5 个指标）
-   - **依赖**: Naive UI (`NCard`, `NStatistic`)
-   - **模式**: `<script setup>` + Composition API
-
-7. **`web/src/components/dashboard/LogWindow.vue`**
-   - **功能**: Log 小窗（级别过滤、复制）
-   - **依赖**: Naive UI (`NCard`, `NTable`, `NTag`)
-   - **模式**: `<script setup>` + Composition API
-
-8. **`web/src/components/dashboard/UserActivityChart.vue`**
-   - **功能**: 用户活跃度图表（ECharts）
-   - **依赖**: ECharts 5.x
-   - **模式**: `<script setup>` + Composition API
-
-9. **`web/src/components/dashboard/WebSocketClient.vue`**
-   - **功能**: WebSocket 客户端封装
-   - **依赖**: 原生 WebSocket API
-   - **模式**: `<script setup>` + Composition API
-
-10. **`web/src/components/dashboard/PollingConfig.vue`**
-    - **功能**: 轮询间隔配置
-    - **依赖**: Naive UI (`NModal`, `NInputNumber`)
-    - **模式**: `<script setup>` + Composition API
-
-11. **`web/src/components/dashboard/RealTimeIndicator.vue`**
-    - **功能**: 实时状态指示器
-    - **依赖**: Naive UI (`NTag`)
-    - **模式**: `<script setup>` + Composition API
-
-12. **`web/src/api/dashboard.js`**
-    - **功能**: Dashboard API 封装
-    - **依赖**: `web/src/utils/http/index.js`
-    - **模式**: 导出函数（`getDashboardStats`, `getRecentLogs` 等）
-
-13. **`web/src/store/modules/dashboard.js`**
-    - **功能**: Dashboard 状态管理
-    - **依赖**: Pinia
-    - **模式**: `defineStore('dashboard', { state, getters, actions })`
-
-14. **`web/src/views/dashboard/index.vue`**
-    - **状态**: [MODIFIED]
-    - **变更**: 替换现有 Dashboard 实现
-
-### 需要修改的文件（3 个）
-
-1. **`app/core/application.py`**
-   - **变更点**:
-     - 在 `lifespan()` 中初始化 4 个新服务
-     - 启动定时任务（`SyncService`，每小时同步）
-   - **风险**: 低（已有类似模式）
-
-2. **`app/api/v1/__init__.py`**
-   - **变更点**: 注册 `dashboard_router`
-   - **风险**: 低（已有类似模式）
-
-3. **`app/db/sqlite_manager.py`**
-   - **变更点**: 在 `INIT_SCRIPT` 中新增 3 张表
-   - **风险**: 低（已有表创建模式）
-
-### 潜在冲突点
-
-#### 1. 定时任务框架
-
-**现状**: `EndpointMonitor` 使用 `asyncio.create_task()` + 手动循环  
-**目标**: `SyncService` 需要定时任务（每小时同步）
-
-**冲突**: 无现有定时任务框架（如 APScheduler）
-
-**解决方案**:
-- **选项 A**: 复用 `EndpointMonitor` 的手动循环模式
-- **选项 B**: 引入 APScheduler（需要新增依赖）
-- **推荐**: 选项 A（YAGNI 原则，避免新增依赖）
-
-#### 2. WebSocket vs SSE
-
-**现状**: `MessageEventBroker` 使用 SSE（`StreamingResponse`）  
-**目标**: `DashboardBroker` 使用 WebSocket
-
-**冲突**: 无冲突，但需要新增 WebSocket 认证逻辑
-
-**解决方案**:
-- 复用 `get_current_user()` 依赖注入
-- 参考 `SSEConcurrencyGuard` 实现 WebSocket 并发控制
-
-#### 3. 日志收集
-
-**现状**: 无现有日志收集机制  
-**目标**: `LogCollector` 需要拦截 Python logger 输出
-
-**冲突**: 可能影响现有日志输出
-
-**解决方案**:
-- 使用 `logging.Handler` 自定义 handler
-- 仅收集 ERROR/WARNING 级别日志
-- 内存队列限制 100 条（避免内存泄漏）
+**提取方案**：
+- 创建 `PromptSelector.vue` 组件
+- 复用 `fetchPrompts()` API
+- 添加"设为激活"功能（调用 `PUT /api/v1/llm/prompts`）
+- 添加 Tools 启用/禁用开关
 
 ---
 
-## ⚠️ 风险评估
+### 3. Supabase 状态卡片
 
-### 高风险（需要特别注意）
+**位置**：`web/src/views/system/ai/index.vue`
 
-**无高风险项**
+**现有功能**：
+- ✅ Supabase 连接状态显示（第 257-267 行）
+- ✅ 状态轮询（`loadSupabaseStatus()` 方法）
 
-### 中风险
+**可复用逻辑**：
+```vue
+<!-- system/ai/index.vue 第 257-267 行 -->
+<n-card title="Supabase 连接状态">
+  <n-tag :type="supabaseStatus.connected ? 'success' : 'error'">
+    {{ supabaseStatus.connected ? '在线' : '离线' }}
+  </n-tag>
+  <p>延迟: {{ supabaseStatus.latency_ms }} ms</p>
+  <p>最近同步: {{ supabaseStatus.last_sync_at }}</p>
+</n-card>
 
-1. **定时任务启动/关闭**
-   - **风险**: `SyncService` 定时任务未正确关闭可能导致资源泄漏
-   - **缓释**: 在 `lifespan()` 的 `finally` 块中显式关闭
-   - **回滚**: 移除定时任务启动代码
+<script setup>
+const supabaseStatus = ref({})
 
-2. **WebSocket 并发控制**
-   - **风险**: 未限制 WebSocket 连接数可能导致资源耗尽
-   - **缓释**: 复用 `SSEConcurrencyGuard` 模式
-   - **回滚**: 禁用 WebSocket 端点，回退到 HTTP 轮询
+async function loadSupabaseStatus() {
+  const res = await getSupabaseStatus()
+  supabaseStatus.value = res.data
+}
+</script>
+```
 
-### 低风险
-
-1. **数据库表新增**
-   - **风险**: 表结构变更可能导致迁移失败
-   - **缓释**: 使用 `_ensure_columns()` 动态添加列
-   - **回滚**: `DROP TABLE` SQL 脚本
-
-2. **前端组件新增**
-   - **风险**: 组件引入可能导致打包体积增大
-   - **缓释**: 按需导入 Naive UI 组件
-   - **回滚**: 删除新增组件文件
-
----
-
-## 🔄 复用清单
-
-### 后端可复用模块
-
-| 现有模块 | 复用方式 | 目标模块 |
-|---------|---------|---------|
-| `MessageEventBroker` | 参考 SSE 实现模式 | `DashboardBroker` |
-| `SSEConcurrencyGuard` | 复用并发控制逻辑 | WebSocket 并发控制 |
-| `AIConfigService` | 复用同步机制 | `SyncService` |
-| `EndpointMonitor` | 复用定时任务模式 | `SyncService` |
-| `SQLiteManager` | 复用表创建/查询 | 新增 3 张表 |
-| `create_error_response()` | 复用错误响应格式 | Dashboard API |
-| `get_current_user()` | 复用认证依赖 | WebSocket 认证 |
-
-### 前端可复用模块
-
-| 现有模块 | 复用方式 | 目标模块 |
-|---------|---------|---------|
-| `web/src/utils/http/index.js` | 复用 axios 封装 | `dashboard.js` API |
-| `web/src/store/modules/aiModelSuite.js` | 参考 Pinia store 模式 | `dashboard.js` store |
-| `web/src/components/common/AppProvider.vue` | 复用 Naive UI 配置 | Dashboard 组件 |
-| `web/src/views/system/ai/index.vue` | 参考组件结构 | Dashboard 组件 |
-| `web/settings/theme.json` | 复用主题配置 | Dashboard 样式 |
+**提取方案**：
+- 创建 `SupabaseStatusCard.vue` 组件
+- 复用 `getSupabaseStatus()` API
+- 添加自动刷新（每 30 秒）
 
 ---
 
-## 📝 下一步行动
+### 4. 端点监控状态
 
-1. **确认复用策略**: 用户确认是否采用上述复用方案
-2. **调整实施计划**: 基于差距分析更新 `IMPLEMENTATION_PLAN.md`
-3. **开始代码实施**: 按阶段执行（数据库 → 服务层 → API → 前端）
+**位置**：`web/src/views/system/ai/index.vue`
+
+**现有功能**：
+- ✅ 监控任务状态显示（第 269-287 行）
+- ✅ 启动/停止监控按钮
+- ✅ 端点列表展示
+
+**可复用逻辑**：
+```vue
+<!-- system/ai/index.vue 第 269-287 行 -->
+<n-card title="端点监控">
+  <n-space>
+    <n-button @click="handleStartMonitor">启动监控</n-button>
+    <n-button @click="handleStopMonitor">停止监控</n-button>
+  </n-space>
+  
+  <n-table :data="endpoints">
+    <n-table-column prop="name" label="名称" />
+    <n-table-column prop="status" label="状态" />
+    <n-table-column prop="latency_ms" label="延迟" />
+  </n-table>
+</n-card>
+
+<script setup>
+async function handleStartMonitor() {
+  await startMonitor(60)
+  window.$message.success('监控已启动')
+}
+
+async function handleStopMonitor() {
+  await stopMonitor()
+  window.$message.success('监控已停止')
+}
+</script>
+```
+
+**提取方案**：
+- 创建 `ApiConnectivityModal.vue` 组件
+- 复用 `startMonitor()` 和 `stopMonitor()` API
+- 复用端点列表展示逻辑
+- 改为 Modal 弹窗形式（而非内嵌卡片）
 
 ---
 
-**生成时间**: 2025-01-XX  
-**审查人**: AI Assistant  
-**状态**: 待用户确认
+## 📊 缺失功能清单（5 大核心功能）
+
+### 1. 导航枢纽功能
+
+**状态**：❌ **未实现**
+
+**现有代码**：
+- 后端菜单配置：`app/api/v1/base.py` (第183-278行) ✅ 已有完整菜单结构
+- 前端 Dashboard：`web/src/views/dashboard/index.vue` ✅ 组件存在
+
+**缺失内容**：
+- ❌ Dashboard 页面**没有任何跳转链接**到配置页面
+- ❌ 缺少"快速访问"卡片或按钮组
+- ❌ 缺少配置总览面板（应显示当前激活的模型、Prompt、API 供应商等）
+- ❌ 缺少导航卡片（跳转到模型目录、模型映射、Prompt 管理、JWT 测试等）
+
+**需要新增**：
+- `web/src/components/dashboard/QuickAccessCard.vue` - 快速访问卡片组件
+- 在 `web/src/views/dashboard/index.vue` 中集成卡片组
+
+---
+
+### 2. 模型切换功能
+
+**状态**：⚠️ **部分实现（但未集成到 Dashboard）**
+
+**现有代码**：
+- 模型列表 API：`app/api/v1/llm_models.py` ✅ 完整 CRUD
+- 模型切换 UI：`web/src/views/ai/model-suite/catalog/index.vue` ✅ 存在
+- 状态管理：`web/src/store/modules/aiModelSuite.js` ✅ 包含 `setDefaultModel()` 方法
+
+**缺失内容**：
+- ❌ Dashboard 上**没有模型切换组件**
+- ❌ 缺少"当前激活模型"显示
+- ❌ 缺少快速切换下拉菜单或弹窗
+- ❌ 切换后未在 Dashboard 上实时反馈
+
+**需要新增**：
+- `web/src/components/dashboard/ModelSwitcher.vue` - 模型切换器组件
+- 在 `web/src/views/dashboard/index.vue` 中集成切换器
+
+---
+
+### 3. Prompt 与 Tools 管理功能
+
+**状态**：⚠️ **部分实现（但未集成到 Dashboard）**
+
+**现有代码**：
+- Prompt CRUD API：`app/api/v1/llm_prompts.py` ✅ 完整实现
+- Prompt 管理 UI：`web/src/views/system/ai/prompt/index.vue` ✅ 存在
+- Tools JSON 字段：`ai_prompts.tools_json` ✅ 数据库支持
+
+**缺失内容**：
+- ❌ Dashboard 上**没有 Prompt 切换功能**
+- ❌ 缺少"当前激活 Prompt"显示
+- ❌ 缺少 Tools 启用/禁用控制
+- ❌ 缺少 Prompt 预览面板
+
+**需要新增**：
+- `web/src/components/dashboard/PromptSelector.vue` - Prompt 选择器组件
+- 在 `web/src/views/dashboard/index.vue` 中集成选择器
+
+---
+
+### 4. API 供应商与模型映射控制功能
+
+**状态**：⚠️ **部分实现（但未集成到 Dashboard）**
+
+**现有代码**：
+- API 供应商监控：`app/services/monitor_service.py::EndpointMonitor` ✅ 完整实现
+- 模型映射 API：`app/api/v1/llm_mappings.py` ✅ 完整 CRUD
+- 映射管理 UI：`web/src/views/ai/model-suite/mapping/index.vue` ✅ 存在
+- API 连通性统计：`app/api/v1/dashboard.py::get_api_connectivity()` ✅ 已实现
+
+**缺失内容**：
+- ❌ Dashboard 上**只显示连通性数字**（如 "3/5"），但**无法查看详情**
+- ❌ 缺少 API 供应商列表（在线/离线、延迟、配额）
+- ❌ 缺少模型映射关系的可视化展示
+- ❌ 缺少映射编辑入口
+
+**需要新增**：
+- `web/src/components/dashboard/ApiConnectivityModal.vue` - API 连通性详情弹窗
+- 在 `web/src/views/dashboard/index.vue` 中集成弹窗触发器
+
+---
+
+### 5. 系统状态监控功能
+
+#### 5.1 Supabase 连接状态
+
+**状态**：⚠️ **部分实现（但未集成到 Dashboard）**
+
+**现有代码**：
+- Supabase 健康检查：`app/services/ai_config_service.py::supabase_status()` ✅ 已实现
+- API 端点：`app/api/v1/llm_models.py::get_supabase_status()` ✅ 已实现
+
+**缺失内容**：
+- ❌ Dashboard 上**没有 Supabase 状态显示**
+- ❌ 缺少连接健康度指示器（在线/离线、延迟）
+- ❌ 缺少最近同步时间显示
+
+**需要新增**：
+- `web/src/components/dashboard/SupabaseStatusCard.vue` - Supabase 状态卡片
+- 在 `web/src/views/dashboard/index.vue` 中集成卡片
+
+#### 5.2 服务器负载监控
+
+**状态**：❌ **未实现**
+
+**现有代码**：
+- Prometheus 指标：`app/api/v1/metrics.py` ✅ 导出指标
+- 指标类型：`auth_requests_total`, `active_connections`, `rate_limit_blocks_total` ✅ 已采集
+
+**缺失内容**：
+- ❌ Dashboard 上**没有服务器负载显示**
+- ❌ 缺少 CPU、内存使用率监控
+- ❌ 缺少请求数/QPS 图表
+- ❌ 缺少 Prometheus 指标解析和展示
+
+**需要新增**：
+- `web/src/components/dashboard/ServerLoadCard.vue` - 服务器负载卡片
+- `web/src/api/dashboard.js::parsePrometheusMetrics()` - Prometheus 指标解析函数
+- 在 `web/src/views/dashboard/index.vue` 中集成卡片
+
+---
+
+## 📁 影响面扫描（新增/修改文件）
+
+### 新增文件（6 个组件 + 1 个 API 文件）
+
+#### 前端组件（P0 优先级）
+1. `web/src/components/dashboard/QuickAccessCard.vue` - 快速访问卡片
+2. `web/src/components/dashboard/ModelSwitcher.vue` - 模型切换器
+3. `web/src/components/dashboard/ApiConnectivityModal.vue` - API 连通性详情弹窗
+
+#### 前端组件（P1 优先级）
+4. `web/src/components/dashboard/PromptSelector.vue` - Prompt 选择器
+5. `web/src/components/dashboard/SupabaseStatusCard.vue` - Supabase 状态卡片
+6. `web/src/components/dashboard/ServerLoadCard.vue` - 服务器负载卡片
+
+#### API 封装
+7. `web/src/api/dashboard.js` - Dashboard 专用 API 封装（如果不存在）
+
+---
+
+### 修改文件（1 个）
+
+#### 主 Dashboard 页面
+- `web/src/views/dashboard/index.vue` - 集成所有新增组件
+
+**修改内容**：
+```vue
+<template>
+  <div class="dashboard-container">
+    <!-- 现有组件 -->
+    <StatsBanner :stats="stats" :loading="statsLoading" @stat-click="handleStatClick" />
+
+    <!-- 新增：快速访问卡片组 -->
+    <div class="quick-access-section">
+      <QuickAccessCard
+        v-for="card in quickAccessCards"
+        :key="card.path"
+        :icon="card.icon"
+        :title="card.title"
+        :description="card.description"
+        :path="card.path"
+        :badge="card.badge"
+      />
+    </div>
+
+    <!-- 新增：当前配置面板 -->
+    <div class="config-panel">
+      <ModelSwitcher :compact="false" />
+      <PromptSelector :compact="false" />
+      <SupabaseStatusCard />
+    </div>
+
+    <!-- 现有组件 -->
+    <div class="dashboard-main">
+      <LogWindow :logs="logs" :loading="logsLoading" />
+      <UserActivityChart :time-range="chartTimeRange" :data="chartData" />
+    </div>
+
+    <!-- 新增：服务器负载卡片 -->
+    <ServerLoadCard />
+
+    <!-- 新增：API 连通性详情弹窗 -->
+    <ApiConnectivityModal v-model:show="showApiModal" />
+  </div>
+</template>
+
+<script setup>
+import QuickAccessCard from '@/components/dashboard/QuickAccessCard.vue'
+import ModelSwitcher from '@/components/dashboard/ModelSwitcher.vue'
+import PromptSelector from '@/components/dashboard/PromptSelector.vue'
+import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
+import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
+import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
+
+const quickAccessCards = [
+  { icon: 'mdi:robot', title: '模型目录', description: '查看和管理 AI 模型', path: '/ai/catalog' },
+  { icon: 'mdi:map', title: '模型映射', description: '配置模型映射关系', path: '/ai/mapping' },
+  { icon: 'mdi:text-box', title: 'Prompt 管理', description: '管理 Prompt 模板', path: '/system/ai/prompt' },
+  { icon: 'mdi:key', title: 'JWT 测试', description: '测试 JWT 认证', path: '/ai/jwt' },
+  { icon: 'mdi:cog', title: 'API 配置', description: '配置 API 供应商', path: '/system/ai' },
+  { icon: 'mdi:file-document', title: '审计日志', description: '查看系统日志', path: '/dashboard/logs' }
+]
+
+const showApiModal = ref(false)
+
+function handleStatClick(statType) {
+  if (statType === 'api_connectivity') {
+    showApiModal.value = true
+  }
+}
+</script>
+```
+
+---
+
+## 🌲 依赖层级图（4 层依赖关系）
+
+### 第 1 层：Dashboard 主页面
+```
+web/src/views/dashboard/index.vue
+  ├─ 集成所有新增组件
+  ├─ 处理组件间交互（如点击统计卡片弹出详情）
+  └─ 管理全局状态（如弹窗显示/隐藏）
+```
+
+### 第 2 层：Dashboard 组件
+```
+web/src/components/dashboard/
+  ├─ QuickAccessCard.vue（导航卡片）
+  ├─ ModelSwitcher.vue（模型切换器）
+  ├─ PromptSelector.vue（Prompt 选择器）
+  ├─ ApiConnectivityModal.vue（API 详情弹窗）
+  ├─ SupabaseStatusCard.vue（Supabase 状态卡片）
+  └─ ServerLoadCard.vue（服务器负载卡片）
+```
+
+### 第 3 层：API 调用与状态管理
+```
+web/src/api/dashboard.js
+  ├─ getModels() → 调用 /api/v1/llm/models
+  ├─ setDefaultModel() → 调用 PUT /api/v1/llm/models
+  ├─ getPrompts() → 调用 /api/v1/llm/prompts
+  ├─ setActivePrompt() → 调用 PUT /api/v1/llm/prompts
+  ├─ getMonitorStatus() → 调用 /api/v1/llm/monitor/status
+  ├─ startMonitor() → 调用 POST /api/v1/llm/monitor/start
+  ├─ stopMonitor() → 调用 POST /api/v1/llm/monitor/stop
+  ├─ getSupabaseStatus() → 调用 /api/v1/llm/status/supabase
+  └─ getSystemMetrics() → 调用 /api/v1/metrics
+
+web/src/store/modules/aiModelSuite.js
+  ├─ loadModels() - 加载模型列表
+  ├─ setDefaultModel() - 设置默认模型
+  └─ syncAll() - 同步所有模型
+```
+
+### 第 4 层：后端 API 端点（已实现，无需变更）
+```
+app/api/v1/
+  ├─ llm_models.py
+  │   ├─ GET /llm/models - 获取模型列表
+  │   ├─ PUT /llm/models - 更新模型（设置默认）
+  │   ├─ GET /llm/monitor/status - 监控状态
+  │   ├─ POST /llm/monitor/start - 启动监控
+  │   ├─ POST /llm/monitor/stop - 停止监控
+  │   └─ GET /llm/status/supabase - Supabase 状态
+  ├─ llm_prompts.py
+  │   ├─ GET /llm/prompts - 获取 Prompt 列表
+  │   └─ PUT /llm/prompts - 更新 Prompt（设置激活）
+  └─ metrics.py
+      └─ GET /metrics - Prometheus 指标导出
+```
+
+**停止条件**：第 4 层已触达稳定接口（FastAPI 路由 + 服务层），无需继续展开。
+
+**总展开符号**：约 42 个（未超过 60 个限制）。
+
+---
+
+## ⚠️ 潜在风险点
+
+### 风险 1：组件提取失败
+
+**风险等级**：低
+**影响**：无法复用现有逻辑，需要重新实现
+
+**缓释方案**：
+- 逐步提取，先复制后重构
+- 保留原有组件，新组件独立开发
+- 使用 Composition API 提取可复用逻辑（如 `useModelSwitcher.js`）
+
+---
+
+### 风险 2：API 调用失败
+
+**风险等级**：低
+**影响**：组件无法获取数据
+
+**缓释方案**：
+- 复用现有 API，已验证可用
+- 添加错误处理和重试机制
+- 使用 Mock 数据进行开发和测试
+
+---
+
+### 风险 3：状态同步问题
+
+**风险等级**：低
+**影响**：模型切换后 Dashboard 未更新
+
+**缓释方案**：
+- 使用 Pinia store 统一管理状态
+- 组件间通过 `watch` 监听状态变化
+- 切换后手动触发 Dashboard 刷新
+
+---
+
+### 风险 4：性能问题
+
+**风险等级**：低
+**影响**：Dashboard 加载缓慢
+
+**缓释方案**：
+- 复用现有 WebSocket 推送，无额外负载
+- 使用懒加载（Lazy Load）加载非关键组件
+- 使用虚拟滚动（Virtual Scroll）优化长列表
+
+---
+
+### 风险 5：UI 一致性问题
+
+**风险等级**：低
+**影响**：新组件与现有组件风格不一致
+
+**缓释方案**：
+- 严格遵循 Naive UI 设计规范
+- 复用现有组件的样式变量（如颜色、间距）
+- 使用 `CommonPage.vue` 作为容器，保持布局一致
+
+---
+
+## 📋 总结
+
+### 核心发现
+
+**问题本质**：Dashboard 不是数据展示问题，而是**缺少核心控制功能**。
+
+**现有实现**：
+- ✅ 统计数据采集（日活、AI 请求、API 连通性、JWT 可获取性）
+- ✅ WebSocket 实时推送
+- ✅ Log 小窗
+- ✅ 用户活跃度图表
+- ✅ 后端 API 端点（模型、Prompt、监控、Supabase 状态、Prometheus 指标）
+
+**缺失功能**：
+- ❌ 导航枢纽（快速访问卡片）
+- ❌ 模型切换控制
+- ❌ Prompt/Tools 管理
+- ❌ API 供应商详情面板
+- ❌ Supabase 连接状态显示
+- ❌ 服务器负载监控
+
+---
+
+### 实施路径
+
+#### 阶段 1（P0）：核心控制功能
+1. **QuickAccessCard.vue** - 导航枢纽
+2. **ModelSwitcher.vue** - 模型切换
+3. **ApiConnectivityModal.vue** - API 详情面板
+
+**验收标准**：
+- ✅ 点击卡片跳转到配置页面
+- ✅ 模型切换后 Dashboard 实时更新
+- ✅ API 详情弹窗显示所有端点状态
+
+#### 阶段 2（P1）：增强功能
+4. **PromptSelector.vue** - Prompt 管理
+5. **SupabaseStatusCard.vue** - Supabase 状态
+6. **ServerLoadCard.vue** - 服务器负载
+
+**验收标准**：
+- ✅ Prompt 切换后 Dashboard 实时更新
+- ✅ Supabase 状态显示在线/离线、延迟
+- ✅ 服务器负载显示请求数、错误率、连接数
+
+---
+
+**文档版本**: v2.0
+**最后更新**: 2025-01-12
+**变更**: 基于核心功能缺失诊断重写
+**状态**: 待实施
 

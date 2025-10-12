@@ -25,20 +25,25 @@ def main():
     print("Supabase 配置分析")
     print("=" * 80)
     
-    # 1. 解码 ANON_KEY
-    if s.supabase_anon_key:
+    # 1. 从环境变量直接读取（Settings 没有 supabase_anon_key 字段）
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    anon_key = os.getenv('SUPABASE_ANON_KEY')
+    if anon_key:
         print("\n[1] SUPABASE_ANON_KEY 解码:")
-        h, p = decode_jwt_without_verify(s.supabase_anon_key)
+        h, p = decode_jwt_without_verify(anon_key)
         print(f"  Header: {json.dumps(h, indent=2)}")
         print(f"  Payload: {json.dumps(p, indent=2)}")
-    
+
     # 2. 解码 SERVICE_ROLE_KEY
     if s.supabase_service_role_key:
         print("\n[2] SUPABASE_SERVICE_ROLE_KEY 解码:")
         h, p = decode_jwt_without_verify(s.supabase_service_role_key)
         print(f"  Header: {json.dumps(h, indent=2)}")
         print(f"  Payload: {json.dumps(p, indent=2)}")
-    
+
     # 3. 当前配置
     print("\n[3] 当前 .env 配置:")
     print(f"  SUPABASE_ISSUER: {s.supabase_issuer}")
@@ -63,11 +68,11 @@ def main():
     
     # 5. 对比分析
     print("\n[5] 配置一致性检查:")
-    if s.supabase_anon_key:
-        _, anon_payload = decode_jwt_without_verify(s.supabase_anon_key)
+    if anon_key:
+        _, anon_payload = decode_jwt_without_verify(anon_key)
         anon_iss = anon_payload.get('iss', '')
         anon_ref = anon_payload.get('ref', '')
-        
+
         print(f"  ✓ ANON_KEY issuer: {anon_iss}")
         print(f"  ✓ ANON_KEY ref: {anon_ref}")
         print(f"  ✓ 配置的 ISSUER: {s.supabase_issuer}")

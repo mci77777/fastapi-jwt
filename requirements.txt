@@ -38,6 +38,7 @@ pydantic-core==2.27.2
 pydantic-settings==2.7.1
 pygments==2.19.1
 pyjwt==2.10.1
+cryptography>=46.0.0  # Required for ES256/RS256 JWT algorithms
 pypika-tortoise==0.3.2
 python-dotenv==1.0.1
 python-multipart==0.0.20

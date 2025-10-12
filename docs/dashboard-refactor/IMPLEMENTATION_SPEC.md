@@ -1,633 +1,940 @@
-# Dashboard 重构 - 实施规格说明
+﻿# Dashboard 重构 - 实施规格说明
 
-**文档版本**: v1.0  
-**创建时间**: 2025-01-11  
-**状态**: 待实施  
-**目标方案**: 方案 A（左侧 Log 小窗布局）
+**文档版本**: v2.0
+**最后更新**: 2025-01-12 | **变更**: 基于核心功能缺失诊断重写
+**状态**: 待实施
 
 ---
 
 ## 📋 文档目的
 
-本文档提供 Dashboard 重构的详细技术规格，基于架构设计文档（`ARCHITECTURE_OVERVIEW.md`）。
+本文档提供 Dashboard 重构的详细技术规格，包括 6 个新增组件的完整接口定义和使用示例。
 
 ---
 
-## 🏗️ 后端实施规格
+## 🎨 前端组件规格
 
-### 1. 核心服务层
+### 1. QuickAccessCard.vue - 快速访问卡片
 
-#### 1.1 MetricsCollector - 统计数据聚合服务
+**文件路径**: `web/src/components/dashboard/QuickAccessCard.vue`
 
-**职责**: 聚合所有统计数据，提供统一接口
+**功能**: 提供快速跳转到配置页面的卡片组件
 
-**实现位置**: `app/services/metrics_collector.py`
+#### Props 定义
 
-**核心方法**:
-```python
-class MetricsCollector:
-    def __init__(self, db_manager, endpoint_monitor):
-        self.db = db_manager
-        self.monitor = endpoint_monitor
-    
-    async def aggregate_stats(self, time_window: str = "24h") -> dict:
-        """聚合所有统计数据"""
-        return {
-            "daily_active_users": await self._get_daily_active_users(time_window),
-            "ai_requests": await self._get_ai_requests(time_window),
-            "token_usage": None,  # 后续追加
-            "api_connectivity": await self._get_api_connectivity(),
-            "jwt_availability": await self._get_jwt_availability()
-        }
-    
-    async def _get_daily_active_users(self, time_window: str) -> int:
-        """查询日活用户数"""
-        start_time = self._calculate_start_time(time_window)
-        result = await self.db.fetch_one("""
-            SELECT COUNT(DISTINCT user_id) as total
-            FROM user_activity_stats
-            WHERE activity_date >= ?
-        """, [start_time.date().isoformat()])
-        return result['total']
-```
-
----
-
-#### 1.2 LogCollector - 日志收集服务
-
-**职责**: 收集后端 Python logger 输出，提供最近日志查询
-
-**实现位置**: `app/services/log_collector.py`
-
-**核心方法**:
-```python
-from collections import deque
-import logging
-
-class LogCollector:
-    def __init__(self, max_size=100):
-        self.logs = deque(maxlen=max_size)
-        self.handler = LogHandler(self.logs)
-        logging.getLogger().addHandler(self.handler)
-    
-    def get_recent_logs(self, level='WARNING', limit=100):
-        """获取最近日志"""
-        level_map = {'ERROR': 40, 'WARNING': 30, 'INFO': 20}
-        min_level = level_map.get(level, 30)
-        
-        filtered = [
-            log for log in self.logs 
-            if log['level_num'] >= min_level
-        ]
-        return filtered[:limit]
-
-class LogHandler(logging.Handler):
-    def __init__(self, logs_deque):
-        super().__init__()
-        self.logs = logs_deque
-    
-    def emit(self, record):
-        self.logs.append({
-            'timestamp': datetime.fromtimestamp(record.created).isoformat(),
-            'level': record.levelname,
-            'level_num': record.levelno,
-            'user_id': getattr(record, 'user_id', None),
-            'message': record.getMessage()
-        })
-```
-
----
-
-#### 1.3 DashboardBroker - WebSocket 推送服务
-
-**职责**: 管理 WebSocket 连接，定时推送统计数据
-
-**实现位置**: `app/services/dashboard_broker.py`
-
-**核心方法**:
-```python
-class DashboardBroker:
-    def __init__(self, metrics_collector):
-        self.collector = metrics_collector
-        self.connections = {}  # {user_id: WebSocket}
-    
-    async def add_connection(self, user_id: str, websocket: WebSocket):
-        """添加连接"""
-        self.connections[user_id] = websocket
-    
-    async def remove_connection(self, user_id: str):
-        """移除连接"""
-        self.connections.pop(user_id, None)
-    
-    async def get_dashboard_stats(self) -> dict:
-        """获取 Dashboard 统计数据"""
-        return await self.collector.aggregate_stats()
-```
-
----
-
-#### 1.4 SyncService - 数据同步服务
-
-**职责**: 定时同步 SQLite 数据到 Supabase
-
-**实现位置**: `app/services/sync_service.py`
-
-**核心方法**:
-```python
-class SyncService:
-    def __init__(self, sqlite_manager, supabase_client):
-        self.sqlite = sqlite_manager
-        self.supabase = supabase_client
-        self.last_sync_time = None
-    
-    async def sync_dashboard_stats(self):
-        """同步 dashboard_stats 表"""
-        # 1. 查询最近 1 小时数据
-        data = await self.sqlite.fetch_all("""
-            SELECT * FROM dashboard_stats
-            WHERE updated_at > ?
-        """, [self.last_sync_time or datetime.now() - timedelta(hours=1)])
-        
-        # 2. 批量插入 Supabase
-        if data:
-            await self.supabase.table('dashboard_stats').insert([
-                {
-                    'stat_type': row['stat_type'],
-                    'stat_value': row['stat_value'],
-                    'stat_metadata': row['stat_metadata'],
-                    'time_window': row['time_window'],
-                    'source': 'local_sqlite',
-                    'created_at': row['created_at']
-                }
-                for row in data
-            ]).execute()
-        
-        # 3. 更新同步时间
-        self.last_sync_time = datetime.now()
-```
-
----
-
-### 2. API 端点设计
-
-#### 2.1 WebSocket 端点
-
-**路径**: `/ws/dashboard`  
-**文件**: `app/api/v1/dashboard.py`
-
-**实现**:
-```python
-@router.websocket("/ws/dashboard")
-async def dashboard_websocket(
-    websocket: WebSocket,
-    token: str,
-    request: Request
-):
-    # JWT 验证
-    user = await get_current_user_ws(token)
-    if not user or user.user_type == 'anonymous':
-        await websocket.close(code=1008, reason="Unauthorized")
-        return
-    
-    await websocket.accept()
-    broker = request.app.state.dashboard_broker
-    await broker.add_connection(user.user_id, websocket)
-    
-    try:
-        while True:
-            stats = await broker.get_dashboard_stats()
-            await websocket.send_json({
-                "type": "stats_update",
-                "data": stats,
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            await asyncio.sleep(10)
-    except WebSocketDisconnect:
-        pass
-    finally:
-        await broker.remove_connection(user.user_id)
-```
-
----
-
-#### 2.2 REST API 端点
-
-**文件**: `app/api/v1/stats.py`
-
-**端点列表**:
-1. `GET /api/v1/stats/dashboard` - 聚合统计数据
-2. `GET /api/v1/stats/daily-active-users` - 日活用户数
-3. `GET /api/v1/stats/ai-requests` - AI 请求统计
-4. `GET /api/v1/stats/api-connectivity` - API 连通性
-5. `GET /api/v1/stats/jwt-availability` - JWT 可获取性
-6. `GET /api/v1/logs/recent` - 最近日志
-7. `GET /api/v1/stats/config` - 配置查询
-8. `PUT /api/v1/stats/config` - 配置更新
-
-**详细设计见架构文档 `ARCHITECTURE_OVERVIEW.md`**
-
----
-
-### 3. 数据库表结构
-
-#### 3.1 SQLite 表（3 张）
-
-1. **dashboard_stats** - 统计数据缓存表
-2. **user_activity_stats** - 用户活跃度统计表
-3. **ai_request_stats** - AI 请求统计表
-
-**详细 SQL 见架构文档 `ARCHITECTURE_OVERVIEW.md`**
-
----
-
-#### 3.2 Supabase 表（1 张）
-
-**dashboard_stats** - 远端备份表
-
-**详细 SQL 见架构文档 `ARCHITECTURE_OVERVIEW.md`**
-
----
-
-### 4. 数据写入时机
-
-#### 4.1 用户活跃度记录
-
-**触发时机**: 每次 JWT 验证成功时
-
-**实现位置**: `app/auth/dependencies.py::get_current_user()`
-
-**代码**:
-```python
-async def get_current_user(request: Request, ...):
-    # ... JWT 验证逻辑 ...
-    
-    # 记录用户活跃度
-    await record_user_activity(
-        user_id=user.user_id,
-        user_type=user.user_type
-    )
-    
-    return user
-
-async def record_user_activity(user_id: str, user_type: str):
-    """记录用户活跃度"""
-    db = get_db()
-    today = datetime.now().date().isoformat()
-    
-    await db.execute("""
-        INSERT INTO user_activity_stats (user_id, user_type, activity_date, request_count)
-        VALUES (?, ?, ?, 1)
-        ON CONFLICT(user_id, activity_date) 
-        DO UPDATE SET 
-            request_count = request_count + 1,
-            last_request_at = CURRENT_TIMESTAMP
-    """, [user_id, user_type, today])
-```
-
----
-
-#### 4.2 AI 请求记录
-
-**触发时机**: 每次 AI 请求完成时
-
-**实现位置**: `app/api/v1/messages.py::create_message()`
-
-**代码**:
-```python
-async def create_message(...):
-    # ... AI 请求逻辑 ...
-    
-    # 记录 AI 请求统计
-    await record_ai_request(
-        user_id=user.user_id,
-        endpoint_id=endpoint.id,
-        model=model_name,
-        latency_ms=latency,
-        success=success
-    )
-
-async def record_ai_request(user_id, endpoint_id, model, latency_ms, success):
-    """记录 AI 请求统计"""
-    db = get_db()
-    today = datetime.now().date().isoformat()
-    
-    await db.execute("""
-        INSERT INTO ai_request_stats 
-        (user_id, endpoint_id, model, request_date, count, total_latency_ms, success_count, error_count)
-        VALUES (?, ?, ?, ?, 1, ?, ?, ?)
-        ON CONFLICT(user_id, endpoint_id, model, request_date)
-        DO UPDATE SET
-            count = count + 1,
-            total_latency_ms = total_latency_ms + ?,
-            success_count = success_count + ?,
-            error_count = error_count + ?,
-            updated_at = CURRENT_TIMESTAMP
-    """, [
-        user_id, endpoint_id, model, today, latency_ms,
-        1 if success else 0, 0 if success else 1,
-        latency_ms, 1 if success else 0, 0 if success else 1
-    ])
-```
-
----
-
-## 🎨 前端实施规格
-
-### 5. Vue 组件设计
-
-#### 5.1 组件列表
-
-**新增组件（6 个）**:
-1. `StatsBanner.vue` - 统计横幅
-2. `LogWindow.vue` - Log 小窗
-3. `UserActivityChart.vue` - 用户活跃度图表
-4. `WebSocketClient.vue` - WebSocket 客户端封装
-5. `PollingConfig.vue` - 轮询间隔配置
-6. `RealTimeIndicator.vue` - 实时状态指示器
-
-**修改组件（3 个）**:
-1. `dashboard/index.vue` - 整合新组件
-2. `layout/sidebar/index.vue` - 新增 Log 小窗入口
-3. `api/index.js` - 新增统计 API 封装
-
----
-
-#### 5.2 StatsBanner.vue - 统计横幅
-
-**路径**: `web/src/components/dashboard/StatsBanner.vue`
-
-**Props**:
-```typescript
-interface Stat {
-  id: number
-  icon: string
-  label: string
-  value: string | number
-  trend: number
-  color: string
-  detail?: string
-}
-
-interface Props {
-  stats: Stat[]
-  loading?: boolean
-}
-```
-
-**Events**:
-- `stat-click(stat: Stat)` - 点击统计卡片
-
----
-
-#### 5.3 LogWindow.vue - Log 小窗
-
-**路径**: `web/src/components/dashboard/LogWindow.vue`
-
-**Props**:
-```typescript
-interface Log {
-  id: number
-  timestamp: string
-  level: 'ERROR' | 'WARNING' | 'INFO'
-  message: string
-  user_id?: string
-}
-
-interface Props {
-  logs: Log[]
-  loading?: boolean
-}
-```
-
-**Events**:
-- `log-click(log: Log)` - 点击日志（复制到剪贴板）
-- `filter-change(level: string)` - 切换日志级别过滤
-
----
-
-#### 5.4 UserActivityChart.vue - 用户活跃度图表
-
-**路径**: `web/src/components/dashboard/UserActivityChart.vue`
-
-**Props**:
 ```typescript
 interface Props {
-  timeRange: '1h' | '24h' | '7d'
-  loading?: boolean
+  icon: string        // 图标名称（如 'mdi:robot'）
+  title: string       // 卡片标题
+  description: string // 卡片描述
+  path: string        // 跳转路由路径
+  badge?: number      // 可选徽章数字
 }
 ```
 
-**Events**:
-- `time-range-change(range: string)` - 切换时间范围
+#### Events 定义
 
-**实现**:
-```vue
-<script setup>
-import { ref, onMounted, watch } from 'vue'
-import * as echarts from 'echarts'
-
-const props = defineProps<Props>()
-const emit = defineEmits(['time-range-change'])
-
-const chartRef = ref(null)
-let chart = null
-
-onMounted(() => {
-  chart = echarts.init(chartRef.value)
-  updateChart()
-})
-
-watch(() => props.timeRange, () => {
-  updateChart()
-})
-
-function updateChart() {
-  // ECharts 配置...
-}
-</script>
-```
-
----
-
-#### 5.5 WebSocketClient.vue - WebSocket 客户端
-
-**路径**: `web/src/components/dashboard/WebSocketClient.vue`
-
-**Props**:
 ```typescript
-interface Props {
-  url: string
-  token: string
-  autoReconnect?: boolean
-  maxReconnectAttempts?: number
+interface Emits {
+  (e: 'click', path: string): void  // 点击卡片时触发
 }
 ```
 
-**Events**:
-- `message(data: any)` - 收到消息
-- `connected()` - 连接成功
-- `disconnected()` - 连接断开
-- `error(error: Error)` - 连接错误
+#### 完整实现示例
 
-**实现**:
-```vue
-<script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-
-const props = withDefaults(defineProps<Props>(), {
-  autoReconnect: true,
-  maxReconnectAttempts: 3
-})
-
-const emit = defineEmits(['message', 'connected', 'disconnected', 'error'])
-
-let ws = null
-let reconnectAttempts = 0
-
-function connect() {
-  ws = new WebSocket(`${props.url}?token=${props.token}`)
-  
-  ws.onopen = () => {
-    reconnectAttempts = 0
-    emit('connected')
-  }
-  
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data)
-    emit('message', data)
-  }
-  
-  ws.onerror = (error) => {
-    emit('error', error)
-  }
-  
-  ws.onclose = () => {
-    emit('disconnected')
-    
-    if (props.autoReconnect && reconnectAttempts < props.maxReconnectAttempts) {
-      reconnectAttempts++
-      setTimeout(connect, 2000 * reconnectAttempts)
-    }
-  }
-}
-
-onMounted(() => {
-  connect()
-})
-
-onBeforeUnmount(() => {
-  if (ws) {
-    ws.close()
-  }
-})
-</script>
-```
-
----
-
-### 6. API 调用封装
-
-**文件**: `web/src/api/dashboard.js`
-
-```javascript
-import http from '@/utils/http'
-
-export function getDashboardStats(params) {
-  return http.get('/api/v1/stats/dashboard', { params })
-}
-
-export function getDailyActiveUsers(params) {
-  return http.get('/api/v1/stats/daily-active-users', { params })
-}
-
-export function getAiRequests(params) {
-  return http.get('/api/v1/stats/ai-requests', { params })
-}
-
-export function getApiConnectivity() {
-  return http.get('/api/v1/stats/api-connectivity')
-}
-
-export function getJwtAvailability() {
-  return http.get('/api/v1/stats/jwt-availability')
-}
-
-export function getRecentLogs(params) {
-  return http.get('/api/v1/logs/recent', { params })
-}
-
-export function getStatsConfig() {
-  return http.get('/api/v1/stats/config')
-}
-
-export function updateStatsConfig(data) {
-  return http.put('/api/v1/stats/config', data)
-}
-```
-
----
-
-### 7. Dashboard 主页面实现
-
-**文件**: `web/src/views/dashboard/index.vue`
-
-**布局结构（方案 A）**:
 ```vue
 <template>
-  <div class="dashboard-container">
-    <!-- 实时状态指示器 -->
-    <RealTimeIndicator :status="connectionStatus" />
-    
-    <!-- 统计横幅 -->
-    <StatsBanner :stats="stats" :loading="statsLoading" @stat-click="handleStatClick" />
-    
-    <!-- 主内容区（Grid 两列布局）-->
-    <div class="main-content">
-      <!-- Log 小窗（左侧，300px）-->
-      <LogWindow 
-        :logs="logs" 
-        :loading="logsLoading"
-        @log-click="handleLogClick"
-        @filter-change="handleLogFilterChange"
-      />
-      
-      <!-- 用户管理中心（右侧，剩余空间）-->
-      <div class="user-center">
-        <UserActivityChart 
-          :time-range="timeRange"
-          @time-range-change="handleTimeRangeChange"
-        />
+  <n-card
+    class="quick-access-card"
+    hoverable
+    @click="handleClick"
+  >
+    <div class="card-content">
+      <div class="icon-wrapper">
+        <TheIcon :icon="icon" :size="32" />
+        <n-badge v-if="badge" :value="badge" class="badge" />
+      </div>
+      <div class="text-content">
+        <h3 class="title">{{ title }}</h3>
+        <p class="description">{{ description }}</p>
       </div>
     </div>
-  </div>
+  </n-card>
 </template>
 
+<script setup>
+import { useRouter } from 'vue-router'
+import TheIcon from '@/components/icon/TheIcon.vue'
+
+const props = defineProps({
+  icon: { type: String, required: true },
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  path: { type: String, required: true },
+  badge: { type: Number, default: undefined }
+})
+
+const emit = defineEmits(['click'])
+const router = useRouter()
+
+function handleClick() {
+  emit('click', props.path)
+  router.push(props.path)
+}
+</script>
+
 <style scoped>
-.main-content {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 20px;
-  height: calc(100vh - 240px);
+.quick-access-card {
+  cursor: pointer;
+  transition: all 0.3s ease;
 }
 
-@media (max-width: 1200px) {
-  .main-content {
-    grid-template-columns: 250px 1fr;
-  }
+.quick-access-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-@media (max-width: 768px) {
-  .main-content {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
+.card-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.icon-wrapper {
+  position: relative;
+}
+
+.badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+}
+
+.text-content {
+  flex: 1;
+}
+
+.title {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.description {
+  margin: 0;
+  font-size: 14px;
+  color: var(--n-text-color-2);
 }
 </style>
 ```
 
+#### 使用示例
+
+```vue
+<template>
+  <div class="quick-access-section">
+    <QuickAccessCard
+      icon="mdi:robot"
+      title="模型目录"
+      description="查看和管理 AI 模型"
+      path="/ai/catalog"
+      :badge="5"
+      @click="handleCardClick"
+    />
+  </div>
+</template>
+
+<script setup>
+import QuickAccessCard from '@/components/dashboard/QuickAccessCard.vue'
+
+function handleCardClick(path) {
+  console.log('Navigating to:', path)
+}
+</script>
+```
+
 ---
 
-## 📋 下一步
+### 2. ModelSwitcher.vue - 模型切换器
 
-请查看 `IMPLEMENTATION_PLAN.md` 了解分阶段实施计划。
+**文件路径**: `web/src/components/dashboard/ModelSwitcher.vue`
+
+**功能**: 显示当前激活模型并支持快速切换
+
+#### Props 定义
+
+```typescript
+interface Props {
+  compact?: boolean  // 紧凑模式（仅显示下拉框）
+}
+```
+
+#### Events 定义
+
+```typescript
+interface Emits {
+  (e: 'change', modelId: number): void  // 模型切换时触发
+}
+```
+
+#### 完整实现示例
+
+```vue
+<template>
+  <n-card :title="compact ? undefined : '当前模型'">
+    <n-space vertical>
+      <n-select
+        v-model:value="selectedModelId"
+        :options="modelOptions"
+        :loading="loading"
+        placeholder="选择模型"
+        @update:value="handleModelChange"
+      />
+      <n-text v-if="!compact && currentModel" depth="3">
+        {{ currentModel.base_url }}
+      </n-text>
+    </n-space>
+  </n-card>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
+
+const props = defineProps({
+  compact: { type: Boolean, default: false }
+})
+
+const emit = defineEmits(['change'])
+const store = useAiModelSuiteStore()
+
+const selectedModelId = ref(null)
+const loading = ref(false)
+
+const modelOptions = computed(() => {
+  return store.models.map(model => ({
+    label: `${model.model} (${model.provider})`,
+    value: model.id
+  }))
+})
+
+const currentModel = computed(() => {
+  return store.models.find(m => m.id === selectedModelId.value)
+})
+
+async function handleModelChange(modelId) {
+  loading.value = true
+  try {
+    await store.setDefaultModel({ id: modelId, is_default: true })
+    emit('change', modelId)
+    window.$message?.success('模型已切换')
+  } catch (error) {
+    window.$message?.error('模型切换失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    await store.loadModels()
+    const defaultModel = store.models.find(m => m.is_default)
+    if (defaultModel) {
+      selectedModelId.value = defaultModel.id
+    }
+  } finally {
+    loading.value = false
+  }
+})
+</script>
+```
+
+#### 使用示例
+
+```vue
+<template>
+  <ModelSwitcher :compact="false" @change="handleModelChange" />
+</template>
+
+<script setup>
+import ModelSwitcher from '@/components/dashboard/ModelSwitcher.vue'
+
+function handleModelChange(modelId) {
+  console.log('Model changed to:', modelId)
+}
+</script>
+```
+
+---
+
+### 3. PromptSelector.vue - Prompt 选择器
+
+**文件路径**: `web/src/components/dashboard/PromptSelector.vue`
+
+**功能**: 显示当前激活 Prompt 并支持快速切换
+
+#### Props 定义
+
+```typescript
+interface Props {
+  compact?: boolean  // 紧凑模式
+}
+```
+
+#### Events 定义
+
+```typescript
+interface Emits {
+  (e: 'change', promptId: number): void  // Prompt 切换时触发
+}
+```
+
+
+#### 完整实现示例
+
+```vue
+<template>
+  <n-card :title="compact ? undefined : '当前 Prompt'">
+    <n-space vertical>
+      <n-select
+        v-model:value="selectedPromptId"
+        :options="promptOptions"
+        :loading="loading"
+        placeholder="选择 Prompt"
+        @update:value="handlePromptChange"
+      />
+      <n-switch
+        v-if="!compact && currentPrompt"
+        v-model:value="toolsEnabled"
+        @update:value="handleToolsToggle"
+      >
+        <template #checked>Tools 已启用</template>
+        <template #unchecked>Tools 已禁用</template>
+      </n-switch>
+    </n-space>
+  </n-card>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { getPrompts, setActivePrompt } from '@/api/dashboard'
+
+const props = defineProps({
+  compact: { type: Boolean, default: false }
+})
+
+const emit = defineEmits(['change'])
+
+const selectedPromptId = ref(null)
+const toolsEnabled = ref(false)
+const loading = ref(false)
+const prompts = ref([])
+
+const promptOptions = computed(() => {
+  return prompts.value.map(prompt => ({
+    label: prompt.name,
+    value: prompt.id
+  }))
+})
+
+const currentPrompt = computed(() => {
+  return prompts.value.find(p => p.id === selectedPromptId.value)
+})
+
+async function loadPrompts() {
+  loading.value = true
+  try {
+    const res = await getPrompts()
+    prompts.value = res.data
+    const activePrompt = prompts.value.find(p => p.is_active)
+    if (activePrompt) {
+      selectedPromptId.value = activePrompt.id
+      toolsEnabled.value = !!activePrompt.tools_json
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handlePromptChange(promptId) {
+  loading.value = true
+  try {
+    await setActivePrompt(promptId)
+    emit('change', promptId)
+    window.$message?.success('Prompt 已切换')
+    await loadPrompts()
+  } catch (error) {
+    window.$message?.error('Prompt 切换失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleToolsToggle(enabled) {
+  // TODO: 实现 Tools 启用/禁用逻辑
+  console.log('Tools enabled:', enabled)
+}
+
+onMounted(() => {
+  loadPrompts()
+})
+</script>
+```
+
+#### 使用示例
+
+```vue
+<template>
+  <PromptSelector :compact="false" @change="handlePromptChange" />
+</template>
+
+<script setup>
+import PromptSelector from '@/components/dashboard/PromptSelector.vue'
+
+function handlePromptChange(promptId) {
+  console.log('Prompt changed to:', promptId)
+}
+</script>
+```
+
+---
+
+### 4. ApiConnectivityModal.vue - API 连通性详情弹窗
+
+**文件路径**: `web/src/components/dashboard/ApiConnectivityModal.vue`
+
+**功能**: 显示所有 API 供应商的详细状态和监控控制
+
+#### Props 定义
+
+```typescript
+interface Props {
+  show: boolean  // 控制弹窗显示
+}
+```
+
+#### Events 定义
+
+```typescript
+interface Emits {
+  (e: 'update:show', value: boolean): void  // 更新显示状态
+}
+```
+
+#### 完整实现示例
+
+```vue
+<template>
+  <n-modal
+    v-model:show="visible"
+    preset="card"
+    title="API 连通性详情"
+    style="width: 800px"
+  >
+    <n-space vertical>
+      <n-space>
+        <n-button
+          type="primary"
+          :loading="monitorLoading"
+          @click="handleStartMonitor"
+        >
+          启动监控
+        </n-button>
+        <n-button
+          :loading="monitorLoading"
+          @click="handleStopMonitor"
+        >
+          停止监控
+        </n-button>
+        <n-text v-if="monitorStatus.is_running" type="success">
+          监控运行中（间隔: {{ monitorStatus.interval_seconds }}s）
+        </n-text>
+      </n-space>
+
+      <n-data-table
+        :columns="columns"
+        :data="endpoints"
+        :loading="loading"
+      />
+    </n-space>
+  </n-modal>
+</template>
+
+<script setup>
+import { ref, computed, watch, onMounted } from 'vue'
+import { NTag } from 'naive-ui'
+import { getMonitorStatus, startMonitor, stopMonitor } from '@/api/dashboard'
+import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
+
+const props = defineProps({
+  show: { type: Boolean, required: true }
+})
+
+const emit = defineEmits(['update:show'])
+
+const store = useAiModelSuiteStore()
+const visible = computed({
+  get: () => props.show,
+  set: (val) => emit('update:show', val)
+})
+
+const loading = ref(false)
+const monitorLoading = ref(false)
+const monitorStatus = ref({ is_running: false, interval_seconds: 60 })
+const endpoints = ref([])
+
+const columns = [
+  { title: '名称', key: 'model' },
+  { title: '供应商', key: 'provider' },
+  {
+    title: '状态',
+    key: 'status',
+    render: (row) => {
+      const type = row.status === 'online' ? 'success' : 'error'
+      return h(NTag, { type }, { default: () => row.status })
+    }
+  },
+  { title: '延迟 (ms)', key: 'latency_ms' },
+  { title: '最近检测', key: 'last_checked_at' }
+]
+
+async function loadMonitorStatus() {
+  loading.value = true
+  try {
+    const res = await getMonitorStatus()
+    monitorStatus.value = res.data
+    await store.loadModels()
+    endpoints.value = store.models
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleStartMonitor() {
+  monitorLoading.value = true
+  try {
+    await startMonitor(60)
+    window.$message?.success('监控已启动')
+    await loadMonitorStatus()
+  } catch (error) {
+    window.$message?.error('启动监控失败')
+  } finally {
+    monitorLoading.value = false
+  }
+}
+
+async function handleStopMonitor() {
+  monitorLoading.value = true
+  try {
+    await stopMonitor()
+    window.$message?.success('监控已停止')
+    await loadMonitorStatus()
+  } catch (error) {
+    window.$message?.error('停止监控失败')
+  } finally {
+    monitorLoading.value = false
+  }
+}
+
+watch(() => props.show, (newVal) => {
+  if (newVal) {
+    loadMonitorStatus()
+  }
+})
+
+onMounted(() => {
+  if (props.show) {
+    loadMonitorStatus()
+  }
+})
+</script>
+```
+
+#### 使用示例
+
+```vue
+<template>
+  <div>
+    <n-button @click="showModal = true">查看 API 详情</n-button>
+    <ApiConnectivityModal v-model:show="showModal" />
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
+
+const showModal = ref(false)
+</script>
+```
+---
+
+### 5. SupabaseStatusCard.vue - Supabase 状态卡片
+
+**文件路径**: `web/src/components/dashboard/SupabaseStatusCard.vue`
+
+**功能**: 显示 Supabase 连接状态和健康度
+
+#### Props 定义
+
+```typescript
+interface Props {
+  autoRefresh?: boolean  // 是否自动刷新（默认 true）
+  refreshInterval?: number  // 刷新间隔（秒，默认 30）
+}
+```
+
+#### Events 定义
+
+```typescript
+interface Emits {
+  (e: 'status-change', status: SupabaseStatus): void  // 状态变化时触发
+}
+
+interface SupabaseStatus {
+  connected: boolean
+  latency_ms: number
+  last_sync_at: string
+}
+```
+
+#### 完整实现示例
+
+```vue
+<template>
+  <n-card title="Supabase 连接状态">
+    <n-space vertical>
+      <n-space align="center">
+        <n-tag :type="status.connected ? 'success' : 'error'">
+          {{ status.connected ? '在线' : '离线' }}
+        </n-tag>
+        <n-button
+          text
+          :loading="loading"
+          @click="loadStatus"
+        >
+          <template #icon>
+            <TheIcon icon="mdi:refresh" />
+          </template>
+        </n-button>
+      </n-space>
+
+      <n-descriptions :column="1" size="small">
+        <n-descriptions-item label="延迟">
+          {{ status.latency_ms }} ms
+        </n-descriptions-item>
+        <n-descriptions-item label="最近同步">
+          {{ formatTime(status.last_sync_at) }}
+        </n-descriptions-item>
+      </n-descriptions>
+    </n-space>
+  </n-card>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import { getSupabaseStatus } from '@/api/dashboard'
+import TheIcon from '@/components/icon/TheIcon.vue'
+
+const props = defineProps({
+  autoRefresh: { type: Boolean, default: true },
+  refreshInterval: { type: Number, default: 30 }
+})
+
+const emit = defineEmits(['status-change'])
+
+const loading = ref(false)
+const status = ref({
+  connected: false,
+  latency_ms: 0,
+  last_sync_at: null
+})
+
+let refreshTimer = null
+
+async function loadStatus() {
+  loading.value = true
+  try {
+    const res = await getSupabaseStatus()
+    status.value = res.data
+    emit('status-change', res.data)
+  } catch (error) {
+    status.value.connected = false
+    window.$message?.error('获取 Supabase 状态失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+function formatTime(time) {
+  if (!time) return '-'
+  return new Date(time).toLocaleString('zh-CN')
+}
+
+onMounted(() => {
+  loadStatus()
+  if (props.autoRefresh) {
+    refreshTimer = setInterval(loadStatus, props.refreshInterval * 1000)
+  }
+})
+
+onUnmounted(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+  }
+})
+</script>
+```
+
+#### 使用示例
+
+```vue
+<template>
+  <SupabaseStatusCard
+    :auto-refresh="true"
+    :refresh-interval="30"
+    @status-change="handleStatusChange"
+  />
+</template>
+
+<script setup>
+import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
+
+function handleStatusChange(status) {
+  console.log('Supabase status:', status)
+}
+</script>
+```
+
+---
+
+### 6. ServerLoadCard.vue - 服务器负载卡片
+
+**文件路径**: `web/src/components/dashboard/ServerLoadCard.vue`
+
+**功能**: 显示服务器负载指标（从 Prometheus 解析）
+
+#### Props 定义
+
+```typescript
+interface Props {
+  autoRefresh?: boolean  // 是否自动刷新（默认 true）
+  refreshInterval?: number  // 刷新间隔（秒，默认 60）
+}
+```
+
+#### Events 定义
+
+```typescript
+interface Emits {
+  (e: 'metrics-update', metrics: ServerMetrics): void  // 指标更新时触发
+}
+
+interface ServerMetrics {
+  totalRequests: number
+  errorRate: number
+  activeConnections: number
+  rateLimitBlocks: number
+}
+```
+
+#### 完整实现示例
+
+```vue
+<template>
+  <n-card title="服务器负载">
+    <n-space vertical>
+      <n-grid :cols="2" :x-gap="12" :y-gap="12">
+        <n-grid-item>
+          <n-statistic label="总请求数" :value="metrics.totalRequests" />
+        </n-grid-item>
+        <n-grid-item>
+          <n-statistic label="错误率" :value="metrics.errorRate" suffix="%" />
+        </n-grid-item>
+        <n-grid-item>
+          <n-statistic label="活跃连接" :value="metrics.activeConnections" />
+        </n-grid-item>
+        <n-grid-item>
+          <n-statistic label="限流阻止" :value="metrics.rateLimitBlocks" />
+        </n-grid-item>
+      </n-grid>
+
+      <n-button
+        text
+        :loading="loading"
+        @click="loadMetrics"
+      >
+        <template #icon>
+          <TheIcon icon="mdi:refresh" />
+        </template>
+        刷新
+      </n-button>
+    </n-space>
+  </n-card>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import { getSystemMetrics, parsePrometheusMetrics } from '@/api/dashboard'
+import TheIcon from '@/components/icon/TheIcon.vue'
+
+const props = defineProps({
+  autoRefresh: { type: Boolean, default: true },
+  refreshInterval: { type: Number, default: 60 }
+})
+
+const emit = defineEmits(['metrics-update'])
+
+const loading = ref(false)
+const metrics = ref({
+  totalRequests: 0,
+  errorRate: 0,
+  activeConnections: 0,
+  rateLimitBlocks: 0
+})
+
+let refreshTimer = null
+
+async function loadMetrics() {
+  loading.value = true
+  try {
+    const text = await getSystemMetrics()
+    const parsed = parsePrometheusMetrics(text)
+
+    metrics.value = {
+      totalRequests: parsed['auth_requests_total'] || 0,
+      errorRate: calculateErrorRate(parsed),
+      activeConnections: parsed['active_connections'] || 0,
+      rateLimitBlocks: parsed['rate_limit_blocks_total'] || 0
+    }
+
+    emit('metrics-update', metrics.value)
+  } catch (error) {
+    window.$message?.error('获取服务器指标失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+function calculateErrorRate(parsed) {
+  const total = parsed['auth_requests_total'] || 0
+  const errors = parsed['jwt_validation_errors_total'] || 0
+  return total > 0 ? parseFloat((errors / total * 100).toFixed(2)) : 0
+}
+
+onMounted(() => {
+  loadMetrics()
+  if (props.autoRefresh) {
+    refreshTimer = setInterval(loadMetrics, props.refreshInterval * 1000)
+  }
+})
+
+onUnmounted(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+  }
+})
+</script>
+```
+
+#### 使用示例
+
+```vue
+<template>
+  <ServerLoadCard
+    :auto-refresh="true"
+    :refresh-interval="60"
+    @metrics-update="handleMetricsUpdate"
+  />
+</template>
+
+<script setup>
+import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
+
+function handleMetricsUpdate(metrics) {
+  console.log('Server metrics:', metrics)
+}
+</script>
+```
+
+---
+
+## 📡 API 封装规格
+
+### dashboard.js - Dashboard 专用 API 封装
+
+**文件路径**: `web/src/api/dashboard.js`
+
+**功能**: 封装所有 Dashboard 相关的 API 调用
+
+```javascript
+import request from '@/utils/http'
+
+// 模型管理
+export function getModels(params) {
+  return request.get('/llm/models', { params })
+}
+
+export function setDefaultModel(modelId) {
+  return request.put('/llm/models', { id: modelId, is_default: true })
+}
+
+// Prompt 管理
+export function getPrompts(params) {
+  return request.get('/llm/prompts', { params })
+}
+
+export function setActivePrompt(promptId) {
+  return request.put('/llm/prompts', { id: promptId, is_active: true })
+}
+
+// API 监控
+export function getMonitorStatus() {
+  return request.get('/llm/monitor/status')
+}
+
+export function startMonitor(intervalSeconds = 60) {
+  return request.post('/llm/monitor/start', { interval_seconds: intervalSeconds })
+}
+
+export function stopMonitor() {
+  return request.post('/llm/monitor/stop')
+}
+
+// Supabase 状态
+export function getSupabaseStatus() {
+  return request.get('/llm/status/supabase')
+}
+
+// Prometheus 指标
+export function getSystemMetrics() {
+  return request.get('/metrics', { responseType: 'text' })
+}
+
+// 解析 Prometheus 文本格式
+export function parsePrometheusMetrics(text) {
+  const lines = text.split('\n')
+  const metrics = {}
+
+  lines.forEach(line => {
+    if (line.startsWith('#') || !line.trim()) return
+    const match = line.match(/^([a-zA-Z_:]+)(?:\{[^}]*\})?\s+([0-9.]+)/)
+    if (match) {
+      const [, key, value] = match
+      metrics[key] = parseFloat(value)
+    }
+  })
+
+  return metrics
+}
+```
+
+---
+
+**文档版本**: v2.0
+**最后更新**: 2025-01-12
+**变更**: 基于核心功能缺失诊断重写
+**状态**: 待实施
+
 

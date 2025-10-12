@@ -1,10 +1,8 @@
-# Dashboard 重构 - 分阶段实施计划
+﻿# Dashboard 重构 - 分阶段实施计划
 
-**文档版本**: v2.0（基于代码审查调整）
-**创建时间**: 2025-01-11
-**更新时间**: 2025-01-XX
-**状态**: 待执行
-**目标方案**: 方案 A（左侧 Log 小窗布局）
+**文档版本**: v2.0
+**最后更新**: 2025-01-12 | **变更**: 基于核心功能缺失诊断重写
+**状态**: 待实施
 
 ---
 
@@ -12,612 +10,379 @@
 
 ### 实施周期
 
-**总工期**: 8-10 个工作日（基于代码审查优化，原 10-12 天）
-**团队规模**: 1-2 人
-**风险缓冲**: 2 个工作日
+**总工期**: 3-4 个工作日
+**团队规模**: 1 人
+**风险缓冲**: 1 个工作日
 
 **调整说明**:
-- 原计划 10-12 天 → 调整为 8-10 天
-- **原因**: 大量现有模块可复用（`MessageEventBroker`、`SSEConcurrencyGuard`、`EndpointMonitor` 等），减少开发时间
+- 原计划 8-10 天 → 调整为 3-4 天
+- **原因**: 无需新增后端 API 和数据库表，只需前端组件开发和集成
 
 ---
 
 ### 阶段划分
 
-| 阶段 | 名称 | 工期 | 优先级 | 依赖 | 调整说明 |
-|------|------|------|--------|------|---------|
-| 阶段 1 | 数据库与服务层 | 1.5-2 天 | P0 | 无 | ⬇️ 减少 1 天（复用 SQLiteManager 模式）|
-| 阶段 2 | 后端 API 实现 | 1.5-2 天 | P0 | 阶段 1 | ⬇️ 减少 1 天（复用 llm_models.py 模式）|
-| 阶段 3 | 前端组件开发 | 3-4 天 | P0 | 阶段 2 | ⏸️ 保持不变 |
-| 阶段 4 | 集成测试与优化 | 1.5 天 | P0 | 阶段 3 | ⬇️ 减少 0.5 天 |
-| 阶段 5 | 部署与监控 | 0.5 天 | P1 | 阶段 4 | ⬇️ 减少 0.5 天（复用现有部署流程）|
+| 阶段 | 名称 | 工期 | 优先级 | 依赖 |
+|------|------|------|--------|------|
+| Phase 1 | 核心控制功能（P0） | 1.5-2 天 | P0 | 无 |
+| Phase 2 | 增强功能（P1） | 1-1.5 天 | P1 | Phase 1 |
+| Phase 3 | 可选优化（P2） | 0.5-1 天 | P2 | Phase 2 |
 
 ---
 
-## 🔧 阶段 1：数据库与服务层（1.5-2 天）
+## 🔧 Phase 1：核心控制功能（P0 优先级）
 
 ### 目标
 
-- ✅ 创建 SQLite 表结构（复用 `SQLiteManager._ensure_columns()` 模式）
-- ✅ 创建 Supabase 表结构
-- ✅ 实现核心服务层（复用现有服务模式）
-- ✅ 实现数据写入逻辑
+- ✅ 实现导航枢纽（快速访问卡片）
+- ✅ 实现模型切换控制
+- ✅ 实现 API 连通性详情面板
+
+**工期**: 1.5-2 天
 
 ---
 
-### 任务清单
+### 任务 1.1：QuickAccessCard.vue - 导航枢纽
 
-#### 1.1 数据库表创建（0.5 天）
+**工作量**: 0.5 天
 
-**文件**: `app/db/sqlite_manager.py`
+**文件路径**: `web/src/components/dashboard/QuickAccessCard.vue`
 
-**任务**:
-- [ ] 在 `INIT_SCRIPT` 中新增 3 张表（复用现有模式）
-- [ ] 创建 Supabase 表 `dashboard_stats`（手动执行 SQL）
-- [ ] 验证表结构和索引
+**任务清单**:
+- [ ] 创建 QuickAccessCard 组件
+- [ ] 定义 Props（icon, title, description, path, badge）
+- [ ] 实现点击跳转逻辑（使用 Vue Router）
+- [ ] 添加 hover 效果和过渡动画
+- [ ] 集成到 Dashboard 主页面
 
-**代码示例**（复用现有模式）:
-```python
-# app/db/sqlite_manager.py（在 INIT_SCRIPT 中新增）
+**Props 定义**:
+```typescript
+interface Props {
+  icon: string        // Heroicons 图标名称（如 'mdi:robot'）
+  title: string       // 卡片标题
+  description: string // 卡片描述
+  path: string        // 跳转路由路径
+  badge?: number      // 可选徽章数字
+}
+```
 
-CREATE TABLE IF NOT EXISTS dashboard_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    stat_date TEXT NOT NULL,
-    daily_active_users INTEGER DEFAULT 0,
-    ai_request_count INTEGER DEFAULT 0,
-    token_usage INTEGER DEFAULT 0,
-    api_connectivity_rate REAL DEFAULT 0.0,
-    jwt_availability_rate REAL DEFAULT 0.0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_dashboard_stats_date ON dashboard_stats(stat_date);
-
-CREATE TABLE IF NOT EXISTS user_activity_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    stat_hour TEXT NOT NULL,
-    active_user_count INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_activity_stats_hour ON user_activity_stats(stat_hour);
-
-CREATE TABLE IF NOT EXISTS ai_request_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    stat_hour TEXT NOT NULL,
-    request_count INTEGER DEFAULT 0,
-    avg_latency_ms REAL DEFAULT 0.0,
-    error_count INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_ai_request_stats_hour ON ai_request_stats(stat_hour);
+**使用示例**:
+```vue
+<QuickAccessCard
+  icon="mdi:robot"
+  title="模型目录"
+  description="查看和管理 AI 模型"
+  path="/ai/catalog"
+/>
 ```
 
 **验收标准**:
-```bash
-# 验证表创建成功
-sqlite3 db.sqlite3 ".schema dashboard_stats"
-sqlite3 db.sqlite3 ".schema user_activity_stats"
-sqlite3 db.sqlite3 ".schema ai_request_stats"
-```
-  - `user_activity_stats`
-  - `ai_request_stats`
-- [ ] 创建 Supabase 表 `dashboard_stats`（手动执行 SQL）
-- [ ] 验证表结构和索引
+- ✅ 点击卡片跳转到对应页面
+- ✅ 卡片显示图标、标题、描述
+- ✅ hover 时显示阴影效果
+- ✅ 支持徽章显示（可选）
 
-**验收标准**:
-```bash
-# 运行迁移脚本
-python scripts/migrate_dashboard_tables.py
-
-# 验证表创建成功
-sqlite3 db.sqlite3 ".schema dashboard_stats"
-sqlite3 db.sqlite3 ".schema user_activity_stats"
-sqlite3 db.sqlite3 ".schema ai_request_stats"
-```
+**依赖关系**: 无
 
 ---
 
-#### 1.2 MetricsCollector 实现（0.5 天）
+### 任务 1.2：ModelSwitcher.vue - 模型切换器
 
-**文件**: `app/services/metrics_collector.py`
+**工作量**: 0.5 天
 
-**任务**:
-- [ ] 实现 `MetricsCollector` 类
-- [ ] 实现 `aggregate_stats()` 方法
-- [ ] 实现 `_get_daily_active_users()` 方法
-- [ ] 实现 `_get_ai_requests()` 方法
-- [ ] 实现 `_get_api_connectivity()` 方法
-- [ ] 实现 `_get_jwt_availability()` 方法
+**文件路径**: `web/src/components/dashboard/ModelSwitcher.vue`
 
-**验收标准**:
-```python
-# 单元测试
-pytest tests/test_metrics_collector.py -v
-```
+**任务清单**:
+- [ ] 创建 ModelSwitcher 组件
+- [ ] 复用 `useAiModelSuiteStore` 状态管理
+- [ ] 实现模型列表加载（调用 `loadModels()`）
+- [ ] 实现模型切换（调用 `setDefaultModel()`）
+- [ ] 添加加载状态和错误处理
+- [ ] 集成到 Dashboard 主页面
 
----
-
-#### 1.3 LogCollector 实现（0.5 天）
-
-**文件**: `app/services/log_collector.py`
-
-**任务**:
-- [ ] 实现 `LogCollector` 类
-- [ ] 实现 `LogHandler` 类
-- [ ] 实现 `get_recent_logs()` 方法
-- [ ] 集成到 Python logging 系统
-
-**验收标准**:
-```python
-# 单元测试
-pytest tests/test_log_collector.py -v
-
-# 手动测试
-import logging
-logging.error("Test error message")
-# 验证日志被收集
-```
-
----
-
-#### 1.4 DashboardBroker 实现（0.5 天）
-
-**文件**: `app/services/dashboard_broker.py`
-
-**任务**:
-- [ ] 实现 `DashboardBroker` 类
-- [ ] 实现 `add_connection()` 方法
-- [ ] 实现 `remove_connection()` 方法
-- [ ] 实现 `get_dashboard_stats()` 方法
-
-**验收标准**:
-```python
-# 单元测试
-pytest tests/test_dashboard_broker.py -v
-```
-
----
-
-#### 1.5 SyncService 实现（0.5 天）
-
-**文件**: `app/services/sync_service.py`
-
-**任务**:
-- [ ] 实现 `SyncService` 类
-- [ ] 实现 `sync_dashboard_stats()` 方法
-- [ ] 实现定时任务调度（使用 APScheduler）
-
-**验收标准**:
-```python
-# 单元测试（Mock Supabase）
-pytest tests/test_sync_service.py -v
-
-# 集成测试
-python scripts/test_sync_service.py
-```
-
----
-
-#### 1.6 数据写入逻辑集成（0.5 天）
-
-**任务**:
-- [ ] 在 `app/auth/dependencies.py::get_current_user()` 中添加 `record_user_activity()`
-- [ ] 在 `app/api/v1/messages.py::create_message()` 中添加 `record_ai_request()`
-- [ ] 验证数据写入成功
-
-**验收标准**:
-```bash
-# 启动服务
-python run.py
-
-# 发起 JWT 请求
-curl -H "Authorization: Bearer <token>" http://localhost:9999/api/v1/healthz
-
-# 验证数据写入
-sqlite3 db.sqlite3 "SELECT * FROM user_activity_stats ORDER BY created_at DESC LIMIT 5;"
-
-# 发起 AI 请求
-curl -X POST -H "Authorization: Bearer <token>" \
-  http://localhost:9999/api/v1/messages \
-  -d '{"content": "Hello"}'
-
-# 验证数据写入
-sqlite3 db.sqlite3 "SELECT * FROM ai_request_stats ORDER BY created_at DESC LIMIT 5;"
-```
-
----
-
-## 🌐 阶段 2：后端 API 实现（2-3 天）
-
-### 目标
-
-- ✅ 实现 WebSocket 端点
-- ✅ 实现 8 个 REST API 端点
-- ✅ 集成到应用生命周期
-- ✅ 编写 API 测试
-
----
-
-### 任务清单
-
-#### 2.1 WebSocket 端点实现（1 天）
-
-**文件**: `app/api/v1/dashboard.py`
-
-**任务**:
-- [ ] 实现 `/ws/dashboard` 端点
-- [ ] 实现 JWT 验证（`get_current_user_ws()`）
-- [ ] 实现连接管理（add/remove connection）
-- [ ] 实现数据推送循环（10 秒间隔）
-- [ ] 实现错误处理（断线重连、超时）
-
-**验收标准**:
-```python
-# 集成测试
-pytest tests/test_dashboard_websocket.py -v
-
-# 手动测试（使用 wscat）
-wscat -c "ws://localhost:9999/ws/dashboard?token=<token>"
-# 验证每 10 秒收到一次数据推送
-```
-
----
-
-#### 2.2 REST API 端点实现（1 天）
-
-**文件**: `app/api/v1/stats.py`
-
-**任务**:
-- [ ] 实现 `GET /api/v1/stats/dashboard`
-- [ ] 实现 `GET /api/v1/stats/daily-active-users`
-- [ ] 实现 `GET /api/v1/stats/ai-requests`
-- [ ] 实现 `GET /api/v1/stats/api-connectivity`
-- [ ] 实现 `GET /api/v1/stats/jwt-availability`
-- [ ] 实现 `GET /api/v1/logs/recent`
-- [ ] 实现 `GET /api/v1/stats/config`
-- [ ] 实现 `PUT /api/v1/stats/config`
-
-**验收标准**:
-```bash
-# API 测试
-pytest tests/test_stats_api.py -v
-
-# 手动测试
-curl -H "Authorization: Bearer <token>" \
-  "http://localhost:9999/api/v1/stats/dashboard?time_window=24h"
-```
-
----
-
-#### 2.3 应用生命周期集成（0.5 天）
-
-**文件**: `app/core/application.py`
-
-**任务**:
-- [ ] 在 `create_app()` 中初始化服务层
-- [ ] 注册 WebSocket 路由
-- [ ] 注册 REST API 路由
-- [ ] 启动定时任务（SyncService）
-
-**代码**:
-```python
-# app/core/application.py
-from app.services import MetricsCollector, LogCollector, DashboardBroker, SyncService
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 启动时初始化
-    app.state.metrics_collector = MetricsCollector(
-        db_manager=app.state.sqlite_manager,
-        endpoint_monitor=app.state.endpoint_monitor
-    )
-    app.state.log_collector = LogCollector(max_size=100)
-    app.state.dashboard_broker = DashboardBroker(
-        metrics_collector=app.state.metrics_collector
-    )
-    app.state.sync_service = SyncService(
-        sqlite_manager=app.state.sqlite_manager,
-        supabase_client=app.state.supabase_client
-    )
-    
-    # 启动定时任务（每小时同步一次）
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        app.state.sync_service.sync_dashboard_stats,
-        'interval',
-        hours=1
-    )
-    scheduler.start()
-    
-    yield
-    
-    # 关闭时清理
-    scheduler.shutdown()
-```
-
-**验收标准**:
-```bash
-# 启动服务
-python run.py
-
-# 验证服务初始化成功
-curl http://localhost:9999/api/v1/healthz
-```
-
----
-
-## 🎨 阶段 3：前端组件开发（3-4 天）
-
-### 目标
-
-- ✅ 实现 6 个新增组件
-- ✅ 修改 3 个现有组件
-- ✅ 实现 WebSocket 客户端
-- ✅ 实现 API 调用封装
-- ✅ 实现 Dashboard 主页面
-
----
-
-### 任务清单
-
-#### 3.1 基础组件实现（1.5 天）
-
-**任务**:
-- [ ] 实现 `StatsBanner.vue`（0.5 天）
-- [ ] 实现 `LogWindow.vue`（0.5 天）
-- [ ] 实现 `RealTimeIndicator.vue`（0.25 天）
-- [ ] 实现 `PollingConfig.vue`（0.25 天）
-
-**验收标准**:
-```bash
-# 组件单元测试
-cd web && pnpm test:unit
-```
-
----
-
-#### 3.2 图表组件实现（1 天）
-
-**任务**:
-- [ ] 实现 `UserActivityChart.vue`
-- [ ] 集成 ECharts
-- [ ] 实现时间范围切换（1h/24h/7d）
-- [ ] 实现数据自动更新
-
-**验收标准**:
-```bash
-# 组件单元测试
-cd web && pnpm test:unit
-
-# 手动测试
-cd web && pnpm dev
-# 访问 http://localhost:3101/dashboard
-```
-
----
-
-#### 3.3 WebSocket 客户端实现（0.5 天）
-
-**任务**:
-- [ ] 实现 `WebSocketClient.vue`
-- [ ] 实现自动重连逻辑（最多 3 次）
-- [ ] 实现降级为 HTTP 轮询
-
-**验收标准**:
+**复用逻辑**:
 ```javascript
-// 手动测试
-const ws = new WebSocket('ws://localhost:9999/ws/dashboard?token=<token>')
-ws.onmessage = (event) => console.log(JSON.parse(event.data))
+// 从 catalog/index.vue 提取
+import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
+
+const store = useAiModelSuiteStore()
+
+async function handleModelChange(modelId) {
+  await store.setDefaultModel({ id: modelId, is_default: true })
+  window.$message.success('模型已切换')
+  await store.loadModels()
+}
 ```
+
+**验收标准**:
+- ✅ 显示当前激活模型
+- ✅ 下拉选择其他模型
+- ✅ 切换后 Dashboard 实时更新
+- ✅ 显示加载状态和错误提示
+
+**依赖关系**:
+- 依赖 `useAiModelSuiteStore`
+- 依赖 API: `GET /api/v1/llm/models`, `PUT /api/v1/llm/models`
 
 ---
 
-#### 3.4 API 调用封装（0.5 天）
+### 任务 1.3：ApiConnectivityModal.vue - API 连通性详情弹窗
 
-**文件**: `web/src/api/dashboard.js`
+**工作量**: 0.5-1 天
 
-**任务**:
-- [ ] 封装 8 个 API 调用函数
-- [ ] 添加错误处理
-- [ ] 添加 TypeScript 类型定义
+**文件路径**: `web/src/components/dashboard/ApiConnectivityModal.vue`
 
-**验收标准**:
+**任务清单**:
+- [ ] 创建 ApiConnectivityModal 组件
+- [ ] 实现端点列表展示（表格形式）
+- [ ] 实现监控控制（启动/停止按钮）
+- [ ] 添加实时状态刷新（每 30 秒）
+- [ ] 集成到 Dashboard 主页面
+
+**Props 定义**:
+```typescript
+interface Props {
+  show: boolean  // 控制弹窗显示
+}
+
+interface Emits {
+  (e: 'update:show', value: boolean): void
+}
+```
+
+**API 调用**:
 ```javascript
-// 手动测试
-import { getDashboardStats } from '@/api/dashboard'
-const stats = await getDashboardStats({ time_window: '24h' })
-console.log(stats)
+import { getMonitorStatus, startMonitor, stopMonitor } from '@/api/dashboard'
+
+async function handleStartMonitor() {
+  await startMonitor(60)  // 60 秒间隔
+  window.$message.success('监控已启动')
+  await loadMonitorStatus()
+}
+
+async function handleStopMonitor() {
+  await stopMonitor()
+  window.$message.success('监控已停止')
+  await loadMonitorStatus()
+}
 ```
-
----
-
-#### 3.5 Dashboard 主页面实现（1 天）
-
-**文件**: `web/src/views/dashboard/index.vue`
-
-**任务**:
-- [ ] 实现方案 A 布局（Grid 两列）
-- [ ] 集成所有组件
-- [ ] 实现 WebSocket 连接
-- [ ] 实现 HTTP 轮询降级
-- [ ] 实现响应式布局（1200px、768px 断点）
 
 **验收标准**:
-```bash
-# 启动前端
-cd web && pnpm dev
+- ✅ 点击统计卡片弹出详情弹窗
+- ✅ 显示所有 API 供应商列表（在线/离线、延迟、最近检测时间）
+- ✅ 提供"启动监控"/"停止监控"按钮
+- ✅ 监控状态实时更新
 
-# 访问 http://localhost:3101/dashboard
-# 验证：
-# 1. 统计横幅显示正确
-# 2. Log 小窗在左侧（300px）
-# 3. 用户活跃度图表在右侧
-# 4. WebSocket 连接成功（实时状态指示器显示"已连接"）
-# 5. 响应式布局正常（调整浏览器窗口大小）
-```
+**依赖关系**:
+- 依赖 API: `GET /api/v1/llm/monitor/status`, `POST /api/v1/llm/monitor/start`, `POST /api/v1/llm/monitor/stop`
+
 
 ---
 
-## 🧪 阶段 4：集成测试与优化（2 天）
+## 🔧 Phase 2：增强功能（P1 优先级）
 
 ### 目标
 
-- ✅ 编写端到端测试
-- ✅ 性能优化
-- ✅ 错误处理完善
-- ✅ 用户体验优化
+- ✅ 实现 Prompt 管理控制
+- ✅ 实现 Supabase 连接状态显示
+- ✅ 实现服务器负载监控
+
+**工期**: 1-1.5 天
 
 ---
 
-### 任务清单
+### 任务 2.1：PromptSelector.vue - Prompt 选择器
 
-#### 4.1 端到端测试（1 天）
+**工作量**: 0.5 天
 
-**任务**:
-- [ ] 编写 Playwright 测试脚本
-- [ ] 测试 Dashboard 加载
-- [ ] 测试 WebSocket 实时更新
-- [ ] 测试 HTTP 轮询降级
-- [ ] 测试 Log 小窗交互
-- [ ] 测试图表时间范围切换
+**文件路径**: `web/src/components/dashboard/PromptSelector.vue`
 
-**验收标准**:
-```bash
-# 运行 E2E 测试
-cd web && pnpm test:e2e
+**任务清单**:
+- [ ] 创建 PromptSelector 组件
+- [ ] 实现 Prompt 列表加载（调用 `fetchPrompts()`）
+- [ ] 实现 Prompt 切换（调用 `PUT /api/v1/llm/prompts`）
+- [ ] 添加 Tools 启用/禁用开关
+- [ ] 集成到 Dashboard 主页面
+
+**API 调用**:
+```javascript
+import { getPrompts, setActivePrompt } from '@/api/dashboard'
+
+async function handlePromptChange(promptId) {
+  await setActivePrompt(promptId)
+  window.$message.success('Prompt 已切换')
+  await loadPrompts()
+}
 ```
 
+**验收标准**:
+- ✅ 显示当前激活 Prompt
+- ✅ 下拉选择其他 Prompt
+- ✅ 切换后 Dashboard 实时更新
+- ✅ 显示 Tools 启用/禁用开关
+
+**依赖关系**:
+- 依赖 API: `GET /api/v1/llm/prompts`, `PUT /api/v1/llm/prompts`
+
 ---
 
-#### 4.2 性能优化（0.5 天）
+### 任务 2.2：SupabaseStatusCard.vue - Supabase 状态卡片
 
-**任务**:
-- [ ] 优化 WebSocket 推送频率（可配置）
-- [ ] 优化日志查询性能（添加索引）
-- [ ] 优化图表渲染性能（防抖）
-- [ ] 优化 API 响应时间（缓存）
+**工作量**: 0.25 天
 
-**验收标准**:
-```bash
-# 性能测试
-python scripts/performance_test.py
+**文件路径**: `web/src/components/dashboard/SupabaseStatusCard.vue`
 
-# 验证指标：
-# - WebSocket 连接延迟 < 100ms
-# - 统计数据查询延迟 < 200ms
-# - 日志查询延迟 < 100ms
+**任务清单**:
+- [ ] 创建 SupabaseStatusCard 组件
+- [ ] 实现状态加载（调用 `getSupabaseStatus()`）
+- [ ] 添加自动刷新（每 30 秒）
+- [ ] 显示连接状态、延迟、最近同步时间
+- [ ] 集成到 Dashboard 主页面
+
+**API 调用**:
+```javascript
+import { getSupabaseStatus } from '@/api/dashboard'
+
+async function loadSupabaseStatus() {
+  const res = await getSupabaseStatus()
+  supabaseStatus.value = res.data
+}
+
+// 自动刷新
+onMounted(() => {
+  loadSupabaseStatus()
+  setInterval(loadSupabaseStatus, 30000)  // 30 秒
+})
 ```
 
+**验收标准**:
+- ✅ 显示 Supabase 连接状态（在线/离线）
+- ✅ 显示延迟（ms）
+- ✅ 显示最近同步时间
+- ✅ 每 30 秒自动刷新
+
+**依赖关系**:
+- 依赖 API: `GET /api/v1/llm/status/supabase`
+
 ---
 
-#### 4.3 错误处理完善（0.5 天）
+### 任务 2.3：ServerLoadCard.vue - 服务器负载卡片
 
-**任务**:
-- [ ] WebSocket 断线重连
-- [ ] API 调用失败处理
-- [ ] 数据同步失败处理
-- [ ] 日志内存溢出处理
+**工作量**: 0.5 天
 
-**验收标准**:
-```bash
-# 错误场景测试
-# 1. 断开网络 → 验证自动重连
-# 2. 后端服务停止 → 验证错误提示
-# 3. Supabase 连接失败 → 验证降级为本地存储
+**文件路径**: `web/src/components/dashboard/ServerLoadCard.vue`
+
+**任务清单**:
+- [ ] 创建 ServerLoadCard 组件
+- [ ] 实现 Prometheus 指标解析（`parsePrometheusMetrics()`）
+- [ ] 显示关键指标（总请求数、错误率、活跃连接数、限流阻止数）
+- [ ] 使用 NStatistic 或 ECharts 展示
+- [ ] 集成到 Dashboard 主页面
+
+**API 调用**:
+```javascript
+import { getSystemMetrics, parsePrometheusMetrics } from '@/api/dashboard'
+
+async function loadServerLoad() {
+  const text = await getSystemMetrics()
+  const metrics = parsePrometheusMetrics(text)
+
+  serverLoad.value = {
+    totalRequests: metrics['auth_requests_total'] || 0,
+    errorRate: calculateErrorRate(metrics),
+    activeConnections: metrics['active_connections'] || 0,
+    rateLimitBlocks: metrics['rate_limit_blocks_total'] || 0
+  }
+}
+
+function calculateErrorRate(metrics) {
+  const total = metrics['auth_requests_total'] || 0
+  const errors = metrics['jwt_validation_errors_total'] || 0
+  return total > 0 ? (errors / total * 100).toFixed(2) : 0
+}
 ```
 
+**验收标准**:
+- ✅ 解析 Prometheus 指标（`GET /api/v1/metrics`）
+- ✅ 显示总请求数、错误率、活跃连接数、限流阻止数
+- ✅ 使用 NStatistic 或 ECharts 展示
+
+**依赖关系**:
+- 依赖 API: `GET /api/v1/metrics`
+- 需要新增 `parsePrometheusMetrics()` 函数
+
 ---
 
-## 🚀 阶段 5：部署与监控（1 天）
+## 🔧 Phase 3：可选优化（P2 优先级）
 
 ### 目标
 
-- ✅ 部署到生产环境
-- ✅ 配置监控告警
-- ✅ 编写运维文档
+- ✅ 实现配置总览面板
+- ✅ 实现快速操作栏
+
+**工期**: 0.5-1 天
+
+**状态**: 可选，根据时间和需求决定是否实施
 
 ---
 
-### 任务清单
+### 任务 3.1：ConfigSummaryPanel.vue - 配置总览面板
 
-#### 5.1 部署（0.5 天）
+**工作量**: 0.25 天
 
-**任务**:
-- [ ] 构建 Docker 镜像
-- [ ] 部署到生产环境
-- [ ] 配置环境变量
-- [ ] 执行数据库迁移
+**文件路径**: `web/src/components/dashboard/ConfigSummaryPanel.vue`
+
+**功能**: 显示当前系统配置摘要（当前模型、Prompt、API 供应商数量等）
 
 **验收标准**:
-```bash
-# 构建 Docker 镜像
-docker build -t vue-fastapi-admin:dashboard-v1 .
-
-# 部署
-docker-compose up -d
-
-# 验证
-curl https://your-domain.com/api/v1/healthz
-```
+- ✅ 显示当前激活模型
+- ✅ 显示当前激活 Prompt
+- ✅ 显示 API 供应商数量（在线/总数）
 
 ---
 
-#### 5.2 监控配置（0.5 天）
+### 任务 3.2：QuickActionsBar.vue - 快速操作栏
 
-**任务**:
-- [ ] 配置 Prometheus 指标收集
-- [ ] 配置 Grafana 仪表盘
-- [ ] 配置告警规则
+**工作量**: 0.25 天
+
+**文件路径**: `web/src/components/dashboard/QuickActionsBar.vue`
+
+**功能**: 提供常用操作按钮（刷新数据、导出报告、清除缓存等）
 
 **验收标准**:
-```bash
-# 访问 Grafana
-# 验证 Dashboard 指标正常显示
-```
+- ✅ 提供"刷新数据"按钮
+- ✅ 提供"导出报告"按钮（可选）
+- ✅ 提供"清除缓存"按钮（可选）
 
 ---
 
-## 📋 验收标准总结
+## 📋 总体验收标准
 
-### 功能验收
+### Phase 1（P0）验收清单
 
-- [ ] 统计横幅显示 5 个指标（日活、AI 请求数、Token 使用量、API 连通性、JWT 可获取性）
-- [ ] Log 小窗显示最近 100 条日志，支持级别过滤
-- [ ] 用户活跃度图表支持时间范围切换（1h/24h/7d）
-- [ ] WebSocket 实时推送统计数据（10 秒间隔）
-- [ ] HTTP 轮询降级（WebSocket 失败时自动切换）
-- [ ] 响应式布局（桌面端、平板端、移动端）
+- [ ] QuickAccessCard 组件完成并集成
+- [ ] ModelSwitcher 组件完成并集成
+- [ ] ApiConnectivityModal 组件完成并集成
+- [ ] Dashboard 主页面集成所有 P0 组件
+- [ ] 端到端链路验证（导航、模型切换、API 详情）
 
----
+### Phase 2（P1）验收清单
 
-### 性能验收
+- [ ] PromptSelector 组件完成并集成
+- [ ] SupabaseStatusCard 组件完成并集成
+- [ ] ServerLoadCard 组件完成并集成
+- [ ] Dashboard 主页面集成所有 P1 组件
+- [ ] 端到端链路验证（Prompt 切换、Supabase 状态、服务器负载）
 
-- [ ] WebSocket 连接延迟 < 100ms
-- [ ] 统计数据查询延迟 < 200ms
-- [ ] 日志查询延迟 < 100ms
-- [ ] 并发 WebSocket 连接数 ≥ 1000
-- [ ] 数据同步延迟 < 5s
+### Phase 3（P2）验收清单
 
----
-
-### 安全验收
-
-- [ ] 匿名用户禁止访问 Dashboard
-- [ ] 仅 admin 角色可查看日志
-- [ ] JWT 验证正常工作
-- [ ] WebSocket 连接需要 token 认证
+- [ ] ConfigSummaryPanel 组件完成并集成（可选）
+- [ ] QuickActionsBar 组件完成并集成（可选）
 
 ---
 
-## 🎯 下一步行动
-
-**请确认以上实施计划，我将：**
-1. 开始执行阶段 1（数据库与服务层）
-2. 逐步完成所有阶段
-3. 每个阶段完成后向您汇报进度
-
-**请回复确认，我将立即开始代码实施。** 🚀
+**文档版本**: v2.0
+**最后更新**: 2025-01-12
+**变更**: 基于核心功能缺失诊断重写
+**状态**: 待实施
 

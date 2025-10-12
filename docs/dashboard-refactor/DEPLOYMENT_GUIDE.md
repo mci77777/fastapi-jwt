@@ -1,413 +1,709 @@
-# Dashboard 重构 - 部署运维指南
+﻿# Dashboard 重构 - 部署运维指南
 
-**文档版本**: v1.0  
-**创建时间**: 2025-10-12  
-**适用版本**: Dashboard v1.0（阶段1-5完成）
+**文档版本**: v2.0
+**最后更新**: 2025-01-12 | **变更**: 基于核心功能缺失诊断重写
+**状态**: 待实施
 
 ---
 
 ## 📋 目录
 
-1. [部署前准备](#1-部署前准备)
-2. [Docker 部署](#2-docker-部署)
-3. [环境变量配置](#3-环境变量配置)
-4. [健康检查](#4-健康检查)
-5. [监控配置](#5-监控配置)
-6. [回滚方案](#6-回滚方案)
-7. [故障排查](#7-故障排查)
+1. [前置检查](#1-前置检查)
+2. [组件部署顺序](#2-组件部署顺序)
+3. [端到端验证](#3-端到端验证)
+4. [回滚程序](#4-回滚程序)
+5. [故障排查](#5-故障排查)
 
 ---
 
-## 1. 部署前准备
+## 1. 前置检查
 
-### 1.1 系统要求
+### 1.1 API 端点可用性验证
 
-| 组件 | 最低要求 | 推荐配置 |
-|------|---------|---------|
-| CPU | 2 核 | 4 核 |
-| 内存 | 2GB | 4GB |
-| 磁盘 | 10GB | 20GB |
-| Docker | 20.10+ | 最新版 |
-| Docker Compose | 1.29+ | 最新版 |
+**目的**: 确保所有必需的后端 API 端点已实现并可用
 
-### 1.2 依赖服务
+**检查清单**:
 
-- ✅ Supabase 项目（JWT 认证 + 数据备份）
-- ✅ 域名与 SSL 证书（生产环境）
-- ⚠️ Prometheus + Grafana（可选，监控）
+```bash
+# 1. 模型管理 API
+curl -X GET http://localhost:9999/api/v1/llm/models \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+# 预期: 返回模型列表，状态码 200
 
-### 1.3 端口规划
+# 2. Prompt 管理 API
+curl -X GET http://localhost:9999/api/v1/llm/prompts \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+# 预期: 返回 Prompt 列表，状态码 200
 
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| Nginx（前端 + API） | 80 | HTTP 入口 |
-| Prometheus | 9090 | 监控指标 |
-| Grafana | 3000 | 可视化仪表盘 |
+# 3. 监控状态 API
+curl -X GET http://localhost:9999/api/v1/llm/monitor/status \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+# 预期: 返回监控状态，状态码 200
+
+# 4. Supabase 状态 API
+curl -X GET http://localhost:9999/api/v1/llm/status/supabase \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+# 预期: 返回 Supabase 连接状态，状态码 200
+
+# 5. Prometheus 指标 API
+curl -X GET http://localhost:9999/api/v1/metrics
+# 预期: 返回 Prometheus 文本格式指标，状态码 200
+```
+
+**验收标准**:
+- ✅ 所有 API 端点返回状态码 200
+- ✅ 响应数据格式符合预期
+- ✅ 无 500 或 404 错误
 
 ---
 
-## 2. Docker 部署
+### 1.2 前端依赖检查
 
-### 2.1 克隆代码
+**目的**: 确保前端项目已安装所有必需的依赖
 
-```bash
-git clone https://github.com/your-org/vue-fastapi-admin.git
-cd vue-fastapi-admin
-git checkout dashboard-v1
-```
-
-### 2.2 配置环境变量
-
-复制环境变量模板：
+**检查清单**:
 
 ```bash
-cp .env.example .env
+cd web
+
+# 1. 检查 package.json 中的依赖
+cat package.json | grep -E "naive-ui|vue-router|pinia"
+
+# 预期输出:
+# "naive-ui": "^2.x.x"
+# "vue-router": "^4.x.x"
+# "pinia": "^2.x.x"
+
+# 2. 验证依赖已安装
+pnpm list naive-ui vue-router pinia
+
+# 预期: 显示已安装的版本号
 ```
 
-编辑 `.env` 文件，替换以下占位符：
-
-```bash
-# Supabase 配置（必填）
-SUPABASE_PROJECT_ID=your-project-id
-SUPABASE_JWKS_URL=https://your-project-id.supabase.co/.well-known/jwks.json
-SUPABASE_ISSUER=https://your-project-id.supabase.co
-SUPABASE_AUDIENCE=your-project-id
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-
-# AI 服务配置（可选）
-AI_API_KEY=your-openai-api-key
-```
-
-### 2.3 构建镜像
-
-```bash
-docker build -t vue-fastapi-admin:dashboard-v1 .
-```
-
-**预期输出**：
-```
-✓ built in 18.59s
-Successfully tagged vue-fastapi-admin:dashboard-v1
-```
-
-**镜像体积**：约 450MB（多阶段构建优化）
-
-### 2.4 启动服务
-
-```bash
-docker-compose up -d
-```
-
-**验证启动**：
-```bash
-docker-compose ps
-# 预期输出：
-# NAME                COMMAND             STATUS              PORTS
-# vue-fastapi-admin   /bin/sh entrypoint  Up 30 seconds       0.0.0.0:80->80/tcp
-# prometheus          /bin/prometheus     Up 30 seconds       0.0.0.0:9090->9090/tcp
-# grafana             /run.sh             Up 30 seconds       0.0.0.0:3000->3000/tcp
-```
-
-### 2.5 查看日志
-
-```bash
-# 查看所有服务日志
-docker-compose logs -f
-
-# 查看主服务日志
-docker-compose logs -f app
-
-# 查看最近 100 行日志
-docker-compose logs --tail=100 app
-```
+**验收标准**:
+- ✅ Naive UI 2.x 已安装
+- ✅ Vue Router 4.x 已安装
+- ✅ Pinia 2.x 已安装
 
 ---
 
-## 3. 环境变量配置
+### 1.3 现有组件检查
 
-### 3.1 核心配置项
+**目的**: 确保 Dashboard 现有组件正常工作
 
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
-| `DEBUG` | `false` | 调试模式（生产环境必须为 false）|
-| `ANON_ENABLED` | `true` | 是否允许匿名用户 |
-| `RATE_LIMIT_ENABLED` | `true` | 是否启用限流 |
-| `POLICY_GATE_ENABLED` | `true` | 是否启用策略网关 |
+**检查清单**:
 
-### 3.2 性能调优
+```bash
+# 1. 检查现有组件文件是否存在
+ls web/src/components/dashboard/StatsBanner.vue
+ls web/src/components/dashboard/LogWindow.vue
+ls web/src/components/dashboard/UserActivityChart.vue
+ls web/src/components/dashboard/WebSocketClient.vue
 
-| 变量名 | 默认值 | 调优建议 |
-|--------|--------|---------|
-| `RATE_LIMIT_PER_USER_QPS` | `10` | 根据实际负载调整 |
-| `SSE_MAX_CONCURRENT_PER_USER` | `2` | 限制并发 SSE 连接 |
-| `JWKS_CACHE_TTL_SECONDS` | `900` | JWKS 缓存时间（15 分钟）|
+# 2. 检查 Dashboard 主页面
+ls web/src/views/dashboard/index.vue
+```
 
-### 3.3 安全配置
-
-| 变量名 | 默认值 | 安全建议 |
-|--------|--------|---------|
-| `CORS_ALLOW_ORIGINS` | `*` | 生产环境改为具体域名 |
-| `FORCE_HTTPS` | `false` | 生产环境改为 `true` |
-| `JWT_ALLOWED_ALGORITHMS` | `ES256,RS256,HS256` | 仅保留必要算法 |
+**验收标准**:
+- ✅ 所有现有组件文件存在
+- ✅ Dashboard 主页面存在
+- ✅ 现有组件无编译错误
 
 ---
 
-## 4. 健康检查
+## 2. 组件部署顺序
 
-### 4.1 健康探针
+### 步骤 1：创建 API 封装文件
+
+**文件路径**: `web/src/api/dashboard.js`
+
+**操作**:
 
 ```bash
-# 总体健康状态
-curl http://localhost/api/v1/healthz
+# 创建文件
+touch web/src/api/dashboard.js
+```
 
-# 预期输出：
-{
-  "status": "healthy",
-  "timestamp": "2025-10-12T14:30:00Z",
-  "version": "0.1.0"
+**文件内容**: 参考 `IMPLEMENTATION_SPEC.md` 中的 API 封装规格
+
+**验证**:
+
+```bash
+# 检查文件是否创建成功
+ls web/src/api/dashboard.js
+
+# 检查语法错误
+cd web && pnpm lint web/src/api/dashboard.js
+```
+
+**验收标准**:
+- ✅ 文件创建成功
+- ✅ 无语法错误
+- ✅ 导出所有必需的 API 函数
+
+---
+
+### 步骤 2：部署 QuickAccessCard.vue（P0）
+
+**文件路径**: `web/src/components/dashboard/QuickAccessCard.vue`
+
+**操作**:
+
+```bash
+# 创建文件
+touch web/src/components/dashboard/QuickAccessCard.vue
+```
+
+**文件内容**: 参考 `IMPLEMENTATION_SPEC.md` 中的组件规格
+
+**验证**:
+
+```bash
+# 检查语法错误
+cd web && pnpm lint web/src/components/dashboard/QuickAccessCard.vue
+
+# 启动开发服务器测试
+pnpm dev
+```
+
+**验收标准**:
+- ✅ 组件创建成功
+- ✅ 无编译错误
+- ✅ 组件可独立渲染
+
+---
+
+### 步骤 3：部署 ModelSwitcher.vue（P0）
+
+**文件路径**: `web/src/components/dashboard/ModelSwitcher.vue`
+
+**操作**:
+
+```bash
+# 创建文件
+touch web/src/components/dashboard/ModelSwitcher.vue
+```
+
+**文件内容**: 参考 `IMPLEMENTATION_SPEC.md` 中的组件规格
+
+**验证**:
+
+```bash
+# 检查语法错误
+cd web && pnpm lint web/src/components/dashboard/ModelSwitcher.vue
+```
+
+**验收标准**:
+- ✅ 组件创建成功
+- ✅ 无编译错误
+- ✅ 可成功调用 `getModels()` API
+- ✅ 可成功调用 `setDefaultModel()` API
+
+---
+
+### 步骤 4：部署 ApiConnectivityModal.vue（P0）
+
+**文件路径**: `web/src/components/dashboard/ApiConnectivityModal.vue`
+
+**操作**:
+
+```bash
+# 创建文件
+touch web/src/components/dashboard/ApiConnectivityModal.vue
+```
+
+**文件内容**: 参考 `IMPLEMENTATION_SPEC.md` 中的组件规格
+
+**验证**:
+
+```bash
+# 检查语法错误
+cd web && pnpm lint web/src/components/dashboard/ApiConnectivityModal.vue
+```
+
+**验收标准**:
+- ✅ 组件创建成功
+- ✅ 无编译错误
+- ✅ 可成功调用监控 API
+- ✅ 弹窗可正常打开/关闭
+
+---
+
+### 步骤 5-7：部署 P1 组件
+
+**组件清单**:
+- `PromptSelector.vue`
+- `SupabaseStatusCard.vue`
+- `ServerLoadCard.vue`
+
+**操作**: 重复步骤 2-4 的流程
+
+**验收标准**: 参考各组件的 `IMPLEMENTATION_SPEC.md` 规格
+
+---
+
+### 步骤 8：集成到 Dashboard 主页面
+
+**文件路径**: `web/src/views/dashboard/index.vue`
+
+**操作**:
+
+```vue
+<template>
+  <div class="dashboard-container">
+    <!-- 现有组件 -->
+    <StatsBanner :stats="stats" :loading="statsLoading" @stat-click="handleStatClick" />
+
+    <!-- 新增：快速访问卡片组 -->
+    <div class="quick-access-section">
+      <QuickAccessCard
+        v-for="card in quickAccessCards"
+        :key="card.path"
+        v-bind="card"
+      />
+    </div>
+
+    <!-- 新增：当前配置面板 -->
+    <div class="config-panel">
+      <ModelSwitcher />
+      <PromptSelector />
+      <SupabaseStatusCard />
+    </div>
+
+    <!-- 现有组件 -->
+    <div class="dashboard-main">
+      <LogWindow :logs="logs" :loading="logsLoading" />
+      <UserActivityChart :time-range="chartTimeRange" :data="chartData" />
+    </div>
+
+    <!-- 新增：服务器负载卡片 -->
+    <ServerLoadCard />
+
+    <!-- 新增：API 连通性详情弹窗 -->
+    <ApiConnectivityModal v-model:show="showApiModal" />
+  </div>
+</template>
+
+<script setup>
+import QuickAccessCard from '@/components/dashboard/QuickAccessCard.vue'
+import ModelSwitcher from '@/components/dashboard/ModelSwitcher.vue'
+import PromptSelector from '@/components/dashboard/PromptSelector.vue'
+import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
+import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
+import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
+
+const quickAccessCards = [
+  { icon: 'mdi:robot', title: '模型目录', description: '查看和管理 AI 模型', path: '/ai/catalog' },
+  { icon: 'mdi:map', title: '模型映射', description: '配置模型映射关系', path: '/ai/mapping' },
+  { icon: 'mdi:text-box', title: 'Prompt 管理', description: '管理 Prompt 模板', path: '/system/ai/prompt' },
+  { icon: 'mdi:key', title: 'JWT 测试', description: '测试 JWT 认证', path: '/ai/jwt' },
+  { icon: 'mdi:cog', title: 'API 配置', description: '配置 API 供应商', path: '/system/ai' },
+  { icon: 'mdi:file-document', title: '审计日志', description: '查看系统日志', path: '/dashboard/logs' }
+]
+
+const showApiModal = ref(false)
+
+function handleStatClick(statType) {
+  if (statType === 'api_connectivity') {
+    showApiModal.value = true
+  }
 }
+</script>
 ```
 
-### 4.2 存活探针
+**验证**:
 
 ```bash
-curl http://localhost/api/v1/livez
+# 检查语法错误
+cd web && pnpm lint web/src/views/dashboard/index.vue
 
-# 预期输出：
-{
-  "status": "alive"
-}
+# 启动开发服务器
+pnpm dev
+
+# 访问 http://localhost:3101/dashboard
 ```
 
-### 4.3 就绪探针
+**验收标准**:
+- ✅ 所有新增组件正常渲染
+- ✅ 无编译错误
+- ✅ 无运行时错误
+
+---
+
+## 3. 端到端验证
+
+### 3.1 导航枢纽链路验证
+
+**测试步骤**:
+
+1. 访问 Dashboard 页面：`http://localhost:3101/dashboard`
+2. 点击"模型目录"快速访问卡片
+3. 验证跳转到 `/ai/catalog` 页面
+4. 返回 Dashboard
+5. 重复测试其他 5 个快速访问卡片
+
+**验收标准**:
+- ✅ 所有卡片可点击
+- ✅ 跳转路由正确
+- ✅ 无 404 错误
+
+---
+
+### 3.2 模型切换链路验证
+
+**测试步骤**:
+
+1. 在 Dashboard 上找到 ModelSwitcher 组件
+2. 打开模型下拉列表
+3. 选择一个非默认模型
+4. 观察切换结果
+
+**验收标准**:
+- ✅ 下拉列表显示所有模型
+- ✅ 切换后显示成功提示
+- ✅ Dashboard 实时更新显示新模型
+- ✅ 后端数据库已更新（`is_default` 字段）
+
+**验证命令**:
 
 ```bash
-curl http://localhost/api/v1/readyz
-
-# 预期输出：
-{
-  "status": "ready",
-  "database": "connected",
-  "supabase": "connected"
-}
+# 查询数据库验证
+sqlite3 db.sqlite3 "SELECT id, model, is_default FROM ai_endpoints;"
 ```
 
 ---
 
-## 5. 监控配置
+### 3.3 API 监控链路验证
 
-### 5.1 Prometheus 指标
+**测试步骤**:
 
-访问 Prometheus UI：http://localhost:9090
+1. 点击统计横幅中的"API 连通性"卡片
+2. 验证弹窗打开
+3. 点击"启动监控"按钮
+4. 观察端点列表状态更新
+5. 点击"停止监控"按钮
 
-**核心指标**：
-- `http_requests_total` - HTTP 请求总数
-- `http_request_duration_seconds` - 请求延迟分布
-- `websocket_connections_active` - WebSocket 活跃连接数
-- `dashboard_stats_last_update_timestamp` - Dashboard 统计数据更新时间
-- `process_resident_memory_bytes` - 内存使用量
-
-### 5.2 Grafana 仪表盘
-
-访问 Grafana UI：http://localhost:3000
-
-**默认凭证**：
-- 用户名：`admin`
-- 密码：`admin`
-
-**预置仪表盘**：
-1. **Dashboard 概览**
-   - 日活用户数趋势
-   - AI 请求数趋势
-   - API 连通性状态
-   - JWT 可获取性趋势
-
-2. **性能监控**
-   - 请求延迟 P50/P95/P99
-   - 错误率趋势
-   - WebSocket 连接数
-
-3. **资源监控**
-   - CPU 使用率
-   - 内存使用率
-   - 磁盘 I/O
-
-### 5.3 告警规则
-
-已配置的告警（见 `deploy/alerts.yml`）：
-
-| 告警名称 | 触发条件 | 严重级别 |
-|---------|---------|---------|
-| HighErrorRate | 错误率 > 5% | Critical |
-| HighLatency | P95 延迟 > 2s | Warning |
-| WebSocketConnectionsHigh | 连接数 > 1000 | Warning |
-| ServiceDown | 服务不可用 > 1min | Critical |
-| HighMemoryUsage | 内存 > 2GB | Warning |
-| DashboardStatsStale | 数据 > 5min 未更新 | Warning |
+**验收标准**:
+- ✅ 弹窗正常打开/关闭
+- ✅ 端点列表显示所有 API 供应商
+- ✅ 监控启动/停止功能正常
+- ✅ 状态实时更新
 
 ---
 
-## 6. 回滚方案
+### 3.4 Prompt 切换链路验证
 
-### 6.1 快速回滚（Docker 镜像）
+**测试步骤**:
+
+1. 在 Dashboard 上找到 PromptSelector 组件
+2. 打开 Prompt 下拉列表
+3. 选择一个非激活 Prompt
+4. 观察切换结果
+
+**验收标准**:
+- ✅ 下拉列表显示所有 Prompt
+- ✅ 切换后显示成功提示
+- ✅ Dashboard 实时更新显示新 Prompt
+
+---
+
+### 3.5 Supabase 状态验证
+
+**测试步骤**:
+
+1. 在 Dashboard 上找到 SupabaseStatusCard 组件
+2. 观察连接状态（在线/离线）
+3. 等待 30 秒观察自动刷新
+
+**验收标准**:
+- ✅ 显示连接状态
+- ✅ 显示延迟（ms）
+- ✅ 显示最近同步时间
+- ✅ 每 30 秒自动刷新
+
+---
+
+### 3.6 服务器负载验证
+
+**测试步骤**:
+
+1. 在 Dashboard 上找到 ServerLoadCard 组件
+2. 观察显示的指标
+3. 点击"刷新"按钮
+4. 验证数据更新
+
+**验收标准**:
+- ✅ 显示总请求数
+- ✅ 显示错误率
+- ✅ 显示活跃连接数
+- ✅ 显示限流阻止数
+- ✅ 手动刷新功能正常
+
+---
+
+## 4. 回滚程序
+
+
+### 4.1 撤销组件集成
+
+**场景**: 新增组件导致 Dashboard 出现问题，需要快速回滚
+
+**操作步骤**:
 
 ```bash
-# 停止当前版本
-docker-compose down
+# 1. 备份当前 Dashboard 主页面
+cp web/src/views/dashboard/index.vue web/src/views/dashboard/index.vue.backup
 
-# 切换到旧版本镜像
-docker tag vue-fastapi-admin:dashboard-v0 vue-fastapi-admin:latest
+# 2. 使用 Git 恢复到上一个版本
+git checkout HEAD~1 -- web/src/views/dashboard/index.vue
 
-# 重新启动
-docker-compose up -d
+# 3. 重启开发服务器
+cd web && pnpm dev
 ```
 
-### 6.2 数据库回滚
+**验证**:
 
 ```bash
-# 备份当前数据库
-cp data/db.sqlite3 data/db.sqlite3.backup
-
-# 恢复旧版本数据库
-cp data/db.sqlite3.v0 data/db.sqlite3
-
-# 重启服务
-docker-compose restart app
+# 访问 Dashboard 验证功能正常
+curl http://localhost:3101/dashboard
 ```
 
-### 6.3 功能开关回滚
+**验收标准**:
+- ✅ Dashboard 恢复到旧版本
+- ✅ 现有功能正常工作
+- ✅ 无编译错误
 
-编辑 `.env` 文件，禁用新功能：
+---
+
+### 4.2 删除新增组件
+
+**场景**: 需要完全移除新增的组件文件
+
+**操作步骤**:
 
 ```bash
-# 禁用 Dashboard 新功能（降级为旧版本）
-DASHBOARD_V2_ENABLED=false
+# 1. 删除新增组件文件
+rm web/src/components/dashboard/QuickAccessCard.vue
+rm web/src/components/dashboard/ModelSwitcher.vue
+rm web/src/components/dashboard/PromptSelector.vue
+rm web/src/components/dashboard/ApiConnectivityModal.vue
+rm web/src/components/dashboard/SupabaseStatusCard.vue
+rm web/src/components/dashboard/ServerLoadCard.vue
 
-# 重启服务
-docker-compose restart app
+# 2. 删除 API 封装文件
+rm web/src/api/dashboard.js
+
+# 3. 清理 node_modules 缓存
+cd web && rm -rf node_modules/.vite
+
+# 4. 重启开发服务器
+pnpm dev
 ```
 
----
-
-## 7. 故障排查
-
-### 7.1 服务无法启动
-
-**症状**：`docker-compose up -d` 失败
-
-**排查步骤**：
-1. 检查端口占用：`netstat -tuln | grep -E '80|9090|3000'`
-2. 检查 Docker 日志：`docker-compose logs app`
-3. 检查环境变量：`docker-compose config`
-
-**常见原因**：
-- 端口被占用 → 修改 `docker-compose.yml` 端口映射
-- 环境变量缺失 → 检查 `.env` 文件
-- 镜像构建失败 → 重新构建镜像
-
-### 7.2 Dashboard 数据不更新
-
-**症状**：统计数据显示为 0 或过期
-
-**排查步骤**：
-1. 检查 WebSocket 连接：浏览器 DevTools → Network → WS
-2. 检查后端日志：`docker-compose logs app | grep dashboard`
-3. 检查数据库：`sqlite3 data/db.sqlite3 "SELECT * FROM dashboard_stats ORDER BY created_at DESC LIMIT 5;"`
-
-**常见原因**：
-- WebSocket 连接失败 → 检查防火墙/代理配置
-- 数据库写入失败 → 检查磁盘空间
-- 统计服务未启动 → 检查后端日志
-
-### 7.3 高延迟/高错误率
-
-**症状**：Prometheus 告警触发
-
-**排查步骤**：
-1. 查看 Grafana 仪表盘：http://localhost:3000
-2. 检查慢查询：`docker-compose logs app | grep "slow query"`
-3. 检查资源使用：`docker stats vue-fastapi-admin`
-
-**常见原因**：
-- 数据库查询慢 → 添加索引
-- 内存不足 → 增加容器内存限制
-- 并发过高 → 调整限流配置
-
----
-
-## 8. 性能基准
-
-### 8.1 首屏加载
-
-| 指标 | 目标值 | 实测值 |
-|------|--------|--------|
-| DOM 内容加载 | < 800ms | 399ms |
-| 页面完全加载 | < 2000ms | 400ms |
-| 首次绘制（FP） | < 500ms | 328ms |
-| 首次内容绘制（FCP） | < 800ms | 328ms |
-
-### 8.2 API 响应时间
-
-| API 端点 | P50 | P95 | P99 |
-|---------|-----|-----|-----|
-| /api/v1/stats/dashboard | 50ms | 120ms | 200ms |
-| /api/v1/logs/recent | 30ms | 80ms | 150ms |
-| /api/v1/base/userinfo | 40ms | 100ms | 180ms |
-
-### 8.3 并发能力
-
-| 指标 | 数值 |
-|------|------|
-| WebSocket 并发连接数 | 1000+ |
-| HTTP QPS | 500+ |
-| 内存占用（稳定状态） | < 500MB |
-
----
-
-## 9. 维护计划
-
-### 9.1 日常维护
-
-- **每日**：检查 Grafana 仪表盘，确认无告警
-- **每周**：清理过期日志（`logs/` 目录）
-- **每月**：备份数据库（`data/db.sqlite3`）
-
-### 9.2 数据清理
+**验证**:
 
 ```bash
-# 清理 30 天前的统计数据
-sqlite3 data/db.sqlite3 "DELETE FROM dashboard_stats WHERE created_at < datetime('now', '-30 days');"
-sqlite3 data/db.sqlite3 "DELETE FROM user_activity_stats WHERE activity_date < date('now', '-30 days');"
-sqlite3 data/db.sqlite3 "DELETE FROM ai_request_stats WHERE request_date < date('now', '-30 days');"
-
-# 压缩数据库
-sqlite3 data/db.sqlite3 "VACUUM;"
+# 检查文件是否已删除
+ls web/src/components/dashboard/QuickAccessCard.vue
+# 预期: No such file or directory
 ```
 
-### 9.3 升级流程
-
-1. 备份数据库和配置文件
-2. 拉取新版本代码
-3. 构建新镜像
-4. 停止旧服务
-5. 启动新服务
-6. 验证健康检查
-7. 监控告警
+**验收标准**:
+- ✅ 所有新增文件已删除
+- ✅ Dashboard 恢复到旧版本
+- ✅ 无编译错误
 
 ---
 
-## 10. 联系方式
+### 4.3 Git 回滚
 
-**技术支持**：
-- 文档：https://github.com/your-org/vue-fastapi-admin/docs
-- Issues：https://github.com/your-org/vue-fastapi-admin/issues
+**场景**: 使用 Git 回滚到指定提交
 
-**紧急联系**：
-- 运维负责人：[姓名] <email@example.com>
-- 开发负责人：[姓名] <email@example.com>
+**操作步骤**:
+
+```bash
+# 1. 查看提交历史
+git log --oneline
+
+# 2. 回滚到指定提交（假设提交 hash 为 abc123）
+git revert abc123
+
+# 3. 推送回滚提交
+git push origin main
+```
+
+**验收标准**:
+- ✅ 代码回滚到指定版本
+- ✅ Git 历史记录清晰
+- ✅ 无冲突
 
 ---
 
-**文档更新时间**: 2025-10-12  
-**下次审查**: 2025-11-12
+### 4.4 回滚验证清单
+
+**验证步骤**:
+
+- [ ] Dashboard 页面可正常访问
+- [ ] 现有组件（StatsBanner、LogWindow、UserActivityChart）正常工作
+- [ ] WebSocket 连接正常
+- [ ] 无 JavaScript 错误
+- [ ] 无 API 调用失败
+
+---
+
+## 5. 故障排查
+
+### 5.1 组件无法渲染
+
+**症状**: 新增组件在 Dashboard 上不显示
+
+**可能原因**:
+1. 组件未正确导入
+2. 组件 Props 传递错误
+3. 组件内部错误
+
+**排查步骤**:
+
+```bash
+# 1. 检查浏览器控制台错误
+# 打开浏览器开发者工具 → Console
+
+# 2. 检查组件导入
+grep -r "import.*QuickAccessCard" web/src/views/dashboard/index.vue
+
+# 3. 检查组件注册
+grep -r "components.*QuickAccessCard" web/src/views/dashboard/index.vue
+
+# 4. 检查 Props 传递
+# 在浏览器控制台执行:
+# document.querySelector('.quick-access-card')
+```
+
+**解决方案**:
+- 确保组件正确导入：`import QuickAccessCard from '@/components/dashboard/QuickAccessCard.vue'`
+- 确保组件在 `<script setup>` 中可用（Composition API 自动注册）
+- 检查 Props 是否正确传递
+
+---
+
+### 5.2 API 调用失败
+
+**症状**: 组件加载时显示错误提示
+
+**可能原因**:
+1. API 端点不存在
+2. JWT Token 过期
+3. 网络请求失败
+
+**排查步骤**:
+
+```bash
+# 1. 检查 API 端点是否可用
+curl -X GET http://localhost:9999/api/v1/llm/models \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# 2. 检查浏览器 Network 面板
+# 打开浏览器开发者工具 → Network → 查看失败的请求
+
+# 3. 检查 JWT Token
+# 在浏览器控制台执行:
+# localStorage.getItem('token')
+```
+
+**解决方案**:
+- 确保后端服务正在运行：`python run.py`
+- 确保 JWT Token 有效（重新登录获取新 Token）
+- 检查 API 路径是否正确
+
+---
+
+### 5.3 组件状态不更新
+
+**症状**: 切换模型/Prompt 后 Dashboard 未更新
+
+**可能原因**:
+1. 响应式数据未正确设置
+2. 组件未监听状态变化
+3. Pinia Store 未正确更新
+
+**排查步骤**:
+
+```bash
+# 1. 检查 Pinia Store 状态
+# 在浏览器控制台执行:
+# import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
+# const store = useAiModelSuiteStore()
+# console.log(store.models)
+
+# 2. 检查组件是否使用 storeToRefs
+grep -r "storeToRefs" web/src/components/dashboard/ModelSwitcher.vue
+```
+
+**解决方案**:
+- 使用 `storeToRefs()` 解构 Store 状态以保持响应性
+- 确保组件使用 `ref()` 或 `reactive()` 包装数据
+- 在状态变化后手动触发刷新：`await store.loadModels()`
+
+---
+
+### 5.4 Prometheus 指标解析失败
+
+**症状**: ServerLoadCard 显示 0 或错误数据
+
+**可能原因**:
+1. Prometheus 指标格式不正确
+2. `parsePrometheusMetrics()` 函数有 bug
+3. 指标名称不匹配
+
+**排查步骤**:
+
+```bash
+# 1. 检查 Prometheus 指标原始数据
+curl http://localhost:9999/api/v1/metrics
+
+# 2. 在浏览器控制台测试解析函数
+# import { getSystemMetrics, parsePrometheusMetrics } from '@/api/dashboard'
+# const text = await getSystemMetrics()
+# console.log(parsePrometheusMetrics(text))
+```
+
+**解决方案**:
+- 确保 Prometheus 指标格式正确（`metric_name value`）
+- 检查正则表达式是否匹配指标格式
+- 验证指标名称是否正确（如 `auth_requests_total`）
+
+---
+
+### 5.5 自动刷新不工作
+
+**症状**: SupabaseStatusCard 或 ServerLoadCard 不自动刷新
+
+**可能原因**:
+1. `setInterval` 未正确设置
+2. 组件卸载时未清理定时器
+3. `autoRefresh` Props 为 false
+
+**排查步骤**:
+
+```bash
+# 1. 检查组件 Props
+# 在浏览器控制台执行:
+# document.querySelector('.supabase-status-card').__vueParentComponent.props
+
+# 2. 检查定时器是否运行
+# 在组件内部添加 console.log
+```
+
+**解决方案**:
+- 确保 `autoRefresh` Props 为 `true`
+- 确保在 `onMounted` 中设置 `setInterval`
+- 确保在 `onUnmounted` 中清理定时器：`clearInterval(refreshTimer)`
+
+---
+
+**文档版本**: v2.0
+**最后更新**: 2025-01-12
+**变更**: 基于核心功能缺失诊断重写
+**状态**: 待实施
+
 

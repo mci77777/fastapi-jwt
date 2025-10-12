@@ -1,20 +1,23 @@
 # Dashboard 重构 - 顶层架构设计
 
-**文档版本**: v1.0  
-**创建时间**: 2025-01-11  
-**状态**: 待用户确认
+**文档版本**: v2.0
+**最后更新**: 2025-01-12 | **变更**: 基于核心功能缺失诊断重写
+**状态**: 待实施
 
 ---
 
 ## 📋 文档目的
 
-本文档基于用户确认的需求（`CONFIRMATION_CHECKLIST.md`），提供完整的技术架构设计，包括：
-- 系统架构图
-- 数据流设计
-- API 变更清单
-- 数据库变更清单
-- 组件变更清单
-- 路由与菜单变更清单
+本文档基于 **Dashboard 核心功能缺失诊断报告**，重新定义 Dashboard 的架构设计。
+
+**核心发现**：Dashboard 不是数据展示问题，而是**缺少核心控制功能**。
+
+**新架构目标**：
+1. **导航枢纽**：提供跳转入口到所有主要配置页面
+2. **模型切换控制**：在 Dashboard 上直接切换 AI 模型
+3. **Prompt/Tools 管理**：支持 Prompt 切换和 Tools 启用/禁用
+4. **API 供应商监控**：显示详细的 API 供应商状态和映射关系
+5. **系统状态监控**：Supabase 连接状态 + 服务器负载
 
 ---
 
@@ -24,516 +27,611 @@
 
 ```mermaid
 graph TB
-    subgraph "前端 Vue 3"
-        A[Dashboard 页面] --> B[WebSocket 客户端]
-        A --> C[HTTP 轮询客户端]
-        A --> D[Log 小窗组件]
-        A --> E[统计图表组件]
-        B --> F[实时数据更新]
-        C --> F
+    subgraph "前端 Dashboard 页面"
+        A[统计横幅] --> B[5个核心指标]
+        C[导航卡片组] --> D[快速访问入口]
+        E[当前配置面板] --> F[模型切换器]
+        E --> G[Prompt选择器]
+        E --> H[API状态详情]
+        I[Log小窗] --> J[日志收集API]
+        K[用户活跃度图表] --> L[统计数据API]
     end
-    
-    subgraph "后端 FastAPI"
-        G[WebSocket 端点<br/>/ws/dashboard] --> H[DashboardBroker]
-        I[REST API<br/>/api/v1/stats/*] --> J[StatsService]
-        K[日志收集 API<br/>/api/v1/logs/recent] --> L[LogCollector]
-        H --> M[MetricsCollector]
-        J --> M
-        L --> N[Python Logger]
+
+    subgraph "新增核心组件"
+        M[QuickAccessCard] --> N[路由跳转]
+        O[ModelSwitcher] --> P[模型切换API]
+        Q[PromptSelector] --> R[Prompt切换API]
+        S[ApiConnectivityModal] --> T[监控状态API]
+        U[SupabaseStatusCard] --> V[Supabase健康检查]
+        W[ServerLoadCard] --> X[Prometheus指标]
     end
-    
+
+    subgraph "后端 API 层"
+        P --> Y[/api/v1/llm/models]
+        R --> Z[/api/v1/llm/prompts]
+        T --> AA[/api/v1/llm/monitor/status]
+        V --> AB[/api/v1/llm/status/supabase]
+        X --> AC[/api/v1/metrics]
+        J --> AD[/api/v1/logs/recent]
+        L --> AE[/api/v1/stats/dashboard]
+    end
+
+    subgraph "服务层"
+        Y --> AF[AIConfigService]
+        Z --> AF
+        AA --> AG[EndpointMonitor]
+        AB --> AF
+        AC --> AH[Prometheus Metrics]
+        AD --> AI[LogCollector]
+        AE --> AJ[MetricsCollector]
+    end
+
     subgraph "数据层"
-        M --> O[(SQLite<br/>dashboard_stats)]
-        M --> P[(SQLite<br/>user_activity_stats)]
-        M --> Q[(SQLite<br/>ai_request_stats)]
-        J --> R[(Supabase<br/>dashboard_stats)]
-        N --> S[日志文件]
+        AF --> AK[(SQLite<br/>ai_endpoints)]
+        AF --> AL[(SQLite<br/>ai_prompts)]
+        AG --> AK
+        AJ --> AM[(SQLite<br/>user_activity_stats)]
+        AJ --> AN[(SQLite<br/>ai_request_stats)]
     end
-    
-    F --> G
-    F --> I
-    D --> K
-    
-    O -.定时同步.-> R
-    P -.定时同步.-> R
-    Q -.定时同步.-> R
 ```
 
-### 数据流设计
+### 核心控制链路设计
 
+#### 1. 导航枢纽链路
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ 前端 Dashboard 页面                                              │
-│                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │ 统计横幅     │  │ Log 小窗     │  │ 用户管理中心 │          │
-│  │ (5个指标)    │  │ (ERROR/WARN) │  │ (图表)       │          │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘          │
-│         │                  │                  │                  │
-│         └──────────────────┴──────────────────┘                  │
-│                            │                                     │
-└────────────────────────────┼─────────────────────────────────────┘
-                             │
-                ┌────────────┴────────────┐
-                │                         │
-         WebSocket 连接            HTTP 轮询 (降级)
-                │                         │
-┌───────────────┼─────────────────────────┼───────────────────────┐
-│ 后端 FastAPI  │                         │                        │
-│               ▼                         ▼                        │
-│  ┌─────────────────────┐   ┌─────────────────────┐             │
-│  │ /ws/dashboard       │   │ /api/v1/stats/*     │             │
-│  │ (实时推送)          │   │ (REST API)          │             │
-│  └──────────┬──────────┘   └──────────┬──────────┘             │
-│             │                          │                        │
-│             └──────────┬───────────────┘                        │
-│                        ▼                                        │
-│              ┌──────────────────┐                               │
-│              │ MetricsCollector │                               │
-│              │ (聚合统计数据)   │                               │
-│              └────────┬─────────┘                               │
-│                       │                                         │
-└───────────────────────┼─────────────────────────────────────────┘
-                        │
-        ┌───────────────┼───────────────┐
-        │               │               │
-        ▼               ▼               ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│ SQLite       │ │ SQLite       │ │ SQLite       │
-│ dashboard_   │ │ user_        │ │ ai_request_  │
-│ stats        │ │ activity_    │ │ stats        │
-│              │ │ stats        │ │              │
-└──────┬───────┘ └──────┬───────┘ └──────┬───────┘
-       │                │                │
-       └────────────────┴────────────────┘
-                        │
-                        │ 定时同步 (每小时)
-                        ▼
-                ┌──────────────┐
-                │ Supabase     │
-                │ dashboard_   │
-                │ stats        │
-                └──────────────┘
+用户点击快速访问卡片
+  ↓
+QuickAccessCard 组件触发路由跳转
+  ↓
+Vue Router 导航到目标页面
+  ↓
+目标页面加载（模型目录/Prompt管理/API配置等）
+```
+
+#### 2. 模型切换控制链路
+```
+用户在 Dashboard 选择模型
+  ↓
+ModelSwitcher 组件调用 API
+  ↓
+PUT /api/v1/llm/models (设置 is_default=true)
+  ↓
+AIConfigService 更新 SQLite ai_endpoints 表
+  ↓
+（可选）同步到 Supabase
+  ↓
+Dashboard 实时更新显示当前模型
+```
+
+#### 3. Prompt/Tools 管理链路
+```
+用户在 Dashboard 选择 Prompt
+  ↓
+PromptSelector 组件调用 API
+  ↓
+PUT /api/v1/llm/prompts (设置 is_active=true)
+  ↓
+AIConfigService 更新 SQLite ai_prompts 表
+  ↓
+用户切换 Tools 开关
+  ↓
+更新 ai_prompts.tools_json 字段
+  ↓
+Dashboard 实时更新显示当前 Prompt 和 Tools 状态
+```
+
+#### 4. API 供应商监控链路
+```
+用户点击 "API 连通性" 卡片
+  ↓
+ApiConnectivityModal 弹窗打开
+  ↓
+调用 GET /api/v1/llm/monitor/status
+  ↓
+EndpointMonitor 返回所有端点状态
+  ↓
+显示详细列表（在线/离线、延迟、最近检测时间）
+  ↓
+用户点击 "启动监控" / "停止监控"
+  ↓
+POST /api/v1/llm/monitor/start 或 stop
+  ↓
+EndpointMonitor 启动/停止定时任务
+```
+
+#### 5. 系统状态监控链路
+```
+Dashboard 加载时自动调用
+  ↓
+GET /api/v1/llm/status/supabase
+  ↓
+AIConfigService.supabase_status() 检查连接
+  ↓
+SupabaseStatusCard 显示状态（在线/离线、延迟）
+  ↓
+GET /api/v1/metrics
+  ↓
+Prometheus 指标解析（auth_requests_total、active_connections 等）
+  ↓
+ServerLoadCard 显示服务器负载（请求数、错误率、连接数）
 ```
 
 ---
 
 ## 🔑 关键技术决策
 
-### 1. WebSocket vs 轮询（双模式）
+### 1. 导航枢纽设计
 
-**决策**：WebSocket 主模式 + HTTP 轮询降级
+**决策**：使用卡片组 + 路由跳转，而非嵌入式子页面
 
 **理由**：
-- **YAGNI**：用户要求"可配置轮询间隔"，说明需要灵活性
-- **SSOT**：WebSocket 和轮询共享同一个数据源（`MetricsCollector`）
-- **KISS**：复用现有 SSE 基础设施（`MessageEventBroker` 模式）
+- **YAGNI**：用户需要"快速访问"，不需要在 Dashboard 内嵌完整功能
+- **SSOT**：复用现有页面（模型目录、Prompt 管理等），避免重复实现
+- **KISS**：简单的路由跳转，无需复杂的状态同步
 
 **实现**：
-```python
-# 后端：WebSocket 端点
-@router.websocket("/ws/dashboard")
-async def dashboard_websocket(websocket: WebSocket):
-    await websocket.accept()
-    try:
-        while True:
-            stats = await get_dashboard_stats()
-            await websocket.send_json(stats)
-            await asyncio.sleep(10)  # 默认 10 秒推送
-    except WebSocketDisconnect:
-        pass
+```vue
+<!-- QuickAccessCard.vue -->
+<template>
+  <n-card hoverable @click="handleNavigate">
+    <div class="quick-access-card">
+      <hero-icon :name="icon" :size="32" />
+      <h3>{{ title }}</h3>
+      <p>{{ description }}</p>
+    </div>
+  </n-card>
+</template>
+
+<script setup>
+const router = useRouter()
+const props = defineProps(['path', 'icon', 'title', 'description'])
+
+function handleNavigate() {
+  router.push(props.path)
+}
+</script>
 ```
+
+---
+
+### 2. 模型切换控制
+
+**决策**：提取独立组件 `ModelSwitcher.vue`，复用现有 API
+
+**理由**：
+- **SSOT**：复用 `/api/v1/llm/models` API 和 `useAiModelSuiteStore`
+- **KISS**：不重复实现模型列表获取逻辑
+- **可复用**：组件可在 Dashboard 和模型目录页面共用
+
+**实现**：
+```vue
+<!-- ModelSwitcher.vue -->
+<template>
+  <n-card title="当前模型">
+    <n-select
+      v-model:value="selectedModel"
+      :options="modelOptions"
+      @update:value="handleModelChange"
+    />
+  </n-card>
+</template>
+
+<script setup>
+import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
+
+const store = useAiModelSuiteStore()
+const selectedModel = ref(null)
+
+const modelOptions = computed(() =>
+  store.models.map(m => ({ label: m.name, value: m.id }))
+)
+
+async function handleModelChange(modelId) {
+  const model = store.models.find(m => m.id === modelId)
+  await store.setDefaultModel(model)
+  window.$message.success('模型已切换')
+}
+
+onMounted(() => {
+  store.loadModels()
+  const defaultModel = store.models.find(m => m.is_default)
+  if (defaultModel) selectedModel.value = defaultModel.id
+})
+</script>
+```
+
+---
+
+### 3. API 供应商详情面板
+
+**决策**：使用 Modal 弹窗展示详细信息，而非内嵌表格
+
+**理由**：
+- **YAGNI**：Dashboard 主页面不需要显示完整的 API 列表
+- **KISS**：点击统计卡片弹出详情，保持主页面简洁
+- **复用**：复用 `EndpointMonitor` 的状态快照数据
+
+**实现**：
+```vue
+<!-- ApiConnectivityModal.vue -->
+<template>
+  <n-modal v-model:show="visible" preset="card" title="API 供应商详情">
+    <n-table :data="endpoints">
+      <n-table-column prop="name" label="名称" />
+      <n-table-column prop="status" label="状态">
+        <template #default="{ row }">
+          <n-tag :type="row.status === 'online' ? 'success' : 'error'">
+            {{ row.status }}
+          </n-tag>
+        </template>
+      </n-table-column>
+      <n-table-column prop="latency_ms" label="延迟 (ms)" />
+      <n-table-column prop="last_checked_at" label="最近检测" />
+    </n-table>
+
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="handleStartMonitor">启动监控</n-button>
+        <n-button @click="handleStopMonitor">停止监控</n-button>
+      </n-space>
+    </template>
+  </n-modal>
+</template>
+```
+
+---
+
+## 📊 新增组件清单
+
+### 核心组件（P0 优先级）
+
+#### 1. QuickAccessCard.vue - 快速访问卡片
+**路径**: `web/src/components/dashboard/QuickAccessCard.vue`
+
+**Props**:
+```typescript
+interface Props {
+  icon: string        // Heroicons 图标名称
+  title: string       // 卡片标题
+  description: string // 卡片描述
+  path: string        // 跳转路由路径
+  badge?: number      // 可选徽章数字
+}
+```
+
+**功能**:
+- 显示图标、标题、描述
+- 点击跳转到目标路由
+- 支持徽章显示（如"3 个在线端点"）
+
+---
+
+#### 2. ModelSwitcher.vue - 模型切换器
+**路径**: `web/src/components/dashboard/ModelSwitcher.vue`
+
+**Props**:
+```typescript
+interface Props {
+  compact?: boolean  // 紧凑模式（仅显示下拉框）
+}
+```
+
+**功能**:
+- 显示当前激活模型
+- 下拉选择其他模型
+- 调用 `PUT /api/v1/llm/models` 切换默认模型
+- 切换后实时更新显示
+
+**复用**:
+- 复用 `useAiModelSuiteStore` 状态管理
+- 复用 `fetchModels()` 和 `updateModel()` API
+
+---
+
+#### 3. ApiConnectivityModal.vue - API 连通性详情弹窗
+**路径**: `web/src/components/dashboard/ApiConnectivityModal.vue`
+
+**Props**:
+```typescript
+interface Props {
+  show: boolean  // 控制弹窗显示
+}
+```
+
+**功能**:
+- 显示所有 API 供应商列表
+- 显示每个端点的状态（在线/离线）、延迟、最近检测时间
+- 提供"启动监控"/"停止监控"按钮
+- 调用 `POST /api/v1/llm/monitor/start` 和 `stop`
+
+**数据来源**:
+- `GET /api/v1/llm/monitor/status` - 监控状态
+- `GET /api/v1/llm/models` - 端点列表
+
+---
+
+### 增强组件（P1 优先级）
+
+#### 4. PromptSelector.vue - Prompt 选择器
+**路径**: `web/src/components/dashboard/PromptSelector.vue`
+
+**Props**:
+```typescript
+interface Props {
+  compact?: boolean  // 紧凑模式
+}
+```
+
+**功能**:
+- 显示当前激活 Prompt
+- 下拉选择其他 Prompt
+- 调用 `PUT /api/v1/llm/prompts` 切换激活状态
+- 显示 Tools 启用/禁用开关
+- 更新 `ai_prompts.tools_json` 字段
+
+**复用**:
+- 复用 `web/src/views/system/ai/prompt/index.vue` 的 Prompt 列表逻辑
+
+---
+
+#### 5. SupabaseStatusCard.vue - Supabase 连接状态卡片
+**路径**: `web/src/components/dashboard/SupabaseStatusCard.vue`
+
+**功能**:
+- 显示 Supabase 连接状态（在线/离线）
+- 显示延迟（ms）
+- 显示最近同步时间
+- 调用 `GET /api/v1/llm/status/supabase`
+
+**复用**:
+- 复用 `web/src/views/system/ai/index.vue` 的 Supabase 状态逻辑
+
+---
+
+#### 6. ServerLoadCard.vue - 服务器负载卡片
+**路径**: `web/src/components/dashboard/ServerLoadCard.vue`
+
+**功能**:
+- 解析 Prometheus 指标（`GET /api/v1/metrics`）
+- 显示关键指标：
+  - 总请求数（`auth_requests_total`）
+  - 错误率（`jwt_validation_errors_total / auth_requests_total`）
+  - 活跃连接数（`active_connections`）
+  - 限流阻止数（`rate_limit_blocks_total`）
+- 使用 ECharts 或 Naive UI 的 NStatistic 组件展示
+
+**新增 API 封装**:
+```javascript
+// web/src/api/dashboard.js
+export function getSystemMetrics() {
+  return request.get('/metrics', { responseType: 'text' })
+}
+
+// 解析 Prometheus 文本格式
+function parsePrometheusMetrics(text) {
+  const lines = text.split('\n')
+  const metrics = {}
+
+  lines.forEach(line => {
+    if (line.startsWith('#') || !line.trim()) return
+    const [key, value] = line.split(' ')
+    metrics[key] = parseFloat(value)
+  })
+
+  return metrics
+}
+```
+
+---
+
+## 🗄️ 数据库现状（无需变更）
+
+### 现有 SQLite 表（已实现）
+
+#### 1. `dashboard_stats` - Dashboard 统计数据缓存表 ✅
+**状态**: 已存在（`app/db/sqlite_manager.py` 第80-92行）
+
+**用途**: 缓存聚合后的统计数据
+
+---
+
+#### 2. `user_activity_stats` - 用户活跃度统计表 ✅
+**状态**: 已存在（`app/db/sqlite_manager.py` 第94-107行）
+
+**用途**: 记录每日用户活跃度，支持日活统计
+
+---
+
+#### 3. `ai_request_stats` - AI 请求统计表 ✅
+**状态**: 已存在（`app/db/sqlite_manager.py` 第109-125行）
+
+**用途**: 记录 AI 请求统计，支持请求量、成功率、延迟分析
+
+---
+
+#### 4. `ai_endpoints` - AI 端点配置表 ✅
+**状态**: 已存在
+
+**用途**: 存储 API 供应商配置（base_url、api_key、model、status 等）
+
+**关键字段**:
+- `is_default`: 标记默认模型
+- `status`: 端点状态（online/offline/checking）
+- `latency_ms`: 延迟（毫秒）
+- `last_checked_at`: 最近检测时间
+
+---
+
+#### 5. `ai_prompts` - Prompt 配置表 ✅
+**状态**: 已存在
+
+**用途**: 存储 Prompt 模板和 Tools 配置
+
+**关键字段**:
+- `is_active`: 标记激活状态
+- `content`: Prompt 内容
+- `tools_json`: Tools 定义（JSON 格式）
+
+---
+
+### 数据库变更结论
+
+**✅ 无需新增表**：所有必要的数据库表已存在。
+
+**✅ 无需迁移脚本**：现有表结构满足需求。
+
+**⚠️ 需要确认的字段**:
+1. `ai_endpoints.is_default` - 用于标记默认模型（需验证是否已实现）
+2. `ai_prompts.is_active` - 用于标记激活 Prompt（需验证是否已实现）
+
+**建议操作**:
+```sql
+-- 验证 is_default 字段是否存在
+SELECT is_default FROM ai_endpoints LIMIT 1;
+
+-- 验证 is_active 字段是否存在
+SELECT is_active FROM ai_prompts LIMIT 1;
+
+-- 如果缺失，添加字段
+ALTER TABLE ai_endpoints ADD COLUMN is_default INTEGER DEFAULT 0;
+ALTER TABLE ai_prompts ADD COLUMN is_active INTEGER DEFAULT 0;
+```
+
+---
+
+## 📡 API 现状与新增需求
+
+### 现有 API 端点（已实现，可直接复用）
+
+| 端点 | 方法 | 功能 | 状态 | 文件位置 |
+|------|------|------|------|---------|
+| `/api/v1/llm/models` | GET | 获取模型列表 | ✅ 已实现 | `app/api/v1/llm_models.py` |
+| `/api/v1/llm/models` | PUT | 更新模型（设置默认） | ✅ 已实现 | `app/api/v1/llm_models.py` |
+| `/api/v1/llm/prompts` | GET | 获取 Prompt 列表 | ✅ 已实现 | `app/api/v1/llm_prompts.py` |
+| `/api/v1/llm/prompts` | PUT | 更新 Prompt（设置激活） | ✅ 已实现 | `app/api/v1/llm_prompts.py` |
+| `/api/v1/llm/monitor/status` | GET | 监控状态 | ✅ 已实现 | `app/api/v1/llm_models.py` |
+| `/api/v1/llm/monitor/start` | POST | 启动监控 | ✅ 已实现 | `app/api/v1/llm_models.py` |
+| `/api/v1/llm/monitor/stop` | POST | 停止监控 | ✅ 已实现 | `app/api/v1/llm_models.py` |
+| `/api/v1/llm/status/supabase` | GET | Supabase 连接状态 | ✅ 已实现 | `app/api/v1/llm_models.py` |
+| `/api/v1/metrics` | GET | Prometheus 指标 | ✅ 已实现 | `app/api/v1/metrics.py` |
+| `/api/v1/stats/dashboard` | GET | Dashboard 聚合统计 | ✅ 已实现 | `app/api/v1/dashboard.py` |
+| `/api/v1/logs/recent` | GET | 最近日志 | ✅ 已实现 | `app/api/v1/dashboard.py` |
+| `/ws/dashboard` | WebSocket | 实时数据推送 | ✅ 已实现 | `app/api/v1/dashboard.py` |
+
+### 新增 API 需求（仅前端封装）
+
+**无需新增后端 API**，只需在前端 `web/src/api/dashboard.js` 中封装现有端点：
 
 ```javascript
-// 前端：自动降级逻辑
-const connectWebSocket = () => {
-  const ws = new WebSocket('ws://localhost:9999/ws/dashboard')
-  ws.onmessage = (event) => updateStats(JSON.parse(event.data))
-  ws.onerror = () => {
-    console.warn('WebSocket 连接失败，降级为轮询')
-    startPolling()  // 降级为 HTTP 轮询
-  }
+// web/src/api/dashboard.js
+
+// 模型管理（复用现有 API）
+export function getModels(params) {
+  return request.get('/llm/models', { params })
+}
+
+export function setDefaultModel(modelId) {
+  return request.put('/llm/models', { id: modelId, is_default: true })
+}
+
+// Prompt 管理（复用现有 API）
+export function getPrompts(params) {
+  return request.get('/llm/prompts', { params })
+}
+
+export function setActivePrompt(promptId) {
+  return request.put('/llm/prompts', { id: promptId, is_active: true })
+}
+
+// API 监控（复用现有 API）
+export function getMonitorStatus() {
+  return request.get('/llm/monitor/status')
+}
+
+export function startMonitor(intervalSeconds = 60) {
+  return request.post('/llm/monitor/start', { interval_seconds: intervalSeconds })
+}
+
+export function stopMonitor() {
+  return request.post('/llm/monitor/stop')
+}
+
+// Supabase 状态（复用现有 API）
+export function getSupabaseStatus() {
+  return request.get('/llm/status/supabase')
+}
+
+// Prometheus 指标（复用现有 API）
+export function getSystemMetrics() {
+  return request.get('/metrics', { responseType: 'text' })
+}
+
+// 解析 Prometheus 文本格式
+export function parsePrometheusMetrics(text) {
+  const lines = text.split('\n')
+  const metrics = {}
+
+  lines.forEach(line => {
+    if (line.startsWith('#') || !line.trim()) return
+    const match = line.match(/^([a-zA-Z_:]+)(?:\{[^}]*\})?\s+([0-9.]+)/)
+    if (match) {
+      const [, key, value] = match
+      metrics[key] = parseFloat(value)
+    }
+  })
+
+  return metrics
 }
 ```
 
----
+### API 调用示例
 
-### 2. 本地优先 + 远端备份
-
-**决策**：SQLite 本地存储 + Supabase 定时同步
-
-**理由**：
-- **YAGNI**：用户明确要求"本地优先，远端备份"
-- **SSOT**：本地 SQLite 是唯一写入源，Supabase 只读备份
-- **KISS**：复用现有 `AIConfigService` 的同步机制
-
-**数据保留策略**：
-- **本地**：保留 30 天（自动清理过期数据）
-- **远端**：保留 30 天（Supabase RLS 策略自动清理）
-
-**同步策略**：
-- **频率**：每小时同步一次（定时任务）
-- **方向**：单向推送（本地 → Supabase）
-- **失败处理**：记录错误日志，下次重试
-
----
-
-### 3. 日志收集（Python Logger）
-
-**决策**：后端 Python logger 输出 + 新增日志收集 API
-
-**理由**：
-- **YAGNI**：用户要求"后端 Python logger 输出"
-- **SSOT**：所有日志统一通过 Python `logging` 模块输出
-- **KISS**：使用内存队列缓存最近 100 条日志，无需数据库
-
-**实现**：
-```python
-# 后端：日志收集器
-class LogCollector:
-    def __init__(self, max_size=100):
-        self.logs = deque(maxlen=max_size)
-        self.handler = LogHandler(self.logs)
-        logging.getLogger().addHandler(self.handler)
-    
-    def get_recent_logs(self, level='WARNING'):
-        return [log for log in self.logs if log['level'] >= level]
-```
-
----
-
-## 📊 数据统计实现方案
-
-### 1. 日活监控（JWT 活跃用户数）
-
-**数据来源**：SQLite `user_activity_stats` 表
-
-**统计逻辑**：
-```python
-# 每次 JWT 验证成功时记录
-async def record_user_activity(user_id: str, user_type: str):
-    today = datetime.now().date()
-    await db.execute("""
-        INSERT INTO user_activity_stats (user_id, user_type, activity_date, request_count)
-        VALUES (?, ?, ?, 1)
-        ON CONFLICT(user_id, activity_date) 
-        DO UPDATE SET request_count = request_count + 1
-    """, [user_id, user_type, today])
-```
-
-**查询 API**：
-```python
-@router.get("/stats/daily-active-users")
-async def get_daily_active_users(time_window: str = "24h"):
-    # 返回指定时间窗口内的活跃用户数
-    pass
-```
-
----
-
-### 2. AI 请求数量
-
-**数据来源**：SQLite `ai_request_stats` 表
-
-**统计逻辑**：
-```python
-# 每次 AI 请求时记录
-async def record_ai_request(user_id: str, endpoint_id: int, model: str):
-    today = datetime.now().date()
-    await db.execute("""
-        INSERT INTO ai_request_stats (user_id, endpoint_id, model, request_date, count)
-        VALUES (?, ?, ?, ?, 1)
-        ON CONFLICT(user_id, endpoint_id, model, request_date)
-        DO UPDATE SET count = count + 1
-    """, [user_id, endpoint_id, model, today])
-```
-
----
-
-### 3. Token 使用量（后续追加）
-
-**状态**：本次重构不实现，预留接口
-
-**预留 API**：
-```python
-@router.get("/stats/token-usage")
-async def get_token_usage():
-    return {"message": "Token 统计功能将在后续版本实现"}
-```
-
----
-
-### 4. API 连通性
-
-**数据来源**：复用现有 `/api/v1/llm/monitor/status`
-
-**实现**：
-```python
-@router.get("/stats/api-connectivity")
-async def get_api_connectivity(request: Request):
-    monitor = get_monitor(request)
-    status = monitor.snapshot()
-    return {
-        "is_running": status["is_running"],
-        "healthy_endpoints": sum(1 for e in models if e.status == "online"),
-        "total_endpoints": len(models),
-        "last_check": status["last_run_at"]
-    }
-```
-
----
-
-### 5. JWT 可获取性
-
-**数据来源**：新增 `/api/v1/stats/jwt-availability`
-
-**统计逻辑**：
-```python
-# 从 Prometheus 指标计算成功率
-@router.get("/stats/jwt-availability")
-async def get_jwt_availability():
-    total = auth_requests_total._value.sum()
-    success = auth_requests_total.labels(status='success')._value.sum()
-    return {
-        "success_rate": (success / total * 100) if total > 0 else 0,
-        "total_requests": total,
-        "successful_requests": success
-    }
-```
-
----
-
-## 🗄️ 数据库变更清单
-
-### SQLite 新增表（3 张）
-
-#### 1. `dashboard_stats` - Dashboard 统计数据缓存表
-
-```sql
-CREATE TABLE dashboard_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    stat_type TEXT NOT NULL,  -- 'daily_active_users', 'ai_requests', 'api_connectivity', 'jwt_availability'
-    stat_value REAL NOT NULL,
-    stat_metadata TEXT,  -- JSON 格式，存储额外信息
-    time_window TEXT,  -- '1h', '24h', '7d'
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_dashboard_stats_type ON dashboard_stats(stat_type);
-CREATE INDEX idx_dashboard_stats_created ON dashboard_stats(created_at);
-```
-
-**用途**：缓存聚合后的统计数据，减少实时计算压力
-
----
-
-#### 2. `user_activity_stats` - 用户活跃度统计表
-
-```sql
-CREATE TABLE user_activity_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    user_type TEXT NOT NULL,  -- 'anonymous', 'permanent'
-    activity_date TEXT NOT NULL,  -- YYYY-MM-DD
-    request_count INTEGER DEFAULT 1,
-    first_request_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    last_request_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, activity_date)
-);
-
-CREATE INDEX idx_user_activity_date ON user_activity_stats(activity_date);
-CREATE INDEX idx_user_activity_type ON user_activity_stats(user_type);
-```
-
-**用途**：记录每日用户活跃度，支持日活统计
-
----
-
-#### 3. `ai_request_stats` - AI 请求统计表
-
-```sql
-CREATE TABLE ai_request_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    endpoint_id INTEGER,
-    model TEXT,
-    request_date TEXT NOT NULL,  -- YYYY-MM-DD
-    count INTEGER DEFAULT 1,
-    total_latency_ms REAL DEFAULT 0,
-    success_count INTEGER DEFAULT 0,
-    error_count INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, endpoint_id, model, request_date),
-    FOREIGN KEY(endpoint_id) REFERENCES ai_endpoints(id) ON DELETE SET NULL
-);
-
-CREATE INDEX idx_ai_request_date ON ai_request_stats(request_date);
-CREATE INDEX idx_ai_request_endpoint ON ai_request_stats(endpoint_id);
-```
-
-**用途**：记录 AI 请求统计，支持请求量、成功率、延迟分析
-
----
-
-### Supabase 新增表（1 张）
-
-#### `dashboard_stats` - 远端备份表
-
-```sql
-CREATE TABLE public.dashboard_stats (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    stat_type TEXT NOT NULL,
-    stat_value REAL NOT NULL,
-    stat_metadata JSONB,
-    time_window TEXT,
-    source TEXT DEFAULT 'local_sqlite',  -- 数据来源标识
-    synced_at TIMESTAMPTZ DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_dashboard_stats_type ON public.dashboard_stats(stat_type);
-CREATE INDEX idx_dashboard_stats_synced ON public.dashboard_stats(synced_at);
-
--- RLS 策略：30 天自动清理
-CREATE POLICY "auto_delete_old_stats" ON public.dashboard_stats
-FOR DELETE USING (synced_at < NOW() - INTERVAL '30 days');
-```
-
-**用途**：远端备份，支持跨设备数据同步
-
----
-
-### 数据迁移策略
-
-**迁移脚本**：`scripts/migrate_dashboard_stats.py`
-
-```python
-async def migrate():
-    # 1. 创建 SQLite 表
-    await sqlite_manager.execute(CREATE_DASHBOARD_STATS_SQL)
-    await sqlite_manager.execute(CREATE_USER_ACTIVITY_STATS_SQL)
-    await sqlite_manager.execute(CREATE_AI_REQUEST_STATS_SQL)
-    
-    # 2. 创建 Supabase 表（手动执行 SQL）
-    print("请在 Supabase Dashboard 执行以下 SQL:")
-    print(CREATE_SUPABASE_DASHBOARD_STATS_SQL)
-    
-    # 3. 初始化数据（可选）
-    await init_dashboard_stats()
-```
-
-**回滚方案**：
-```sql
--- SQLite 回滚
-DROP TABLE IF EXISTS dashboard_stats;
-DROP TABLE IF EXISTS user_activity_stats;
-DROP TABLE IF EXISTS ai_request_stats;
-
--- Supabase 回滚
-DROP TABLE IF EXISTS public.dashboard_stats;
-```
-
----
-
-## 📡 API 变更清单
-
-### 新增 API 端点（8 个）
-
-| 端点 | 方法 | 功能 | 优先级 | 认证 |
-|------|------|------|--------|------|
-| `/ws/dashboard` | WebSocket | Dashboard 实时数据推送 | P0 | JWT |
-| `/api/v1/stats/dashboard` | GET | 聚合所有统计数据 | P0 | JWT |
-| `/api/v1/stats/daily-active-users` | GET | 日活用户数 | P0 | JWT |
-| `/api/v1/stats/ai-requests` | GET | AI 请求统计 | P0 | JWT |
-| `/api/v1/stats/api-connectivity` | GET | API 连通性状态 | P0 | JWT |
-| `/api/v1/stats/jwt-availability` | GET | JWT 可获取性 | P0 | JWT |
-| `/api/v1/logs/recent` | GET | 最近日志 | P1 | JWT |
-| `/api/v1/stats/config` | GET/PUT | 轮询间隔配置 | P1 | JWT |
-
----
-
-### API 详细设计
-
-#### 1. WebSocket 端点
-
-**路径**：`/ws/dashboard`  
-**协议**：WebSocket  
-**认证**：JWT（通过查询参数 `?token=xxx`）
-
-**连接流程**：
+#### 1. 模型切换
 ```javascript
-// 前端
-const ws = new WebSocket(`ws://localhost:9999/ws/dashboard?token=${token}`)
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data)
-  updateDashboard(data)
+// ModelSwitcher.vue
+import { getModels, setDefaultModel } from '@/api/dashboard'
+
+async function handleModelChange(modelId) {
+  await setDefaultModel(modelId)
+  window.$message.success('模型已切换')
+  // 刷新 Dashboard 显示
+  await loadDashboardData()
 }
 ```
 
-**推送数据格式**：
-```json
-{
-  "timestamp": "2025-01-11T10:30:00Z",
-  "daily_active_users": 1234,
-  "ai_requests": 5678,
-  "api_connectivity": {
-    "healthy": 8,
-    "total": 10,
-    "rate": 0.8
-  },
-  "jwt_availability": {
-    "success_rate": 99.5,
-    "total_requests": 10000
+#### 2. API 监控控制
+```javascript
+// ApiConnectivityModal.vue
+import { getMonitorStatus, startMonitor, stopMonitor } from '@/api/dashboard'
+
+async function handleStartMonitor() {
+  await startMonitor(60)  // 60 秒间隔
+  window.$message.success('监控已启动')
+  await loadMonitorStatus()
+}
+```
+
+#### 3. Prometheus 指标解析
+```javascript
+// ServerLoadCard.vue
+import { getSystemMetrics, parsePrometheusMetrics } from '@/api/dashboard'
+
+async function loadServerLoad() {
+  const text = await getSystemMetrics()
+  const metrics = parsePrometheusMetrics(text)
+
+  serverLoad.value = {
+    totalRequests: metrics['auth_requests_total'] || 0,
+    errorRate: calculateErrorRate(metrics),
+    activeConnections: metrics['active_connections'] || 0,
+    rateLimitBlocks: metrics['rate_limit_blocks_total'] || 0
   }
 }
-```
 
----
-
-#### 2. 聚合统计 API
-
-**路径**：`GET /api/v1/stats/dashboard`  
-**参数**：
-- `time_window` (可选): `1h` | `24h` | `7d`（默认 `24h`）
-
-**响应**：
-```json
-{
-  "code": 200,
-  "data": {
-    "daily_active_users": 1234,
-    "ai_requests": 5678,
-    "token_usage": null,  // 后续追加
-    "api_connectivity": {...},
-    "jwt_availability": {...}
-  }
-}
-```
-
----
-
-#### 3. 日志查询 API
-
-**路径**：`GET /api/v1/logs/recent`  
-**参数**：
-- `level` (可选): `ERROR` | `WARNING` | `INFO`（默认 `WARNING`）
-- `limit` (可选): 最大返回条数（默认 100）
-
-**响应**：
-```json
-{
-  "code": 200,
-  "data": [
-    {
-      "timestamp": "2025-01-11T10:30:00Z",
-      "level": "ERROR",
-      "user_id": "user-123",
-      "message": "JWT validation failed"
-    }
-  ]
+function calculateErrorRate(metrics) {
+  const total = metrics['auth_requests_total'] || 0
+  const errors = metrics['jwt_validation_errors_total'] || 0
+  return total > 0 ? (errors / total * 100).toFixed(2) : 0
 }
 ```
 
@@ -541,382 +639,352 @@ ws.onmessage = (event) => {
 
 ## 🎨 组件变更清单
 
-### 新增 Vue 组件（6 个）
+### 现有组件（已实现，保持不变）
 
-| 组件路径 | 功能 | 优先级 | 依赖 |
-|---------|------|--------|------|
-| `web/src/components/dashboard/StatsBanner.vue` | 统计横幅（5 个指标） | P0 | Naive UI |
-| `web/src/components/dashboard/LogWindow.vue` | Log 小窗 | P1 | Naive UI |
-| `web/src/components/dashboard/UserActivityChart.vue` | 用户活跃度图表 | P0 | ECharts |
-| `web/src/components/dashboard/WebSocketClient.vue` | WebSocket 客户端封装 | P0 | - |
-| `web/src/components/dashboard/PollingConfig.vue` | 轮询间隔配置 | P1 | Naive UI |
-| `web/src/components/dashboard/RealTimeIndicator.vue` | 实时状态指示器 | P1 | Naive UI |
+| 组件路径 | 功能 | 状态 |
+|---------|------|------|
+| `web/src/components/dashboard/StatsBanner.vue` | 统计横幅（5 个指标） | ✅ 已实现 |
+| `web/src/components/dashboard/LogWindow.vue` | Log 小窗 | ✅ 已实现 |
+| `web/src/components/dashboard/UserActivityChart.vue` | 用户活跃度图表 | ✅ 已实现 |
+| `web/src/components/dashboard/WebSocketClient.vue` | WebSocket 客户端封装 | ✅ 已实现 |
+| `web/src/components/dashboard/PollingConfig.vue` | 轮询间隔配置 | ✅ 已实现 |
+| `web/src/components/dashboard/RealTimeIndicator.vue` | 实时状态指示器 | ✅ 已实现 |
+| `web/src/components/dashboard/StatDetailModal.vue` | 统计详情弹窗 | ✅ 已实现 |
 
 ---
 
-### 修改 Vue 组件（3 个）
+### 新增组件（P0 优先级）
+
+| 组件路径 | 功能 | 依赖 | 复用来源 |
+|---------|------|------|---------|
+| `web/src/components/dashboard/QuickAccessCard.vue` | 快速访问卡片 | Naive UI | 新建 |
+| `web/src/components/dashboard/ModelSwitcher.vue` | 模型切换器 | Naive UI | 提取自 `catalog/index.vue` |
+| `web/src/components/dashboard/ApiConnectivityModal.vue` | API 连通性详情弹窗 | Naive UI | 提取自 `system/ai/index.vue` |
+
+---
+
+### 新增组件（P1 优先级）
+
+| 组件路径 | 功能 | 依赖 | 复用来源 |
+|---------|------|------|---------|
+| `web/src/components/dashboard/PromptSelector.vue` | Prompt 选择器 | Naive UI | 提取自 `mapping/index.vue` |
+| `web/src/components/dashboard/SupabaseStatusCard.vue` | Supabase 连接状态卡片 | Naive UI | 提取自 `system/ai/index.vue` |
+| `web/src/components/dashboard/ServerLoadCard.vue` | 服务器负载卡片 | Naive UI | 新建 |
+
+---
+
+### 修改组件（1 个）
 
 | 组件路径 | 修改内容 | 优先级 |
 |---------|---------|--------|
-| `web/src/views/dashboard/index.vue` | 整合新组件，替换轮询为 WebSocket | P0 |
-| `web/src/layout/components/sidebar/index.vue` | 新增 Log 小窗入口 | P1 |
-| `web/src/api/index.js` | 新增统计 API 封装 | P0 |
+| `web/src/views/dashboard/index.vue` | 添加导航卡片组、模型切换器、API 详情弹窗 | P0 |
 
 ---
 
-### 删除 Vue 组件（1 个）
+### 删除组件（0 个）
 
-| 组件路径 | 删除原因 |
-|---------|---------|
-| `web/src/views/ai/model-suite/dashboard/index.vue` | 与主 Dashboard 重复（SSOT 合规） |
+**无需删除任何组件**，所有现有组件均保留。
 
 ---
 
-## 🛣️ 路由与菜单变更清单
+## 🛣️ 路由与菜单现状（无需变更）
 
-### 新增路由（4 个）
+### 现有路由（已实现）
+
+**Dashboard 路由**：
+- 路径：`/dashboard`
+- 组件：`web/src/views/dashboard/index.vue`
+- 状态：✅ 已实现（通过后端 `/api/v1/base/usermenu` 动态注入）
+
+**配置页面路由**：
+- `/ai/catalog` - 模型目录 ✅
+- `/ai/mapping` - 模型映射 ✅
+- `/ai/jwt` - JWT 测试 ✅
+- `/system/ai` - API 配置 ✅
+- `/system/ai/prompt` - Prompt 管理 ✅
+
+---
+
+### 现有菜单结构（已实现）
+
+**后端菜单配置**：`app/api/v1/base.py` (第183-278行)
 
 ```javascript
-// web/src/router/routes/dashboard.js
-export default {
-  name: 'Dashboard',
-  path: '/dashboard',
-  component: Layout,
-  redirect: '/dashboard/index',
-  meta: { title: 'Dashboard', icon: 'mdi:view-dashboard', order: 0 },
-  children: [
-    {
-      path: 'index',
-      name: 'DashboardIndex',
-      component: () => import('@/views/dashboard/index.vue'),
-      meta: { title: 'Dashboard', affix: true }
-    },
-    {
-      path: 'logs',
-      name: 'DashboardLogs',
-      component: () => import('@/views/dashboard/logs.vue'),
-      meta: { title: '审计日志', icon: 'mdi:file-document-outline' }
-    },
-    {
-      path: 'user-activity',
-      name: 'DashboardUserActivity',
-      component: () => import('@/views/dashboard/user-activity.vue'),
-      meta: { title: '用户活跃度', icon: 'mdi:account-group' }
-    },
-    {
-      path: 'settings',
-      name: 'DashboardSettings',
-      component: () => import('@/views/dashboard/settings.vue'),
-      meta: { title: 'Dashboard 设置', icon: 'mdi:cog' }
-    }
-  ]
-}
-```
-
----
-
-### 修改路由（2 个）
-
-| 路由 | 修改内容 |
-|------|---------|
-| `/` | 重定向从 `/login` 改为 `/dashboard`（登录后默认页） |
-| `/ai/model-suite/dashboard` | 删除（重定向到 `/dashboard`） |
-
----
-
-### 新菜单结构
-
-```javascript
-// 后端返回的菜单结构（/api/v1/base/usermenu）
+// 实际返回的菜单结构
 [
   {
     "name": "Dashboard",
     "path": "/dashboard",
-    "icon": "mdi:view-dashboard",
-    "order": 0,
-    "children": []
+    "component": "/dashboard",
+    "icon": "mdi:view-dashboard-outline",
+    "order": 0
   },
   {
-    "name": "用户管理中心",
-    "path": "/user-center",
-    "icon": "mdi:account-group",
-    "order": 1,
+    "name": "AI模型管理",
+    "path": "/ai",
+    "icon": "mdi:robot-outline",
+    "order": 5,
     "children": [
-      { "name": "用户列表", "path": "/system/user" },
-      { "name": "部门管理", "path": "/system/dept" },
-      { "name": "活跃度监控", "path": "/dashboard/user-activity" }
+      { "name": "模型目录", "path": "catalog", "component": "/ai/model-suite/catalog" },
+      { "name": "模型映射", "path": "mapping", "component": "/ai/model-suite/mapping" },
+      { "name": "JWT测试", "path": "jwt", "component": "/ai/model-suite/jwt" }
     ]
   },
   {
-    "name": "权限管理",
-    "path": "/permission",
-    "icon": "mdi:shield-account",
-    "order": 2,
+    "name": "系统管理",
+    "path": "/system",
+    "icon": "carbon:settings-adjust",
+    "order": 100,
     "children": [
-      { "name": "角色管理", "path": "/system/role" },
-      { "name": "菜单管理", "path": "/system/menu" },
-      { "name": "API 权限", "path": "/system/api" }
+      { "name": "AI 配置", "path": "ai", "component": "/system/ai" },
+      { "name": "Prompt 管理", "path": "ai/prompt", "component": "/system/ai/prompt" }
     ]
-  },
-  {
-    "name": "模型管理",
-    "path": "/model",
-    "icon": "mdi:robot",
-    "order": 3,
-    "children": [
-      { "name": "API 供应商", "path": "/system/ai" },
-      { "name": "模型目录", "path": "/ai/catalog" },
-      { "name": "模型映射", "path": "/ai/mapping" }
-    ]
-  },
-  {
-    "name": "JWT 测试",
-    "path": "/ai/jwt",
-    "icon": "mdi:key",
-    "order": 4
-  },
-  {
-    "name": "Prompt 管理",
-    "path": "/system/ai/prompt",
-    "icon": "mdi:text-box",
-    "order": 5
-  },
-  {
-    "name": "审计日志",
-    "path": "/dashboard/logs",
-    "icon": "mdi:file-document-outline",
-    "order": 6
   }
 ]
 ```
 
 ---
 
-## 🔐 权限控制设计
+### 路由变更结论
 
-### API 权限要求
+**✅ 无需新增路由**：所有必要的路由已存在。
 
-| API 端点 | 最低权限 | 说明 |
-|---------|---------|------|
-| `/ws/dashboard` | `permanent` 用户 | 匿名用户禁止访问 |
-| `/api/v1/stats/*` | `permanent` 用户 | 匿名用户禁止访问 |
-| `/api/v1/logs/recent` | `admin` 角色 | 仅管理员可查看日志 |
-| `/api/v1/stats/config` | `admin` 角色 | 仅管理员可修改配置 |
+**✅ 无需修改菜单结构**：现有菜单已包含所有配置页面入口。
 
-### 前端路由守卫
+**⚠️ Dashboard 内部导航**：
+- 现有菜单提供了**左侧边栏导航**
+- Dashboard 需要添加**快速访问卡片**，提供更直观的跳转入口
+- 两者互补，不冲突
 
-```javascript
-// web/src/router/guards.js
-router.beforeEach((to, from, next) => {
-  const userStore = useUserStore()
+---
 
-  // Dashboard 路由需要永久用户权限
-  if (to.path.startsWith('/dashboard')) {
-    if (userStore.userInfo.user_type === 'anonymous') {
-      window.$message.error('匿名用户无权访问 Dashboard')
-      return next('/login')
-    }
-  }
+## 📋 实施优先级与验收标准
 
-  // 日志路由需要 admin 权限
-  if (to.path === '/dashboard/logs') {
-    if (!userStore.userInfo.roles.includes('admin')) {
-      window.$message.error('仅管理员可查看日志')
-      return next('/dashboard')
-    }
-  }
+### P0 优先级（核心功能，必须实现）
 
-  next()
-})
+#### 1. 导航枢纽
+**组件**：`QuickAccessCard.vue`
+**验收标准**：
+- ✅ 显示 6 个快速访问卡片（模型目录、模型映射、Prompt 管理、JWT 测试、API 配置、审计日志）
+- ✅ 点击卡片跳转到对应页面
+- ✅ 卡片显示图标、标题、描述
+
+#### 2. 模型切换
+**组件**：`ModelSwitcher.vue`
+**验收标准**：
+- ✅ 显示当前激活模型
+- ✅ 下拉选择其他模型
+- ✅ 调用 `PUT /api/v1/llm/models` 切换默认模型
+- ✅ 切换后 Dashboard 实时更新显示
+
+#### 3. API 连通性详情
+**组件**：`ApiConnectivityModal.vue`
+**验收标准**：
+- ✅ 点击统计卡片弹出详情弹窗
+- ✅ 显示所有 API 供应商列表（在线/离线、延迟、最近检测时间）
+- ✅ 提供"启动监控"/"停止监控"按钮
+- ✅ 调用 `POST /api/v1/llm/monitor/start` 和 `stop`
+
+---
+
+### P1 优先级（增强功能，建议实现）
+
+#### 4. Prompt 管理
+**组件**：`PromptSelector.vue`
+**验收标准**：
+- ✅ 显示当前激活 Prompt
+- ✅ 下拉选择其他 Prompt
+- ✅ 调用 `PUT /api/v1/llm/prompts` 切换激活状态
+- ✅ 显示 Tools 启用/禁用开关
+
+#### 5. Supabase 连接状态
+**组件**：`SupabaseStatusCard.vue`
+**验收标准**：
+- ✅ 显示 Supabase 连接状态（在线/离线）
+- ✅ 显示延迟（ms）
+- ✅ 显示最近同步时间
+- ✅ 调用 `GET /api/v1/llm/status/supabase`
+
+#### 6. 服务器负载监控
+**组件**：`ServerLoadCard.vue`
+**验收标准**：
+- ✅ 解析 Prometheus 指标（`GET /api/v1/metrics`）
+- ✅ 显示总请求数、错误率、活跃连接数、限流阻止数
+- ✅ 使用 NStatistic 或 ECharts 展示
+
+---
+
+### 端到端验证清单
+
+#### 导航枢纽链路
+```
+用户点击"模型目录"卡片
+  ↓
+QuickAccessCard 触发 router.push('/ai/catalog')
+  ↓
+Vue Router 导航到模型目录页面
+  ↓
+模型目录页面加载并显示模型列表
+```
+
+#### 模型切换链路
+```
+用户在 Dashboard 选择 gpt-4o-mini
+  ↓
+ModelSwitcher 调用 setDefaultModel(modelId)
+  ↓
+PUT /api/v1/llm/models { id: 123, is_default: true }
+  ↓
+AIConfigService 更新 SQLite ai_endpoints 表
+  ↓
+Dashboard 刷新，显示"当前模型: gpt-4o-mini"
+```
+
+#### API 监控链路
+```
+用户点击 "API 连通性: 3/5" 卡片
+  ↓
+ApiConnectivityModal 弹窗打开
+  ↓
+调用 GET /api/v1/llm/monitor/status
+  ↓
+显示 5 个端点详情（3 个在线，2 个离线）
+  ↓
+用户点击"启动监控"
+  ↓
+POST /api/v1/llm/monitor/start { interval_seconds: 60 }
+  ↓
+EndpointMonitor 启动定时任务
+  ↓
+弹窗显示"监控已启动"
 ```
 
 ---
 
-## 🛠️ 技术栈选型
+## 📋 架构设计总结
 
-### 后端技术栈
+### 核心发现
 
-| 技术 | 版本 | 用途 | 选型理由 |
-|------|------|------|---------|
-| FastAPI | 0.111.0 | Web 框架 | 已有基础设施，支持 WebSocket |
-| WebSocket | - | 实时推送 | 原生支持，无需第三方库 |
-| SQLite | 3.x | 本地存储 | 已有基础设施，轻量级 |
-| Supabase | - | 远端备份 | 已有基础设施，PostgreSQL |
-| Python logging | 3.11+ | 日志收集 | 标准库，无需第三方库 |
+**问题本质**：Dashboard 不是数据展示问题，而是**缺少核心控制功能**。
 
-### 前端技术栈
+**现有实现**：
+- ✅ 统计数据采集（日活、AI 请求、API 连通性、JWT 可获取性）
+- ✅ WebSocket 实时推送
+- ✅ Log 小窗
+- ✅ 用户活跃度图表
+- ✅ 后端 API 端点（模型、Prompt、监控、Supabase 状态、Prometheus 指标）
 
-| 技术 | 版本 | 用途 | 选型理由 |
-|------|------|------|---------|
-| Vue 3 | 3.3.x | UI 框架 | 已有基础设施 |
-| Naive UI | 2.x | 组件库 | 已有基础设施 |
-| ECharts | 5.x | 图表库 | 功能强大，支持实时更新 |
-| WebSocket API | 原生 | 实时通信 | 浏览器原生支持，无需第三方库 |
-| Pinia | 2.x | 状态管理 | 已有基础设施 |
-
-### 复用现有基础设施
-
-**SSOT 原则**：最大化复用现有代码，避免重复造轮子
-
-| 现有模块 | 复用方式 |
-|---------|---------|
-| `MessageEventBroker` | 参考其 SSE 实现，设计 WebSocket 推送 |
-| `SSEConcurrencyGuard` | 复用并发控制逻辑，限制 WebSocket 连接数 |
-| `AIConfigService` | 复用同步机制，实现 SQLite → Supabase 同步 |
-| `EndpointMonitor` | 复用监控逻辑，提供 API 连通性数据 |
-| `Prometheus 指标` | 复用现有指标，计算 JWT 可获取性 |
+**缺失功能**：
+- ❌ 导航枢纽（快速访问卡片）
+- ❌ 模型切换控制
+- ❌ Prompt/Tools 管理
+- ❌ API 供应商详情面板
+- ❌ Supabase 连接状态显示
+- ❌ 服务器负载监控
 
 ---
 
-## 📊 性能与可扩展性
+### 架构设计原则
 
-### 性能指标
+#### 1. YAGNI（You Aren't Gonna Need It）
+- **只实现诊断报告中明确缺失的功能**
+- **不添加额外扩展**（如配置总览面板、快速操作栏等，列为 P2 可选）
+- **核心链路端到端完备**（导航、模型切换、API 监控必须全链路打通）
 
-| 指标 | 目标值 | 监控方式 |
-|------|--------|---------|
-| WebSocket 连接延迟 | < 100ms | Prometheus `websocket_latency_ms` |
-| 统计数据查询延迟 | < 200ms | Prometheus `stats_query_duration_ms` |
-| 日志查询延迟 | < 100ms | Prometheus `log_query_duration_ms` |
-| 并发 WebSocket 连接数 | 支持 1000+ | `SSEConcurrencyGuard` 限制 |
-| 数据同步延迟 | < 5s | 定时任务监控 |
+#### 2. SSOT（Single Source of Truth）
+- **复用现有 API**：不重复实现模型列表、Prompt 列表、监控状态等接口
+- **复用现有组件**：提取 `catalog/index.vue`、`mapping/index.vue`、`system/ai/index.vue` 中的逻辑
+- **统一状态管理**：使用 `useAiModelSuiteStore` 管理模型数据
 
-### 可扩展性设计
-
-**水平扩展**：
-- WebSocket 连接通过 Redis Pub/Sub 广播（后续追加）
-- 统计数据通过 Redis 缓存（后续追加）
-
-**垂直扩展**：
-- SQLite 支持 WAL 模式，提升并发读写性能
-- Supabase 自动扩展，无需手动干预
+#### 3. KISS（Keep It Simple, Stupid）
+- **简单的路由跳转**：快速访问卡片直接跳转，不嵌入子页面
+- **Modal 弹窗展示详情**：API 详情、Supabase 状态等使用弹窗，保持主页面简洁
+- **无需新增数据库表**：现有表结构满足需求
 
 ---
 
-## 🔄 数据同步机制
+### 技术栈（无需新增依赖）
 
-### 同步流程
+**后端**：
+- FastAPI 0.111.0 ✅
+- SQLite 3.x ✅
+- Supabase ✅
+- Prometheus ✅
 
-```mermaid
-sequenceDiagram
-    participant Scheduler as 定时任务
-    participant SQLite as SQLite 本地数据库
-    participant Sync as SyncService
-    participant Supabase as Supabase 远端数据库
+**前端**：
+- Vue 3.3.x ✅
+- Naive UI 2.x ✅
+- Pinia 2.x ✅
+- ECharts 5.x ✅（可选，用于服务器负载图表）
 
-    Scheduler->>Sync: 每小时触发同步
-    Sync->>SQLite: 查询最近 1 小时数据
-    SQLite-->>Sync: 返回数据
-    Sync->>Sync: 数据转换（SQLite → PostgreSQL）
-    Sync->>Supabase: 批量插入数据
-    Supabase-->>Sync: 确认成功
-    Sync->>SQLite: 标记已同步
-    Sync-->>Scheduler: 同步完成
-```
-
-### 同步策略
-
-**增量同步**：
-- 只同步 `updated_at > last_sync_time` 的数据
-- 避免全量同步，减少网络开销
-
-**冲突处理**：
-- 本地数据优先（本地是唯一写入源）
-- Supabase 只读，不会产生冲突
-
-**失败重试**：
-- 最多重试 3 次
-- 指数退避（1s, 2s, 4s）
-- 记录失败日志，下次继续尝试
+**复用模块**：
+- `AIConfigService` - 模型/Prompt 管理 ✅
+- `EndpointMonitor` - API 监控 ✅
+- `MetricsCollector` - 统计数据聚合 ✅
+- `LogCollector` - 日志收集 ✅
+- `DashboardBroker` - WebSocket 推送 ✅
 
 ---
 
-## 🧪 测试策略
+### 实施路径
 
-### 单元测试
+#### 阶段 1（P0）：核心控制功能
+1. **QuickAccessCard.vue** - 导航枢纽
+2. **ModelSwitcher.vue** - 模型切换
+3. **ApiConnectivityModal.vue** - API 详情面板
 
-| 测试模块 | 测试内容 | 工具 |
-|---------|---------|------|
-| `MetricsCollector` | 统计数据聚合逻辑 | pytest |
-| `LogCollector` | 日志收集与过滤 | pytest |
-| `SyncService` | 数据同步逻辑 | pytest + Mock Supabase |
-| `DashboardBroker` | WebSocket 推送逻辑 | pytest + Mock WebSocket |
+**验收标准**：
+- ✅ 点击卡片跳转到配置页面
+- ✅ 模型切换后 Dashboard 实时更新
+- ✅ API 详情弹窗显示所有端点状态
 
-### 集成测试
+#### 阶段 2（P1）：增强功能
+4. **PromptSelector.vue** - Prompt 管理
+5. **SupabaseStatusCard.vue** - Supabase 状态
+6. **ServerLoadCard.vue** - 服务器负载
 
-| 测试场景 | 验证内容 | 工具 |
-|---------|---------|------|
-| WebSocket 连接 | 连接建立、数据推送、断线重连 | pytest + WebSocket 客户端 |
-| 统计 API | 数据准确性、时间窗口过滤 | pytest + TestClient |
-| 日志 API | 日志级别过滤、分页 | pytest + TestClient |
-| 数据同步 | SQLite → Supabase 同步成功 | pytest + Supabase 测试库 |
+**验收标准**：
+- ✅ Prompt 切换后 Dashboard 实时更新
+- ✅ Supabase 状态显示在线/离线、延迟
+- ✅ 服务器负载显示请求数、错误率、连接数
 
-### E2E 测试
+#### 阶段 3（P2）：可选优化
+7. **ConfigSummaryPanel.vue** - 配置总览
+8. **QuickActionsBar.vue** - 快速操作栏
 
-| 测试场景 | 验证内容 | 工具 |
-|---------|---------|------|
-| Dashboard 加载 | 页面渲染、数据展示 | Playwright |
-| WebSocket 实时更新 | 数据自动刷新 | Playwright |
-| 轮询降级 | WebSocket 失败时自动降级 | Playwright |
-| Log 小窗 | 日志实时滚动、复制功能 | Playwright |
-
----
-
-## 🚨 风险评估与缓释
-
-### 风险 1：WebSocket 连接不稳定
-
-**风险等级**：中
-**影响**：用户无法实时看到数据更新
-
-**缓释方案**：
-- 自动降级为 HTTP 轮询
-- 前端显示连接状态指示器
-- 断线自动重连（最多 3 次）
+**验收标准**：
+- ✅ 配置总览显示当前系统配置摘要
+- ✅ 快速操作栏提供常用操作按钮
 
 ---
 
-### 风险 2：SQLite 并发写入冲突
+### 风险与缓释
 
-**风险等级**：低
-**影响**：统计数据丢失
-
-**缓释方案**：
-- 启用 WAL 模式（Write-Ahead Logging）
-- 使用 `ON CONFLICT` 处理重复插入
-- 定时任务错峰执行（避免高峰期）
-
----
-
-### 风险 3：Supabase 同步失败
-
-**风险等级**：低
-**影响**：远端备份数据缺失
-
-**缓释方案**：
-- 本地数据保留 30 天，有足够时间修复
-- 失败重试机制（最多 3 次）
-- 记录失败日志，人工介入
-
----
-
-### 风险 4：日志内存溢出
-
-**风险等级**：低
-**影响**：内存占用过高
-
-**缓释方案**：
-- 使用 `deque(maxlen=100)` 限制内存占用
-- 只保留最近 100 条日志
-- 定期清理过期日志
+| 风险 | 等级 | 缓释方案 |
+|------|------|---------|
+| 组件提取失败 | 低 | 逐步提取，先复制后重构 |
+| API 调用失败 | 低 | 复用现有 API，已验证可用 |
+| 状态同步问题 | 低 | 使用 Pinia store 统一管理 |
+| 性能问题 | 低 | 复用现有 WebSocket 推送，无额外负载 |
 
 ---
 
 ## 📋 下一步行动
 
-**请确认以上架构设计，我将：**
-1. ✅ 生成 UI 设计方案（2 套 HTML 原型）
-2. ✅ 生成实施规格说明（`IMPLEMENTATION_SPEC.md`）
-3. ✅ 生成分阶段实施计划（`IMPLEMENTATION_PLAN.md`）
+**基于本架构设计，将生成以下文档**：
 
-**如有需要调整的地方，请指出，我将立即修改。**
+1. ✅ **IMPLEMENTATION_SPEC.md** - 详细实施规格（组件 Props、Events、API 调用示例）
+2. ✅ **IMPLEMENTATION_PLAN.md** - 分阶段实施计划（P0/P1/P2 优先级、时间估算）
+3. ✅ **CODE_REVIEW_AND_GAP_ANALYSIS.md** - 差距分析（LSP 扫描清单、影响面扫描）
+4. ✅ **DEPLOYMENT_GUIDE.md** - 部署指南（前置检查、组件部署顺序、回滚方案）
+5. ✅ **UI_DESIGN_PREVIEW.html** - UI 设计预览（3 个 HTML 文件）
+
+**请确认架构设计无误后，我将继续生成其他文档。**
+
+---
+
+**文档版本**: v2.0
+**最后更新**: 2025-01-12
+**变更**: 基于核心功能缺失诊断重写
+**状态**: 待实施
 
