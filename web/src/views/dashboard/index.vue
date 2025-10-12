@@ -13,6 +13,12 @@ import WebSocketClient from '@/components/dashboard/WebSocketClient.vue'
 import RealTimeIndicator from '@/components/dashboard/RealTimeIndicator.vue'
 import PollingConfig from '@/components/dashboard/PollingConfig.vue'
 import StatDetailModal from '@/components/dashboard/StatDetailModal.vue'
+import ModelSwitcher from '@/components/dashboard/ModelSwitcher.vue'
+import PromptSelector from '@/components/dashboard/PromptSelector.vue'
+import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
+import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
+import QuickAccessCard from '@/components/dashboard/QuickAccessCard.vue'
+import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
 import HeroIcon from '@/components/common/HeroIcon.vue'
 
 // Dashboard API
@@ -21,7 +27,7 @@ import {
   getRecentLogs,
   getStatsConfig,
   updateStatsConfig,
-  createWebSocketUrl
+  createWebSocketUrl,
 } from '@/api/dashboard'
 
 defineOptions({ name: 'DashboardIndex' })
@@ -36,6 +42,7 @@ const statsLoading = ref(false)
 const logsLoading = ref(false)
 const showConfigModal = ref(false)
 const showStatDetailModal = ref(false)
+const showApiModal = ref(false)
 const selectedStat = ref(null)
 
 // 统计数据（图标已改为 Heroicons 名称）
@@ -47,7 +54,7 @@ const stats = ref([
     value: 0,
     trend: 0,
     color: '#18a058',
-    detail: '今日活跃用户数量'
+    detail: '今日活跃用户数量',
   },
   {
     id: 2,
@@ -56,7 +63,7 @@ const stats = ref([
     value: 0,
     trend: 0,
     color: '#2080f0',
-    detail: '今日 AI API 调用总次数'
+    detail: '今日 AI API 调用总次数',
   },
   {
     id: 3,
@@ -65,7 +72,7 @@ const stats = ref([
     value: '--',
     trend: 0,
     color: '#f0a020',
-    detail: 'Token 消耗总量（后续追加）'
+    detail: 'Token 消耗总量（后续追加）',
   },
   {
     id: 4,
@@ -74,7 +81,7 @@ const stats = ref([
     value: '0/0',
     trend: 0,
     color: '#00bcd4',
-    detail: 'API 供应商在线状态'
+    detail: 'API 供应商在线状态',
   },
   {
     id: 5,
@@ -83,8 +90,8 @@ const stats = ref([
     value: '0%',
     trend: 0,
     color: '#8a2be2',
-    detail: 'JWT 获取成功率'
-  }
+    detail: 'JWT 获取成功率',
+  },
 ])
 
 // 日志数据
@@ -94,11 +101,60 @@ const logs = ref([])
 const chartTimeRange = ref('24h')
 const chartData = ref([])
 
+// 快速访问卡片配置
+const quickAccessCards = [
+  // 核心 AI 管理卡片（4 个强关联）
+  {
+    icon: 'wrench-screwdriver',
+    title: 'AI 供应商',
+    description: '配置 AI 供应商',
+    path: '/system/ai',
+    iconColor: '#d03050',
+  },
+  {
+    icon: 'document-text',
+    title: '提示词',
+    description: '管理 Prompt 模板',
+    path: '/system/ai/prompt',
+    iconColor: '#18a058',
+  },
+  {
+    icon: 'rectangle-stack',
+    title: '模型目录',
+    description: '查看和管理 AI 模型',
+    path: '/ai/models',
+    iconColor: '#667eea',
+  },
+  {
+    icon: 'map',
+    title: '模型映射',
+    description: '配置模型映射关系',
+    path: '/ai/mapping',
+    iconColor: '#2080f0',
+  },
+
+  // 测试与日志卡片（2 个放在一起）
+  {
+    icon: 'clipboard-document-list',
+    title: '审计日志',
+    description: '查看模型日志和历史记录',
+    path: '/ai/catalog',
+    iconColor: '#8a2be2',
+  },
+  {
+    icon: 'key',
+    title: 'JWT 测试',
+    description: '测试 JWT 认证',
+    path: '/ai/jwt',
+    iconColor: '#f0a020',
+  },
+]
+
 // Dashboard 配置
 const dashboardConfig = ref({
   websocket_push_interval: 10,
   http_poll_interval: 30,
-  log_retention_size: 100
+  log_retention_size: 100,
 })
 
 // WebSocket URL
@@ -131,7 +187,9 @@ async function loadDashboardStats() {
     stats.value[0].value = data.daily_active_users || 0
     stats.value[1].value = data.ai_requests?.total || 0
     stats.value[2].value = data.token_usage || '--'
-    stats.value[3].value = `${data.api_connectivity?.healthy_endpoints || 0}/${data.api_connectivity?.total_endpoints || 0}`
+    stats.value[3].value = `${data.api_connectivity?.healthy_endpoints || 0}/${
+      data.api_connectivity?.total_endpoints || 0
+    }`
     stats.value[4].value = `${data.jwt_availability?.success_rate?.toFixed(1) || 0}%`
 
     // 更新 API 连通性率
@@ -164,12 +222,12 @@ async function loadRecentLogs() {
     if (Array.isArray(data.logs)) {
       logs.value = data.logs.map((log, index) => ({
         id: index,
-        ...log
+        ...log,
       }))
     } else if (Array.isArray(data)) {
       logs.value = data.map((log, index) => ({
         id: index,
-        ...log
+        ...log,
       }))
     }
   } catch (error) {
@@ -211,7 +269,9 @@ function handleWebSocketMessage(data) {
     stats.value[0].value = statsData.daily_active_users || 0
     stats.value[1].value = statsData.ai_requests?.total || 0
     stats.value[2].value = statsData.token_usage || '--'
-    stats.value[3].value = `${statsData.api_connectivity?.healthy_endpoints || 0}/${statsData.api_connectivity?.total_endpoints || 0}`
+    stats.value[3].value = `${statsData.api_connectivity?.healthy_endpoints || 0}/${
+      statsData.api_connectivity?.total_endpoints || 0
+    }`
     stats.value[4].value = `${statsData.jwt_availability?.success_rate?.toFixed(1) || 0}%`
   }
 }
@@ -282,8 +342,13 @@ function stopPolling() {
  * 点击统计卡片（打开详情弹窗）
  */
 function handleStatClick(stat) {
-  selectedStat.value = stat
-  showStatDetailModal.value = true
+  // 如果点击的是 API 连通性卡片，打开 API 详情弹窗
+  if (stat.id === 4) {
+    showApiModal.value = true
+  } else {
+    selectedStat.value = stat
+    showStatDetailModal.value = true
+  }
 }
 
 /**
@@ -342,6 +407,43 @@ async function handleConfigSave(config) {
   }
 }
 
+/**
+ * 处理模型切换
+ */
+function handleModelChange(modelId) {
+  console.log('[Dashboard] 模型已切换，新模型 ID:', modelId)
+  // 模型切换后可以触发相关数据刷新（如需要）
+  // 当前仅记录日志，后续可扩展
+}
+
+/**
+ * 处理 Prompt 切换
+ */
+function handlePromptChange(promptId) {
+  console.log('[Dashboard] Prompt 已切换，新 Prompt ID:', promptId)
+}
+
+/**
+ * 处理 Supabase 状态变化
+ */
+function handleSupabaseStatusChange(status) {
+  console.log('[Dashboard] Supabase 状态变化:', status)
+}
+
+/**
+ * 处理服务器指标更新
+ */
+function handleMetricsUpdate(metrics) {
+  console.log('[Dashboard] 服务器指标更新:', metrics)
+}
+
+/**
+ * 处理快速访问卡片点击
+ */
+function handleQuickAccessClick(path) {
+  console.log('[Dashboard] 快速访问卡片点击，路径:', path)
+}
+
 // 生命周期钩子
 onMounted(() => {
   nextTick(() => {
@@ -397,6 +499,36 @@ onBeforeUnmount(() => {
     <!-- 统计横幅 -->
     <StatsBanner :stats="stats" :loading="statsLoading" @stat-click="handleStatClick" />
 
+    <!-- 快速访问卡片组 -->
+    <div class="quick-access-section">
+      <QuickAccessCard
+        v-for="card in quickAccessCards"
+        :key="card.path"
+        :icon="card.icon"
+        :title="card.title"
+        :description="card.description"
+        :path="card.path"
+        :icon-color="card.iconColor"
+        @click="handleQuickAccessClick"
+      />
+    </div>
+
+    <!-- 控制面板：模型切换器 + Prompt 选择器 + Supabase 状态 + 服务器负载 -->
+    <div class="dashboard-controls">
+      <ModelSwitcher :compact="false" @change="handleModelChange" />
+      <PromptSelector :compact="false" @change="handlePromptChange" />
+      <SupabaseStatusCard
+        :auto-refresh="true"
+        :refresh-interval="30"
+        @status-change="handleSupabaseStatusChange"
+      />
+      <ServerLoadCard
+        :auto-refresh="true"
+        :refresh-interval="60"
+        @metrics-update="handleMetricsUpdate"
+      />
+    </div>
+
     <!-- 主内容区域：Grid 两列布局 -->
     <div class="dashboard-main">
       <!-- 左侧：Log 小窗 -->
@@ -430,10 +562,11 @@ onBeforeUnmount(() => {
 
     <!-- 统计详情弹窗 -->
     <StatDetailModal v-model:show="showStatDetailModal" :stat="selectedStat" />
+
+    <!-- API 连通性详情弹窗 -->
+    <ApiConnectivityModal v-model:show="showApiModal" />
   </div>
 </template>
-
-
 
 <style scoped>
 .dashboard-container {
@@ -472,6 +605,19 @@ onBeforeUnmount(() => {
 .header-right {
   display: flex;
   align-items: center;
+}
+
+/* 快速访问卡片组 */
+.quick-access-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+/* 控制面板区域 */
+.dashboard-controls {
+  margin: 16px 0;
 }
 
 /* 主内容区域：Grid 两列布局 */
