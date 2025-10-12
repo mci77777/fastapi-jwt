@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard UI 设计 - 方案 B（底部 Log 小窗）</title>
+  
+  <!-- Naive UI CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/naive-ui@2.34.4/dist/index.css">
+  
+  <!-- Vue 3 -->
+  <script src="https://unpkg.com/vue@3.3.4/dist/vue.global.prod.js"></script>
+  
+  <!-- Naive UI -->
+  <script src="https://unpkg.com/naive-ui@2.34.4/dist/index.js"></script>
+  
+  <!-- ECharts -->
+  <script src="https://unpkg.com/echarts@5.4.3/dist/echarts.min.js"></script>
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f7fa;
+      padding: 20px;
+    }
+    
+    .dashboard-container {
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    
+    /* 统计横幅 */
+    .stats-banner {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    
+    .stat-card {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      transition: all 0.3s ease;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .stat-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    }
+    
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--accent-color);
+    }
+    
+    .stat-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+    
+    .stat-label {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    
+    .stat-value {
+      font-size: 28px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 4px;
+    }
+    
+    .stat-trend {
+      font-size: 12px;
+      color: #18a058;
+    }
+    
+    .stat-trend.down {
+      color: #d03050;
+    }
+    
+    /* 主内容区 */
+    .main-content {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    /* 用户管理中心 */
+    .user-center {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      padding: 20px;
+      height: 500px;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .user-center-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    
+    .user-center-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+    }
+    
+    .time-range-selector {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .time-range-btn {
+      padding: 6px 16px;
+      border: 1px solid #e8e8e8;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    
+    .time-range-btn.active {
+      background: #2080f0;
+      color: white;
+      border-color: #2080f0;
+    }
+    
+    .chart-container {
+      flex: 1;
+      min-height: 400px;
+    }
+    
+    /* Log 小窗 */
+    .log-window {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      height: 300px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .log-header {
+      padding: 16px;
+      border-bottom: 1px solid #e8e8e8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .log-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+    }
+    
+    .log-filters {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .log-filter-btn {
+      padding: 4px 12px;
+      border: 1px solid #e8e8e8;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    
+    .log-filter-btn.active {
+      background: #2080f0;
+      color: white;
+      border-color: #2080f0;
+    }
+    
+    .log-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      align-content: start;
+    }
+    
+    .log-entry {
+      padding: 8px;
+      border-radius: 4px;
+      background: #f9f9f9;
+      border-left: 3px solid #ccc;
+      cursor: pointer;
+      transition: background 0.2s;
+      height: fit-content;
+    }
+    
+    .log-entry:hover {
+      background: #f0f0f0;
+    }
+    
+    .log-entry.error {
+      border-left-color: #d03050;
+      background: #fff5f5;
+    }
+    
+    .log-entry.warning {
+      border-left-color: #f0a020;
+      background: #fffbf0;
+    }
+    
+    .log-entry.info {
+      border-left-color: #2080f0;
+      background: #f0f7ff;
+    }
+    
+    .log-timestamp {
+      color: #999;
+      margin-right: 8px;
+      display: block;
+      font-size: 11px;
+    }
+    
+    .log-level {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-right: 8px;
+    }
+    
+    .log-level.error {
+      background: #d03050;
+      color: white;
+    }
+    
+    .log-level.warning {
+      background: #f0a020;
+      color: white;
+    }
+    
+    .log-level.info {
+      background: #2080f0;
+      color: white;
+    }
+    
+    .log-message {
+      display: block;
+      margin-top: 4px;
+      word-break: break-word;
+    }
+    
+    /* 实时状态指示器 */
+    .realtime-indicator {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      z-index: 1000;
+    }
+    
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #18a058;
+      animation: pulse 2s infinite;
+    }
+    
+    .status-dot.disconnected {
+      background: #d03050;
+      animation: none;
+    }
+    
+    .status-dot.polling {
+      background: #f0a020;
+    }
+    
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+    
+    /* 响应式 */
+    @media (max-width: 1200px) {
+      .stats-banner {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      
+      .log-content {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    @media (max-width: 768px) {
+      .stats-banner {
+        grid-template-columns: 1fr;
+      }
+      
+      .user-center {
+        height: 400px;
+      }
+      
+      .log-window {
+        height: 250px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="dashboard-container">
+      <!-- 实时状态指示器 -->
+      <div class="realtime-indicator">
+        <div :class="['status-dot', connectionStatus]"></div>
+        <span>{{ connectionText }}</span>
+      </div>
+      
+      <!-- 统计横幅 -->
+      <div class="stats-banner">
+        <div 
+          v-for="stat in stats" 
+          :key="stat.id"
+          class="stat-card"
+          :style="{ '--accent-color': stat.color }"
+          @click="showStatDetail(stat)"
+        >
+          <div class="stat-icon">{{ stat.icon }}</div>
+          <div class="stat-label">{{ stat.label }}</div>
+          <div class="stat-value">{{ stat.value }}</div>
+          <div :class="['stat-trend', stat.trend < 0 ? 'down' : '']">
+            {{ stat.trend > 0 ? '↑' : '↓' }} {{ Math.abs(stat.trend) }}%
+          </div>
+        </div>
+      </div>
+      
+      <!-- 主内容区 -->
+      <div class="main-content">
+        <!-- 用户管理中心 -->
+        <div class="user-center">
+          <div class="user-center-header">
+            <div class="user-center-title">👥 用户活跃度监控</div>
+            <div class="time-range-selector">
+              <button 
+                v-for="range in timeRanges" 
+                :key="range"
+                :class="['time-range-btn', { active: currentTimeRange === range }]"
+                @click="changeTimeRange(range)"
+              >
+                {{ range }}
+              </button>
+            </div>
+          </div>
+          <div class="chart-container" ref="chartContainer"></div>
+        </div>
+        
+        <!-- Log 小窗 -->
+        <div class="log-window">
+          <div class="log-header">
+            <div class="log-title">📝 系统日志</div>
+            <div class="log-filters">
+              <button 
+                v-for="level in logLevels" 
+                :key="level"
+                :class="['log-filter-btn', { active: currentLogLevel === level }]"
+                @click="currentLogLevel = level"
+              >
+                {{ level }}
+              </button>
+            </div>
+          </div>
+          <div class="log-content" ref="logContent">
+            <div 
+              v-for="log in filteredLogs" 
+              :key="log.id"
+              :class="['log-entry', log.level.toLowerCase()]"
+              @click="copyLog(log)"
+            >
+              <span class="log-timestamp">{{ log.timestamp }}</span>
+              <span :class="['log-level', log.level.toLowerCase()]">{{ log.level }}</span>
+              <span class="log-message">{{ log.message }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    const { createApp, ref, computed, onMounted, watch } = Vue
+    const naive = window.naive
+    
+    createApp({
+      setup() {
+        // 连接状态
+        const connectionStatus = ref('connected') // connected, disconnected, polling
+        const connectionText = computed(() => {
+          const statusMap = {
+            connected: 'WebSocket 已连接',
+            disconnected: 'WebSocket 已断开',
+            polling: '降级为轮询模式'
+          }
+          return statusMap[connectionStatus.value]
+        })
+        
+        // 统计数据
+        const stats = ref([
+          {
+            id: 1,
+            icon: '👤',
+            label: '日活用户数',
+            value: '1,234',
+            trend: 12.5,
+            color: '#18a058',
+            detail: '今日活跃用户数量，较昨日增长 12.5%'
+          },
+          {
+            id: 2,
+            icon: '🤖',
+            label: 'AI 请求数',
+            value: '5,678',
+            trend: 8.3,
+            color: '#2080f0',
+            detail: '今日 AI API 调用总次数'
+          },
+          {
+            id: 3,
+            icon: '💰',
+            label: 'Token 使用量',
+            value: '$12.34',
+            trend: -3.2,
+            color: '#f0a020',
+            detail: 'Token 消耗总量（USD），较昨日下降 3.2%'
+          },
+          {
+            id: 4,
+            icon: '🔌',
+            label: 'API 连通性',
+            value: '8/10',
+            trend: 0,
+            color: '#00bcd4',
+            detail: '8 个 API 供应商在线，2 个离线'
+          },
+          {
+            id: 5,
+            icon: '🔑',
+            label: 'JWT 可获取性',
+            value: '99.5%',
+            trend: 0.2,
+            color: '#8a2be2',
+            detail: 'JWT 获取成功率，较昨日提升 0.2%'
+          }
+        ])
+        
+        function showStatDetail(stat) {
+          alert(stat.detail)
+        }
+        
+        // 日志数据
+        const logLevels = ['ALL', 'ERROR', 'WARNING', 'INFO']
+        const currentLogLevel = ref('ALL')
+        
+        const logs = ref([
+          { id: 1, timestamp: '10:30:15', level: 'ERROR', message: 'JWT validation failed for user anon_123' },
+          { id: 2, timestamp: '10:30:20', level: 'WARNING', message: 'Rate limit approaching for user perm_456' },
+          { id: 3, timestamp: '10:30:25', level: 'INFO', message: 'New user registered: user_789' },
+          { id: 4, timestamp: '10:30:30', level: 'ERROR', message: 'Supabase connection timeout' },
+          { id: 5, timestamp: '10:30:35', level: 'WARNING', message: 'High memory usage detected: 85%' },
+          { id: 6, timestamp: '10:30:40', level: 'INFO', message: 'AI request completed in 1.2s' },
+          { id: 7, timestamp: '10:30:45', level: 'ERROR', message: 'OpenAI API rate limit exceeded' },
+          { id: 8, timestamp: '10:30:50', level: 'WARNING', message: 'Slow query detected: 3.5s' },
+          { id: 9, timestamp: '10:30:55', level: 'INFO', message: 'Cache hit rate: 92%' },
+          { id: 10, timestamp: '10:31:00', level: 'ERROR', message: 'Database connection pool exhausted' },
+        ])
+        
+        const filteredLogs = computed(() => {
+          if (currentLogLevel.value === 'ALL') return logs.value
+          return logs.value.filter(log => log.level === currentLogLevel.value)
+        })
+        
+        function copyLog(log) {
+          const text = `[${log.timestamp}] ${log.level}: ${log.message}`
+          navigator.clipboard.writeText(text)
+          alert('日志已复制到剪贴板')
+        }
+        
+        // 时间范围
+        const timeRanges = ['1h', '24h', '7d']
+        const currentTimeRange = ref('24h')
+        
+        const chartContainer = ref(null)
+        let chart = null
+        
+        function changeTimeRange(range) {
+          currentTimeRange.value = range
+          updateChart()
+        }
+        
+        function initChart() {
+          chart = echarts.init(chartContainer.value)
+          updateChart()
+        }
+        
+        function updateChart() {
+          const option = {
+            title: {
+              text: `用户活跃度趋势（${currentTimeRange.value}）`,
+              left: 'center',
+              textStyle: { fontSize: 16, fontWeight: 'normal' }
+            },
+            tooltip: {
+              trigger: 'axis',
+              axisPointer: { type: 'cross' }
+            },
+            legend: {
+              data: ['永久用户', '匿名用户'],
+              bottom: 10
+            },
+            grid: {
+              left: '3%',
+              right: '4%',
+              bottom: '15%',
+              containLabel: true
+            },
+            xAxis: {
+              type: 'category',
+              boundaryGap: false,
+              data: generateTimeLabels()
+            },
+            yAxis: {
+              type: 'value',
+              name: '活跃用户数'
+            },
+            series: [
+              {
+                name: '永久用户',
+                type: 'line',
+                smooth: true,
+                data: generateData(800, 1200),
+                itemStyle: { color: '#18a058' },
+                areaStyle: { opacity: 0.3 }
+              },
+              {
+                name: '匿名用户',
+                type: 'line',
+                smooth: true,
+                data: generateData(200, 400),
+                itemStyle: { color: '#2080f0' },
+                areaStyle: { opacity: 0.3 }
+              }
+            ]
+          }
+          chart.setOption(option)
+        }
+        
+        function generateTimeLabels() {
+          const labels = []
+          const count = currentTimeRange.value === '1h' ? 12 : currentTimeRange.value === '24h' ? 24 : 7
+          for (let i = 0; i < count; i++) {
+            if (currentTimeRange.value === '1h') {
+              labels.push(`${i * 5}min`)
+            } else if (currentTimeRange.value === '24h') {
+              labels.push(`${i}:00`)
+            } else {
+              labels.push(`Day ${i + 1}`)
+            }
+          }
+          return labels
+        }
+        
+        function generateData(min, max) {
+          const count = currentTimeRange.value === '1h' ? 12 : currentTimeRange.value === '24h' ? 24 : 7
+          return Array.from({ length: count }, () => Math.floor(Math.random() * (max - min) + min))
+        }
+        
+        onMounted(() => {
+          initChart()
+          
+          // 模拟 WebSocket 连接状态变化
+          setTimeout(() => {
+            connectionStatus.value = 'polling'
+          }, 5000)
+        })
+        
+        return {
+          connectionStatus,
+          connectionText,
+          stats,
+          showStatDetail,
+          logLevels,
+          currentLogLevel,
+          logs,
+          filteredLogs,
+          copyLog,
+          timeRanges,
+          currentTimeRange,
+          changeTimeRange,
+          chartContainer
+        }
+      }
+    }).mount('#app')
+  </script>
+</body>
+</html>
+

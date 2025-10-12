@@ -15,9 +15,13 @@ from app.core.policy_gate import PolicyGateMiddleware
 from app.core.rate_limiter import RateLimitMiddleware
 from app.services.ai_config_service import AIConfigService
 from app.services.ai_service import AIService, MessageEventBroker
+from app.services.dashboard_broker import DashboardBroker
 from app.services.jwt_test_service import JWTTestService
+from app.services.log_collector import LogCollector
+from app.services.metrics_collector import MetricsCollector
 from app.services.model_mapping_service import ModelMappingService
 from app.services.monitor_service import EndpointMonitor
+from app.services.sync_service import SyncService
 from app.settings.config import get_settings
 from app.db import SQLiteManager
 
@@ -36,12 +40,24 @@ async def lifespan(app: FastAPI):
     app.state.model_mapping_service = ModelMappingService(app.state.ai_config_service, storage_dir)
     app.state.jwt_test_service = JWTTestService(app.state.ai_config_service, settings, storage_dir)
 
+    # Dashboard 服务层（Phase 1）
+    app.state.log_collector = LogCollector(max_size=100)
+    app.state.metrics_collector = MetricsCollector(sqlite_manager, app.state.endpoint_monitor)
+    app.state.dashboard_broker = DashboardBroker(app.state.metrics_collector)
+    app.state.sync_service = SyncService(sqlite_manager)
+
     try:
         yield
     finally:
+        # 清理资源
         monitor = getattr(app.state, "endpoint_monitor", None)
         if monitor is not None:
             await monitor.stop()
+
+        log_collector = getattr(app.state, "log_collector", None)
+        if log_collector is not None:
+            log_collector.shutdown()
+
         await sqlite_manager.close()
 
 

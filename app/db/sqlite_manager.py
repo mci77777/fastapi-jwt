@@ -76,6 +76,54 @@ CREATE TABLE IF NOT EXISTS ai_prompt_tests (
 
 CREATE INDEX IF NOT EXISTS idx_ai_prompt_tests_prompt ON ai_prompt_tests(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_ai_prompt_tests_endpoint ON ai_prompt_tests(endpoint_id);
+
+CREATE TABLE IF NOT EXISTS dashboard_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stat_date TEXT NOT NULL,
+    daily_active_users INTEGER DEFAULT 0,
+    ai_request_count INTEGER DEFAULT 0,
+    token_usage INTEGER DEFAULT 0,
+    api_connectivity_rate REAL DEFAULT 0.0,
+    jwt_availability_rate REAL DEFAULT 0.0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_dashboard_stats_date ON dashboard_stats(stat_date);
+
+CREATE TABLE IF NOT EXISTS user_activity_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    user_type TEXT NOT NULL,
+    activity_date TEXT NOT NULL,
+    request_count INTEGER DEFAULT 1,
+    first_request_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_request_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, activity_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_activity_date ON user_activity_stats(activity_date);
+CREATE INDEX IF NOT EXISTS idx_user_activity_type ON user_activity_stats(user_type);
+
+CREATE TABLE IF NOT EXISTS ai_request_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    endpoint_id INTEGER,
+    model TEXT,
+    request_date TEXT NOT NULL,
+    count INTEGER DEFAULT 1,
+    total_latency_ms REAL DEFAULT 0,
+    success_count INTEGER DEFAULT 0,
+    error_count INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, endpoint_id, model, request_date),
+    FOREIGN KEY(endpoint_id) REFERENCES ai_endpoints(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_request_date ON ai_request_stats(request_date);
+CREATE INDEX IF NOT EXISTS idx_ai_request_endpoint ON ai_request_stats(endpoint_id);
 """
 
 

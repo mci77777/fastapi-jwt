@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import {
   NButton,
   NCard,
@@ -16,6 +16,7 @@ import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 
 import { useAiModelSuiteStore, useUserStore } from '@/store'
+import api from '@/api'
 
 defineOptions({ name: 'GlobalWorkbench' })
 
@@ -45,15 +46,15 @@ const mappingScopeStats = computed(() => {
 })
 
 function goToCatalog() {
-  router.push('/ai/model-suite/catalog')
+  router.push('/ai/catalog')
 }
 
 function goToMapping() {
-  router.push('/ai/model-suite/mapping')
+  router.push('/ai/mapping')
 }
 
 function goToJwt() {
-  router.push('/ai/model-suite/jwt')
+  router.push('/ai/jwt')
 }
 
 // 系统模块快捷入口
@@ -106,13 +107,32 @@ function navigateToModule(path) {
   router.push(path)
 }
 
-// 系统统计数据（模拟）
-const systemStats = ref({
-  onlineUsers: 0,
-  todayRequests: 0,
-  systemUptime: '0小时',
-  cpuUsage: 0,
+// 系统健康状态
+const systemHealth = ref({
+  status: 'unknown',
+  service: 'GymBro',
+  loading: false,
 })
+
+// 系统统计数据（从 Prometheus 指标解析）
+const systemStats = ref({
+  totalRequests: 0,
+  errorRate: 0,
+  activeConnections: 0,
+  rateLimitBlocks: 0,
+})
+
+// Supabase 状态
+const supabaseStatus = ref(null)
+
+// 监控状态
+const monitorStatus = ref({
+  is_running: false,
+  interval_seconds: 60,
+  last_run_at: null,
+})
+
+let pollingTimer = null
 
 const endpointRows = computed(() =>
   models.value.map((item) => ({
@@ -128,6 +148,117 @@ const mappingRows = computed(() =>
   }))
 )
 
+async function loadHealthStatus() {
+  try {
+    systemHealth.value.loading = true
+    const response = await api.getHealthStatus()
+    systemHealth.value.status = response.data?.status || 'unknown'
+    systemHealth.value.service = response.data?.service || 'GymBro'
+  } catch (error) {
+    systemHealth.value.status = 'error'
+  } finally {
+    systemHealth.value.loading = false
+  }
+}
+
+async function loadSystemMetrics() {
+  try {
+    const response = await api.getSystemMetrics()
+    let metricsText = ''
+
+    if (typeof response === 'string') {
+      metricsText = response
+    } else if (response.data) {
+      metricsText = response.data
+    } else if (response.error) {
+      metricsText = response.error
+    }
+
+    const authTotal = parseMetric(metricsText, 'auth_requests_total')
+    const authErrors = parseMetric(metricsText, 'jwt_validation_errors_total')
+    const activeConns = parseMetric(metricsText, 'active_connections')
+    const rateLimitBlocks = parseMetric(metricsText, 'rate_limit_blocks_total')
+
+    systemStats.value = {
+      totalRequests: authTotal,
+      errorRate: authTotal > 0 ? ((authErrors / authTotal) * 100).toFixed(2) : 0,
+      activeConnections: activeConns,
+      rateLimitBlocks: rateLimitBlocks,
+    }
+  } catch (error) {
+    if (error.error && typeof error.error === 'string') {
+      const metricsText = error.error
+      const authTotal = parseMetric(metricsText, 'auth_requests_total')
+      const authErrors = parseMetric(metricsText, 'jwt_validation_errors_total')
+      const activeConns = parseMetric(metricsText, 'active_connections')
+      const rateLimitBlocks = parseMetric(metricsText, 'rate_limit_blocks_total')
+
+      systemStats.value = {
+        totalRequests: authTotal,
+        errorRate: authTotal > 0 ? ((authErrors / authTotal) * 100).toFixed(2) : 0,
+        activeConnections: activeConns,
+        rateLimitBlocks: rateLimitBlocks,
+      }
+    }
+  }
+}
+
+function parseMetric(metricsText, metricName) {
+  const regex = new RegExp(`${metricName}(?:{[^}]*})?\\s+(\\d+(?:\\.\\d+)?)`, 'g')
+  let total = 0
+  let match
+  while ((match = regex.exec(metricsText)) !== null) {
+    total += parseFloat(match[1])
+  }
+  return total
+}
+
+async function loadSupabaseStatus() {
+  try {
+    const response = await api.getSupabaseStatus()
+    supabaseStatus.value = response.data || null
+  } catch (error) {
+    supabaseStatus.value = { status: 'offline', detail: error.message }
+  }
+}
+
+async function loadMonitorStatus() {
+  try {
+    const response = await api.getMonitorStatus()
+    const data = response.data || {}
+    monitorStatus.value = {
+      is_running: !!data.is_running,
+      interval_seconds: data.interval_seconds ?? 60,
+      last_run_at: data.last_run_at ?? null,
+    }
+  } catch (error) {
+    monitorStatus.value.is_running = false
+  }
+}
+
+async function loadAllStatus() {
+  await Promise.all([
+    loadHealthStatus(),
+    loadSystemMetrics(),
+    loadSupabaseStatus(),
+    loadMonitorStatus(),
+  ])
+}
+
+function startPolling() {
+  loadAllStatus()
+  pollingTimer = setInterval(() => {
+    loadAllStatus()
+  }, 10000)
+}
+
+function stopPolling() {
+  if (pollingTimer) {
+    clearInterval(pollingTimer)
+    pollingTimer = null
+  }
+}
+
 onMounted(() => {
   if (!models.value.length) {
     store.loadModels()
@@ -137,13 +268,11 @@ onMounted(() => {
   }
   store.loadPrompts()
 
-  // 模拟系统统计数据
-  systemStats.value = {
-    onlineUsers: Math.floor(Math.random() * 20) + 5,
-    todayRequests: Math.floor(Math.random() * 1000) + 500,
-    systemUptime: `${Math.floor(Math.random() * 72) + 1}小时`,
-    cpuUsage: Math.floor(Math.random() * 60) + 20,
-  }
+  startPolling()
+})
+
+onBeforeUnmount(() => {
+  stopPolling()
 })
 </script>
 
@@ -160,18 +289,31 @@ onMounted(() => {
         </div>
         <div class="hero-stats">
           <div class="hero-stat-item">
-            <div class="stat-value">{{ systemStats.onlineUsers }}</div>
-            <div class="stat-label">在线用户</div>
+            <div class="stat-value">
+              <span
+                :style="{
+                  color: systemHealth.status === 'ok' ? '#18a058' : '#d03050',
+                }"
+              >
+                {{ systemHealth.status === 'ok' ? '✓' : '✗' }}
+              </span>
+            </div>
+            <div class="stat-label">系统状态</div>
           </div>
           <div class="hero-stat-divider"></div>
           <div class="hero-stat-item">
-            <div class="stat-value">{{ systemStats.todayRequests }}</div>
-            <div class="stat-label">今日请求</div>
+            <div class="stat-value">{{ systemStats.totalRequests }}</div>
+            <div class="stat-label">总请求数</div>
           </div>
           <div class="hero-stat-divider"></div>
           <div class="hero-stat-item">
-            <div class="stat-value">{{ systemStats.systemUptime }}</div>
-            <div class="stat-label">系统运行</div>
+            <div class="stat-value">{{ systemStats.errorRate }}%</div>
+            <div class="stat-label">错误率</div>
+          </div>
+          <div class="hero-stat-divider"></div>
+          <div class="hero-stat-item">
+            <div class="stat-value">{{ systemStats.activeConnections }}</div>
+            <div class="stat-label">活跃连接</div>
           </div>
         </div>
       </div>
@@ -194,6 +336,86 @@ onMounted(() => {
           </div>
         </div>
       </div>
+    </NCard>
+
+    <NCard title="📊 系统监控" size="small" class="monitoring-card">
+      <NGrid cols="2 640:4" responsive="screen" x-gap="16" y-gap="16">
+        <NGridItem>
+          <div class="mini-stat-card">
+            <div class="mini-stat-icon">🔐</div>
+            <div class="mini-stat-content">
+              <div class="mini-stat-value">{{ systemStats.totalRequests }}</div>
+              <div class="mini-stat-label">认证请求</div>
+            </div>
+          </div>
+        </NGridItem>
+        <NGridItem>
+          <div class="mini-stat-card">
+            <div class="mini-stat-icon">⚠️</div>
+            <div class="mini-stat-content">
+              <div class="mini-stat-value">{{ systemStats.errorRate }}%</div>
+              <div class="mini-stat-label">错误率</div>
+            </div>
+          </div>
+        </NGridItem>
+        <NGridItem>
+          <div class="mini-stat-card">
+            <div class="mini-stat-icon">🔗</div>
+            <div class="mini-stat-content">
+              <div class="mini-stat-value">{{ systemStats.activeConnections }}</div>
+              <div class="mini-stat-label">活跃连接</div>
+            </div>
+          </div>
+        </NGridItem>
+        <NGridItem>
+          <div class="mini-stat-card">
+            <div class="mini-stat-icon">🛡️</div>
+            <div class="mini-stat-content">
+              <div class="mini-stat-value">{{ systemStats.rateLimitBlocks }}</div>
+              <div class="mini-stat-label">限流拦截</div>
+            </div>
+          </div>
+        </NGridItem>
+      </NGrid>
+      <NDivider style="margin: 20px 0" />
+      <NSpace vertical :size="12">
+        <div class="status-row">
+          <span class="status-label">Supabase:</span>
+          <NTag
+            :type="supabaseStatus?.status === 'online' ? 'success' : 'error'"
+            size="small"
+            :bordered="false"
+          >
+            {{ supabaseStatus?.status || '未知' }}
+          </NTag>
+          <span v-if="supabaseStatus?.latency_ms" class="status-detail">
+            {{ supabaseStatus.latency_ms.toFixed(0) }}ms
+          </span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">端点监控:</span>
+          <NTag
+            :type="monitorStatus.is_running ? 'success' : 'default'"
+            size="small"
+            :bordered="false"
+          >
+            {{ monitorStatus.is_running ? '运行中' : '已停止' }}
+          </NTag>
+          <span v-if="monitorStatus.last_run_at" class="status-detail">
+            最近: {{ monitorStatus.last_run_at }}
+          </span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">用户类型:</span>
+          <NTag
+            :type="userInfo?.user_type === 'permanent' ? 'success' : 'warning'"
+            size="small"
+            :bordered="false"
+          >
+            {{ userInfo?.user_type === 'permanent' ? '永久用户' : '匿名用户' }}
+          </NTag>
+        </div>
+      </NSpace>
     </NCard>
 
     <NCard title="🤖 AI模型能力" size="small" class="ai-card">
@@ -795,5 +1017,31 @@ onMounted(() => {
 }
 .gap-2 {
   gap: 8px;
+}
+
+.monitoring-card {
+  margin-bottom: 24px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background-color: #fafafa;
+  border-radius: 6px;
+}
+
+.status-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  min-width: 80px;
+}
+
+.status-detail {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-left: auto;
 }
 </style>
