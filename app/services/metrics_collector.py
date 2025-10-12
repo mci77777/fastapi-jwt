@@ -46,7 +46,7 @@ class MetricsCollector:
             活跃用户数
         """
         start_time = self._calculate_start_time(time_window)
-        result = await self._db.fetch_one(
+        result = await self._db.fetchone(
             """
             SELECT COUNT(DISTINCT user_id) as total
             FROM user_activity_stats
@@ -66,9 +66,9 @@ class MetricsCollector:
             包含总数、成功数、错误数、平均延迟的字典
         """
         start_time = self._calculate_start_time(time_window)
-        result = await self._db.fetch_one(
+        result = await self._db.fetchone(
             """
-            SELECT 
+            SELECT
                 SUM(count) as total_count,
                 SUM(success_count) as total_success,
                 SUM(error_count) as total_error,
@@ -99,7 +99,7 @@ class MetricsCollector:
         snapshot = self._monitor.snapshot()
 
         # 查询所有端点状态
-        endpoints = await self._db.fetch_all(
+        endpoints = await self._db.fetchall(
             """
             SELECT status FROM ai_endpoints WHERE is_active = 1
         """
