@@ -6,13 +6,7 @@
         <NSkeleton v-if="loading" height="120px" :sharp="false" />
 
         <!-- 统计卡片 -->
-        <NCard
-          v-else
-          :bordered="true"
-          hoverable
-          class="stat-card"
-          @click="handleStatClick(stat)"
-        >
+        <NCard v-else :bordered="true" hoverable class="stat-card" @click="handleStatClick(stat)">
           <div class="stat-content">
             <div class="stat-icon-wrapper" :style="{ backgroundColor: `${stat.color}15` }">
               <HeroIcon :name="stat.icon" :size="32" :color="stat.color" />
@@ -62,12 +56,12 @@ const props = defineProps({
           stat.label !== undefined &&
           stat.value !== undefined
       )
-    }
+    },
   },
   loading: {
     type: Boolean,
-    default: false
-  }
+    default: false,
+  },
 })
 
 const emit = defineEmits(['stat-click'])
@@ -119,6 +113,7 @@ function handleStatClick(stat) {
 </script>
 
 <style scoped>
+/* ========== 黑白风格统计横幅 ========== */
 .stats-banner {
   width: 100%;
 }
@@ -126,83 +121,102 @@ function handleStatClick(stat) {
 .stat-card {
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
+  border-color: #000000;
 }
 
 .stat-card:active {
-  transform: translateY(-2px);
+  transform: translateY(-4px) scale(1.01);
 }
 
 .stat-content {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 16px;
+  text-align: center;
+  padding: 24px 20px;
+  gap: 12px;
 }
 
 .stat-icon-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   border-radius: 12px;
+  background: #f5f5f5;
   flex-shrink: 0;
   transition: all 0.3s ease;
 }
 
 .stat-card:hover .stat-icon-wrapper {
-  transform: scale(1.05);
+  transform: scale(1.1);
+  background: #e0e0e0;
 }
 
 .stat-info {
   flex: 1;
   min-width: 0;
+  width: 100%;
 }
 
 .stat-label {
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 12px;
+  color: #666666;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-weight: 500;
 }
 
 .stat-value-wrapper {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   gap: 8px;
 }
 
 .stat-value {
-  font-size: 28px;
-  font-weight: 700;
+  font-family: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+  font-size: 32px;
+  font-weight: 600;
   line-height: 1.2;
-  color: #333;
+  letter-spacing: -0.02em;
+  color: #000000;
 }
 
 .stat-trend {
   font-size: 12px;
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: #f5f5f5;
+  color: #666666;
 }
 
 .trend-up {
-  background-color: rgba(24, 160, 88, 0.1);
-  color: #18a058;
+  background: #e8f5e9;
+  color: #00aa00;
 }
 
 .trend-down {
-  background-color: rgba(208, 48, 80, 0.1);
-  color: #d03050;
+  background: #ffebee;
+  color: #cc0000;
 }
 
 /* 响应式布局 */
@@ -257,5 +271,3 @@ function handleStatClick(stat) {
   }
 }
 </style>
-
-

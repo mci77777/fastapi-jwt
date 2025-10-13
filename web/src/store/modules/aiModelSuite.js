@@ -13,6 +13,7 @@ import {
   syncModel,
   syncAllModels,
 } from '@/api/aiModelSuite'
+import api from '@/api'
 
 export const useAiModelSuiteStore = defineStore('aiModelSuite', {
   state: () => ({
@@ -126,6 +127,11 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
       } finally {
         this.promptsLoading = false
       }
+    },
+    async activatePrompt(promptId) {
+      if (!promptId) return
+      await api.activateAIPrompt(promptId)
+      await this.loadPrompts()
     },
     async simulateDialog(payload) {
       return simulateDialog(payload)

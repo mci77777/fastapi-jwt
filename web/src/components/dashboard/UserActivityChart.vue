@@ -25,16 +25,16 @@ const props = defineProps({
   timeRange: {
     type: String,
     default: '24h',
-    validator: (value) => ['1h', '24h', '7d'].includes(value)
+    validator: (value) => ['1h', '24h', '7d'].includes(value),
   },
   loading: {
     type: Boolean,
-    default: false
+    default: false,
   },
   data: {
     type: Array,
-    default: () => []
-  }
+    default: () => [],
+  },
 })
 
 const emit = defineEmits(['time-range-change'])
@@ -51,7 +51,7 @@ let resizeObserver = null
 const timeRangeOptions = [
   { label: '最近 1 小时', value: '1h' },
   { label: '最近 24 小时', value: '24h' },
-  { label: '最近 7 天', value: '7d' }
+  { label: '最近 7 天', value: '7d' },
 ]
 
 /**
@@ -87,29 +87,29 @@ function updateChart() {
       axisPointer: {
         type: 'cross',
         label: {
-          backgroundColor: '#6a7985'
-        }
-      }
+          backgroundColor: '#6a7985',
+        },
+      },
     },
     legend: {
       data: ['活跃用户数'],
-      top: 10
+      top: 10,
     },
     grid: {
       left: '3%',
       right: '4%',
       bottom: '3%',
-      containLabel: true
+      containLabel: true,
     },
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: generateXAxisData()
+      data: generateXAxisData(),
     },
     yAxis: {
       type: 'value',
       name: '用户数',
-      minInterval: 1
+      minInterval: 1,
     },
     series: [
       {
@@ -119,19 +119,19 @@ function updateChart() {
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: 'rgba(24, 160, 88, 0.3)' },
-            { offset: 1, color: 'rgba(24, 160, 88, 0.05)' }
-          ])
+            { offset: 1, color: 'rgba(24, 160, 88, 0.05)' },
+          ]),
         },
         lineStyle: {
           color: '#18a058',
-          width: 2
+          width: 2,
         },
         itemStyle: {
-          color: '#18a058'
+          color: '#18a058',
         },
-        data: generateYAxisData()
-      }
-    ]
+        data: generateYAxisData(),
+      },
+    ],
   }
 
   chartInstance.setOption(option, true)
@@ -270,4 +270,3 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 </style>
-

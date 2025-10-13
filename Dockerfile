@@ -28,6 +28,9 @@ RUN rm -f /etc/nginx/sites-enabled/default \
     && ln -s /etc/nginx/sites-available/web.conf /etc/nginx/sites-enabled/
 
 ENV LANG=zh_CN.UTF-8
+
+# 生产环境：Nginx 监听 80 端口，反向代理到后端 9999
+# 开发环境：前端 3101，后端 9999（见 start-dev.ps1）
 EXPOSE 80
 
 ENTRYPOINT [ "/bin/sh", "entrypoint.sh" ]

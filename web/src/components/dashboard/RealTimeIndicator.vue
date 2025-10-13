@@ -19,8 +19,9 @@ const props = defineProps({
   status: {
     type: String,
     default: 'disconnected',
-    validator: (value) => ['connected', 'disconnected', 'connecting', 'error', 'polling'].includes(value)
-  }
+    validator: (value) =>
+      ['connected', 'disconnected', 'connecting', 'error', 'polling'].includes(value),
+  },
 })
 
 // 状态文本映射
@@ -30,7 +31,7 @@ const statusText = computed(() => {
     disconnected: 'WebSocket 已断开',
     connecting: '正在连接...',
     error: '连接错误',
-    polling: '轮询模式'
+    polling: '轮询模式',
   }
   return textMap[props.status] || '未知状态'
 })
@@ -42,7 +43,7 @@ const tagType = computed(() => {
     disconnected: 'default',
     connecting: 'info',
     error: 'error',
-    polling: 'warning'
+    polling: 'warning',
   }
   return typeMap[props.status] || 'default'
 })
@@ -91,7 +92,8 @@ const statusClass = computed(() => {
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -100,12 +102,14 @@ const statusClass = computed(() => {
 }
 
 @keyframes blink {
-  0%, 50%, 100% {
+  0%,
+  50%,
+  100% {
     opacity: 1;
   }
-  25%, 75% {
+  25%,
+  75% {
     opacity: 0.3;
   }
 }
 </style>
-

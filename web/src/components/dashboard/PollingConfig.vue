@@ -63,16 +63,16 @@ defineOptions({ name: 'PollingConfig' })
 const props = defineProps({
   show: {
     type: Boolean,
-    default: false
+    default: false,
   },
   config: {
     type: Object,
     default: () => ({
       websocket_push_interval: 10,
       http_poll_interval: 30,
-      log_retention_size: 100
-    })
-  }
+      log_retention_size: 100,
+    }),
+  },
 })
 
 const emit = defineEmits(['update:show', 'save'])
@@ -85,7 +85,7 @@ const formRef = ref(null)
 const formData = ref({
   websocket_push_interval: 10,
   http_poll_interval: 30,
-  log_retention_size: 100
+  log_retention_size: 100,
 })
 
 // 表单验证规则
@@ -95,46 +95,46 @@ const rules = {
       required: true,
       type: 'number',
       message: '请输入 WebSocket 推送间隔',
-      trigger: 'blur'
+      trigger: 'blur',
     },
     {
       type: 'number',
       min: 1,
       max: 300,
       message: '推送间隔必须在 1-300 秒之间',
-      trigger: 'blur'
-    }
+      trigger: 'blur',
+    },
   ],
   http_poll_interval: [
     {
       required: true,
       type: 'number',
       message: '请输入 HTTP 轮询间隔',
-      trigger: 'blur'
+      trigger: 'blur',
     },
     {
       type: 'number',
       min: 5,
       max: 600,
       message: '轮询间隔必须在 5-600 秒之间',
-      trigger: 'blur'
-    }
+      trigger: 'blur',
+    },
   ],
   log_retention_size: [
     {
       required: true,
       type: 'number',
       message: '请输入日志保留数量',
-      trigger: 'blur'
+      trigger: 'blur',
     },
     {
       type: 'number',
       min: 10,
       max: 1000,
       message: '日志保留数量必须在 10-1000 条之间',
-      trigger: 'blur'
-    }
-  ]
+      trigger: 'blur',
+    },
+  ],
 }
 
 /**
@@ -194,4 +194,3 @@ watch(visible, (newValue) => {
   text-align: center;
 }
 </style>
-

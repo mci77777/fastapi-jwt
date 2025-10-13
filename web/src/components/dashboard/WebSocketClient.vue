@@ -1,6 +1,6 @@
 <template>
   <!-- WebSocket 客户端组件 - 无 UI，仅提供连接管理 -->
-  <div style="display: none;"></div>
+  <div style="display: none"></div>
 </template>
 
 <script setup>
@@ -11,24 +11,24 @@ defineOptions({ name: 'WebSocketClient' })
 const props = defineProps({
   url: {
     type: String,
-    required: true
+    required: true,
   },
   token: {
     type: String,
-    required: true
+    required: true,
   },
   autoReconnect: {
     type: Boolean,
-    default: true
+    default: true,
   },
   maxReconnectAttempts: {
     type: Number,
-    default: 3
+    default: 3,
   },
   reconnectDelay: {
     type: Number,
-    default: 2000
-  }
+    default: 2000,
+  },
 })
 
 const emit = defineEmits(['message', 'connected', 'disconnected', 'error'])
@@ -148,7 +148,6 @@ defineExpose({
   disconnect,
   reconnect,
   status,
-  isConnected
+  isConnected,
 })
 </script>
-

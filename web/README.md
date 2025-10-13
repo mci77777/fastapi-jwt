@@ -6,7 +6,7 @@
 cd web
 ```
 
-安装依赖(建议使用pnpm: https://pnpm.io/zh/installation)
+安装依赖(建议使用 pnpm: https://pnpm.io/zh/installation)
 
 ```sh
 npm i -g pnpm # 已安装可忽略

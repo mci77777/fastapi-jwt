@@ -1,0 +1,104 @@
+# FRP 客户端配置文件模板
+# 用途：将本地开发环境通过 FRP 隧道映射到远程服务器
+# 文档：https://github.com/fatedier/frp
+
+# ==================== 服务器配置 ====================
+# FRP 服务端地址和端口
+serverAddr = "74.113.96.240"
+serverPort = 7000
+
+# ==================== 认证配置 ====================
+# 使用 Token 认证（推荐）
+auth.method = "token"
+auth.token = "c86dbea00a800f87935646a238a43e09"
+
+# ==================== 日志配置 ====================
+log.level = "info"
+log.maxDays = 3
+
+# ==================== 传输配置（可选）====================
+# 启用加密和压缩（可选，会增加 CPU 开销）
+# transport.useEncryption = true
+# transport.useCompression = true
+
+# 连接池配置（可选，减少连接建立时间）
+# transport.poolCount = 5
+
+# ==================== 前端服务隧道 ====================
+[[proxies]]
+name = "gymbro-frontend"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3101
+remotePort = 3101
+
+# ==================== 后端服务隧道 ====================
+[[proxies]]
+name = "gymbro-backend"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 9999
+remotePort = 9999
+
+# ==================== HTTP 代理（域名访问）====================
+# 前提：远程服务器 Nginx 已配置域名反向代理
+
+# 后端 API 域名访问
+[[proxies]]
+name = "gymbro-api-http"
+type = "http"
+localIP = "127.0.0.1"
+localPort = 9999
+customDomains = ["api.gymbro.cloud"]
+
+# 前端 Web 域名访问
+[[proxies]]
+name = "gymbro-web-http"
+type = "http"
+localIP = "127.0.0.1"
+localPort = 3101
+customDomains = ["web.gymbro.cloud"]
+
+# ==================== 高级配置示例 ====================
+
+# 示例：HTTPS 代理（需要 SSL 证书）
+# [[proxies]]
+# name = "gymbro-api-https"
+# type = "https"
+# localIP = "127.0.0.1"
+# localPort = 9999
+# customDomains = ["api.gymbro.cloud"]
+
+# 示例：UDP 代理（用于 DNS 等服务）
+# [[proxies]]
+# name = "dns-proxy"
+# type = "udp"
+# localIP = "8.8.8.8"
+# localPort = 53
+# remotePort = 6053
+
+# 示例：STCP 私密隧道（需要访问者配置）
+# [[proxies]]
+# name = "secret-ssh"
+# type = "stcp"
+# secretKey = "your-secret-key"
+# localIP = "127.0.0.1"
+# localPort = 22
+
+# 示例：负载均衡组
+# [[proxies]]
+# name = "web-lb-1"
+# type = "tcp"
+# localPort = 8080
+# remotePort = 80
+# loadBalancer.group = "web"
+# loadBalancer.groupKey = "123"
+
+# [[proxies]]
+# name = "web-lb-2"
+# type = "tcp"
+# localPort = 8081
+# remotePort = 80
+# loadBalancer.group = "web"
+# loadBalancer.groupKey = "123"
+

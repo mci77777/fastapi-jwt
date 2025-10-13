@@ -57,12 +57,12 @@ defineOptions({ name: 'LogWindow' })
 const props = defineProps({
   logs: {
     type: Array,
-    default: () => []
+    default: () => [],
   },
   loading: {
     type: Boolean,
-    default: false
-  }
+    default: false,
+  },
 })
 
 const emit = defineEmits(['log-click', 'filter-change', 'refresh'])
@@ -77,7 +77,7 @@ const levelOptions = [
   { label: '全部', value: 'ALL' },
   { label: 'ERROR', value: 'ERROR' },
   { label: 'WARNING', value: 'WARNING' },
-  { label: 'INFO', value: 'INFO' }
+  { label: 'INFO', value: 'INFO' },
 ]
 
 // 过滤后的日志
@@ -89,7 +89,7 @@ const filteredLogs = computed(() => {
   const levelPriority = {
     ERROR: 3,
     WARNING: 2,
-    INFO: 1
+    INFO: 1,
   }
 
   const minLevel = levelPriority[currentLevel.value] || 0
@@ -107,7 +107,7 @@ function getLevelTagType(level) {
   const typeMap = {
     ERROR: 'error',
     WARNING: 'warning',
-    INFO: 'info'
+    INFO: 'info',
   }
   return typeMap[level] || 'default'
 }
@@ -145,7 +145,7 @@ function formatTime(timestamp) {
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     })
   } catch (error) {
     return timestamp
@@ -290,4 +290,3 @@ function handleRefresh() {
   background-color: #b0b0b0;
 }
 </style>
-

@@ -5,6 +5,56 @@ import { request } from '@/utils'
  * 提供统计数据、日志查询、配置管理等功能
  */
 
+// ==================== 模型管理 ====================
+
+/**
+ * 获取 AI 模型列表
+ * @param {Object} params - 查询参数
+ * @param {string} params.keyword - 关键词搜索
+ * @param {boolean} params.only_active - 仅显示活跃模型
+ * @param {number} params.page - 页码
+ * @param {number} params.page_size - 每页数量
+ * @returns {Promise} 模型列表
+ */
+export function getModels(params = {}) {
+  return request.get('/llm/models', { params })
+}
+
+/**
+ * 设置默认模型
+ * @param {number} modelId - 模型 ID
+ * @returns {Promise} 更新结果
+ */
+export function setDefaultModel(modelId) {
+  return request.put('/llm/models', { id: modelId, is_default: true })
+}
+
+// ==================== Prompt 管理 ====================
+
+/**
+ * 获取 Prompt 列表
+ * @param {Object} params - 查询参数
+ * @param {string} params.keyword - 关键词搜索
+ * @param {boolean} params.only_active - 仅显示活跃 Prompt
+ * @param {number} params.page - 页码
+ * @param {number} params.page_size - 每页数量
+ * @returns {Promise} Prompt 列表
+ */
+export function getPrompts(params = {}) {
+  return request.get('/llm/prompts', { params })
+}
+
+/**
+ * 激活 Prompt（设置为活跃状态）
+ * @param {number} promptId - Prompt ID
+ * @returns {Promise} 激活结果
+ */
+export function setActivePrompt(promptId) {
+  return request.post(`/llm/prompts/${promptId}/activate`)
+}
+
+// ==================== 统计数据 ====================
+
 /**
  * 获取聚合统计数据
  * @param {Object} params - 查询参数
@@ -98,3 +148,73 @@ export function createWebSocketUrl(token) {
   return `${wsProtocol}//${wsHost}:${wsPort}/api/v1/ws/dashboard?token=${token}`
 }
 
+/**
+ * 获取 Supabase 连接状态
+ * @returns {Promise} Supabase 状态数据
+ */
+export function getSupabaseStatus() {
+  return request.get('/llm/status/supabase')
+}
+
+/**
+ * 获取监控状态
+ * @returns {Promise} 监控状态数据
+ */
+export function getMonitorStatus() {
+  return request.get('/llm/monitor/status')
+}
+
+/**
+ * 启动监控
+ * @param {number} intervalSeconds - 监控间隔（秒）
+ * @returns {Promise} 启动结果
+ */
+export function startMonitor(intervalSeconds = 60) {
+  return request.post('/llm/monitor/start', { interval_seconds: intervalSeconds })
+}
+
+/**
+ * 停止监控
+ * @returns {Promise} 停止结果
+ */
+export function stopMonitor() {
+  return request.post('/llm/monitor/stop')
+}
+
+/**
+ * 获取 Prometheus 系统指标
+ * @returns {Promise<string>} Prometheus 文本格式的指标数据
+ */
+export function getSystemMetrics() {
+  return request.get('/metrics', { responseType: 'text' })
+}
+
+/**
+ * 解析 Prometheus 文本格式指标
+ * @param {string} text - Prometheus 文本格式数据
+ * @returns {Object} 解析后的指标对象
+ */
+export function parsePrometheusMetrics(text) {
+  const lines = text.split('\n')
+  const metrics = {}
+
+  lines.forEach((line) => {
+    // 跳过注释和空行
+    if (line.startsWith('#') || !line.trim()) return
+
+    // 匹配指标行：metric_name{labels} value
+    // 或：metric_name value
+    const match = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)\s+([0-9.eE+-]+)/)
+    if (match) {
+      const [, key, value] = match
+      // 累加同名指标（处理带标签的多行指标）
+      if (metrics[key]) {
+        metrics[key] += parseFloat(value)
+      } else {
+        metrics[key] = parseFloat(value)
+      }
+    }
+  })
+
+  return metrics
+}

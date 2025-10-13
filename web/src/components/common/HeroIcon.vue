@@ -16,7 +16,12 @@ import {
   ClockIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
-  XCircleIcon
+  XCircleIcon,
+  RectangleStackIcon,
+  MapIcon,
+  DocumentTextIcon,
+  WrenchScrewdriverIcon,
+  ClipboardDocumentListIcon,
 } from '@heroicons/vue/24/outline'
 
 defineOptions({ name: 'HeroIcon' })
@@ -38,19 +43,24 @@ const props = defineProps({
         'clock',
         'exclamation-triangle',
         'information-circle',
-        'x-circle'
+        'x-circle',
+        'rectangle-stack',
+        'map',
+        'document-text',
+        'wrench-screwdriver',
+        'clipboard-document-list',
       ]
       return validIcons.includes(value)
-    }
+    },
   },
   size: {
     type: [String, Number],
-    default: 24
+    default: 24,
   },
   color: {
     type: String,
-    default: 'currentColor'
-  }
+    default: 'currentColor',
+  },
 })
 
 // 图标映射表（SSOT）
@@ -66,7 +76,12 @@ const iconMap = {
   clock: ClockIcon,
   'exclamation-triangle': ExclamationTriangleIcon,
   'information-circle': InformationCircleIcon,
-  'x-circle': XCircleIcon
+  'x-circle': XCircleIcon,
+  'rectangle-stack': RectangleStackIcon,
+  map: MapIcon,
+  'document-text': DocumentTextIcon,
+  'wrench-screwdriver': WrenchScrewdriverIcon,
+  'clipboard-document-list': ClipboardDocumentListIcon,
 }
 
 // 动态获取图标组件
@@ -84,7 +99,7 @@ const iconStyle = computed(() => {
   return {
     width: typeof props.size === 'number' ? `${props.size}px` : props.size,
     height: typeof props.size === 'number' ? `${props.size}px` : props.size,
-    color: props.color
+    color: props.color,
   }
 })
 </script>
@@ -96,4 +111,3 @@ const iconStyle = computed(() => {
   vertical-align: middle;
 }
 </style>
-

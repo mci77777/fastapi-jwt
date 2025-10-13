@@ -109,12 +109,12 @@ defineOptions({ name: 'StatDetailModal' })
 const props = defineProps({
   show: {
     type: Boolean,
-    default: false
+    default: false,
   },
   stat: {
     type: Object,
-    default: null
-  }
+    default: null,
+  },
 })
 
 const emit = defineEmits(['update:show'])
@@ -251,4 +251,3 @@ watch(visible, (newValue) => {
   }
 }
 </style>
-

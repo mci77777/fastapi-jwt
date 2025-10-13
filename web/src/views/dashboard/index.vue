@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { NButton, NSpace, useMessage } from 'naive-ui'
+import { useMessage } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store'
 import { getToken } from '@/utils'
@@ -10,7 +10,6 @@ import StatsBanner from '@/components/dashboard/StatsBanner.vue'
 import LogWindow from '@/components/dashboard/LogWindow.vue'
 import UserActivityChart from '@/components/dashboard/UserActivityChart.vue'
 import WebSocketClient from '@/components/dashboard/WebSocketClient.vue'
-import RealTimeIndicator from '@/components/dashboard/RealTimeIndicator.vue'
 import PollingConfig from '@/components/dashboard/PollingConfig.vue'
 import StatDetailModal from '@/components/dashboard/StatDetailModal.vue'
 import ModelSwitcher from '@/components/dashboard/ModelSwitcher.vue'
@@ -19,7 +18,6 @@ import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
 import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
 import QuickAccessCard from '@/components/dashboard/QuickAccessCard.vue'
 import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
-import HeroIcon from '@/components/common/HeroIcon.vue'
 
 // Dashboard API
 import {
@@ -374,13 +372,6 @@ function handleTimeRangeChange(range) {
 }
 
 /**
- * 打开配置弹窗
- */
-function openConfigModal() {
-  showConfigModal.value = true
-}
-
-/**
  * 保存配置
  */
 async function handleConfigSave(config) {
@@ -465,31 +456,7 @@ onBeforeUnmount(() => {
       @error="handleWebSocketError"
     />
 
-    <!-- 顶部工具栏 -->
-    <div class="dashboard-header">
-      <div class="header-left">
-        <h1 class="dashboard-title">Dashboard</h1>
-        <RealTimeIndicator :status="connectionStatus" />
-      </div>
-      <div class="header-right">
-        <NSpace :size="12">
-          <NButton size="small" @click="loadDashboardStats">
-            <template #icon>
-              <HeroIcon name="arrow-path" :size="16" />
-            </template>
-            刷新
-          </NButton>
-          <NButton size="small" @click="openConfigModal">
-            <template #icon>
-              <HeroIcon name="cog-6-tooth" :size="16" />
-            </template>
-            配置
-          </NButton>
-        </NSpace>
-      </div>
-    </div>
-
-    <!-- 统计横幅 -->
+    <!-- 统计横幅（包含实时指示器和操作按钮） -->
     <StatsBanner :stats="stats" :loading="statsLoading" @stat-click="handleStatClick" />
 
     <!-- 快速访问卡片组 -->
@@ -562,62 +529,73 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* ========== 黑白设计系统 ========== */
+:root {
+  /* 主色调 */
+  --bw-black: #000000;
+  --bw-dark-gray: #1a1a1a;
+  --bw-medium-gray: #333333;
+
+  /* 背景色 */
+  --bw-white: #ffffff;
+  --bw-light-gray: #f5f5f5;
+  --bw-ultra-light: #fafafa;
+
+  /* 文本色 */
+  --bw-text-primary: #000000;
+  --bw-text-secondary: #666666;
+  --bw-text-tertiary: #999999;
+
+  /* 边框色 */
+  --bw-border-light: #e0e0e0;
+  --bw-border-medium: #d0d0d0;
+
+  /* 强调色（状态指示） */
+  --bw-accent-blue: #0066cc;
+  --bw-accent-green: #00aa00;
+  --bw-accent-red: #cc0000;
+
+  /* 圆角系统 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* 阴影系统（黑色半透明） */
+  --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0 4px 20px rgba(0, 0, 0, 0.12);
+  --shadow-float: 0 8px 32px rgba(0, 0, 0, 0.16);
+}
+
 .dashboard-container {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 4px;
-  min-height: 100vh;
+  gap: 24px;
+  padding: 24px;
+  min-height: auto;
+  background: var(--bw-light-gray);
 }
 
-/* 顶部工具栏 */
-.dashboard-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.dashboard-title {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-  color: white;
-  letter-spacing: -0.5px;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-}
-
-/* 快速访问卡片组 */
+/* ========== 快速访问卡片组（网格布局） ========== */
 .quick-access-section {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
-  margin: 16px 0;
 }
 
-/* 控制面板区域 */
+/* ========== 控制面板区域（2 列网格） ========== */
 .dashboard-controls {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
   margin: 16px 0;
 }
 
-/* 主内容区域：Grid 两列布局 */
+/* ========== 主内容区域（60% + 40% 网格） ========== */
 .dashboard-main {
   display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 20px;
+  grid-template-columns: 60% 40%;
+  gap: 24px;
   min-height: 600px;
 }
 
@@ -629,23 +607,35 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-/* 响应式布局 */
-@media (max-width: 1200px) {
+/* ========== 响应式布局 ========== */
+@media (max-width: 1400px) {
   .dashboard-main {
-    grid-template-columns: 250px 1fr;
+    grid-template-columns: 55% 45%;
+  }
+}
+
+@media (max-width: 1200px) {
+  .dashboard-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-main {
+    grid-template-columns: 1fr;
+    min-height: auto;
   }
 }
 
 @media (max-width: 768px) {
-  .dashboard-main {
-    grid-template-columns: 1fr;
-    min-height: auto;
+  .dashboard-container {
+    padding: 16px;
+    gap: 16px;
   }
 
   .dashboard-header {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
+    padding: 24px 20px;
   }
 
   .header-left {
@@ -655,6 +645,14 @@ onBeforeUnmount(() => {
   .header-right {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .dashboard-title {
+    font-size: 24px;
+  }
+
+  .quick-access-section {
+    gap: 12px;
   }
 }
 </style>
