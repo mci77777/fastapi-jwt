@@ -169,6 +169,7 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
     logger.info("=== get_user_menu called === v3")
 
     # 临时硬编码菜单，实际应该从数据库查询
+    # 菜单配置：Dashboard (0) → 系统管理 (5) → AI模型管理 (10)
     menus = [
         {
             "name": "Dashboard",
@@ -181,11 +182,41 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
             "keepalive": False,
         },
         {
+            "name": "系统管理",
+            "path": "/system",
+            "component": "/system",
+            "icon": "carbon:settings-adjust",
+            "order": 5,
+            "is_hidden": False,
+            "redirect": None,
+            "keepalive": False,
+            "children": [
+                {
+                    "name": "AI 配置",
+                    "path": "ai",
+                    "component": "/system/ai",
+                    "icon": "carbon:ai-status",
+                    "order": 1,
+                    "is_hidden": False,
+                    "keepalive": False,
+                },
+                {
+                    "name": "Prompt 管理",
+                    "path": "ai/prompt",
+                    "component": "/system/ai/prompt",
+                    "icon": "carbon:prompt-template",
+                    "order": 2,
+                    "is_hidden": False,
+                    "keepalive": False,
+                },
+            ],
+        },
+        {
             "name": "AI模型管理",
             "path": "/ai",
             "component": "/ai",
             "icon": "mdi:robot-outline",
-            "order": 5,
+            "order": 10,
             "is_hidden": False,
             "redirect": None,
             "keepalive": False,
@@ -214,36 +245,6 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
                     "component": "/ai/model-suite/jwt",
                     "icon": "mdi:chat-processing-outline",
                     "order": 3,
-                    "is_hidden": False,
-                    "keepalive": False,
-                },
-            ],
-        },
-        {
-            "name": "系统管理",
-            "path": "/system",
-            "component": "/system",
-            "icon": "carbon:settings-adjust",
-            "order": 100,
-            "is_hidden": False,
-            "redirect": None,
-            "keepalive": False,
-            "children": [
-                {
-                    "name": "AI 配置",
-                    "path": "ai",
-                    "component": "/system/ai",
-                    "icon": "carbon:ai-status",
-                    "order": 1,
-                    "is_hidden": False,
-                    "keepalive": False,
-                },
-                {
-                    "name": "Prompt 管理",
-                    "path": "ai/prompt",
-                    "component": "/system/ai/prompt",
-                    "icon": "carbon:prompt-template",
-                    "order": 2,
                     "is_hidden": False,
                     "keepalive": False,
                 },

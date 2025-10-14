@@ -95,3 +95,4 @@ frpc.pid
 *.bak
 *.backup
 *~
+.secrets.baseline
