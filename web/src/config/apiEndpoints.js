@@ -6,7 +6,7 @@
 export const API_ENDPOINTS = [
   // ==================== 健康探针 ====================
   {
-    path: '/api/v1/healthz',
+    path: '/healthz',
     method: 'GET',
     type: 'http',
     description: '健康检查',
@@ -14,7 +14,7 @@ export const API_ENDPOINTS = [
     requiresAuth: false,
   },
   {
-    path: '/api/v1/livez',
+    path: '/livez',
     method: 'GET',
     type: 'http',
     description: '存活探针',
@@ -22,7 +22,7 @@ export const API_ENDPOINTS = [
     requiresAuth: false,
   },
   {
-    path: '/api/v1/readyz',
+    path: '/readyz',
     method: 'GET',
     type: 'http',
     description: '就绪探针',
@@ -32,7 +32,7 @@ export const API_ENDPOINTS = [
 
   // ==================== 认证相关 ====================
   {
-    path: '/api/v1/base/access_token',
+    path: '/base/access_token',
     method: 'POST',
     type: 'http',
     description: '获取 JWT Token',
@@ -41,7 +41,7 @@ export const API_ENDPOINTS = [
     skipCheck: true, // 需要凭证，跳过自动检测
   },
   {
-    path: '/api/v1/base/userinfo',
+    path: '/base/userinfo',
     method: 'GET',
     type: 'http',
     description: '获取用户信息',
@@ -49,7 +49,7 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
-    path: '/api/v1/base/usermenu',
+    path: '/base/usermenu',
     method: 'GET',
     type: 'http',
     description: '获取用户菜单',
@@ -59,7 +59,7 @@ export const API_ENDPOINTS = [
 
   // ==================== LLM 模型管理 ====================
   {
-    path: '/api/v1/llm/models',
+    path: '/llm/models',
     method: 'GET',
     type: 'http',
     description: '获取模型列表',
@@ -67,7 +67,7 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
-    path: '/api/v1/llm/models/check-all',
+    path: '/llm/models/check-all',
     method: 'POST',
     type: 'http',
     description: '批量诊断模型',
@@ -76,7 +76,7 @@ export const API_ENDPOINTS = [
     skipCheck: true, // 会触发实际检测，跳过
   },
   {
-    path: '/api/v1/llm/model-groups',
+    path: '/llm/model-groups',
     method: 'GET',
     type: 'http',
     description: '获取模型映射',
@@ -84,7 +84,7 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
-    path: '/api/v1/llm/prompts',
+    path: '/llm/prompts',
     method: 'GET',
     type: 'http',
     description: '获取 Prompt 列表',
@@ -92,7 +92,7 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
-    path: '/api/v1/llm/monitor/status',
+    path: '/llm/monitor/status',
     method: 'GET',
     type: 'http',
     description: '获取监控状态',
@@ -100,7 +100,7 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
-    path: '/api/v1/llm/status/supabase',
+    path: '/llm/status/supabase',
     method: 'GET',
     type: 'http',
     description: 'Supabase 连接状态',
@@ -110,7 +110,7 @@ export const API_ENDPOINTS = [
 
   // ==================== Dashboard 统计 ====================
   {
-    path: '/api/v1/stats/dashboard',
+    path: '/stats/dashboard',
     method: 'GET',
     type: 'http',
     description: 'Dashboard 聚合统计',
@@ -118,7 +118,7 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
-    path: '/api/v1/stats/daily-active-users',
+    path: '/stats/daily-active-users',
     method: 'GET',
     type: 'http',
     description: '日活用户数',
@@ -126,7 +126,7 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
-    path: '/api/v1/stats/ai-requests',
+    path: '/stats/ai-requests',
     method: 'GET',
     type: 'http',
     description: 'AI 请求统计',
@@ -134,7 +134,7 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
-    path: '/api/v1/stats/api-connectivity',
+    path: '/stats/api-connectivity',
     method: 'GET',
     type: 'http',
     description: 'API 连通性状态',
@@ -142,7 +142,7 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
-    path: '/api/v1/stats/jwt-availability',
+    path: '/stats/jwt-availability',
     method: 'GET',
     type: 'http',
     description: 'JWT 可获取性',
@@ -150,7 +150,7 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
-    path: '/api/v1/logs/recent',
+    path: '/logs/recent',
     method: 'GET',
     type: 'http',
     description: '最近日志',
@@ -160,7 +160,7 @@ export const API_ENDPOINTS = [
 
   // ==================== 消息与 SSE ====================
   {
-    path: '/api/v1/messages',
+    path: '/messages',
     method: 'POST',
     type: 'http',
     description: '创建消息会话',
@@ -169,7 +169,7 @@ export const API_ENDPOINTS = [
     skipCheck: true, // 需要请求体，跳过
   },
   {
-    path: '/api/v1/messages/{id}/events',
+    path: '/messages/{id}/events',
     method: 'GET',
     type: 'sse',
     description: 'SSE 流式消息推送',
@@ -180,7 +180,7 @@ export const API_ENDPOINTS = [
 
   // ==================== WebSocket 端点 ====================
   {
-    path: '/api/v1/ws/dashboard',
+    path: '/ws/dashboard',
     method: 'WebSocket',
     type: 'websocket',
     description: 'Dashboard 实时推送',
@@ -188,7 +188,7 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
-    path: '/api/v1/agents',
+    path: '/agents',
     method: 'WebSocket',
     type: 'websocket',
     description: 'Multi-Agent 对话',
@@ -198,7 +198,7 @@ export const API_ENDPOINTS = [
 
   // ==================== 监控指标 ====================
   {
-    path: '/api/v1/metrics',
+    path: '/metrics',
     method: 'GET',
     type: 'http',
     description: 'Prometheus 指标',
