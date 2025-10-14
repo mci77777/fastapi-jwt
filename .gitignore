@@ -11,7 +11,7 @@ db.sqlite3
 db.sqlite3-journal
 db.sqlite3-shm
 db.sqlite3-wal
-
+./storage/ai_runtime/backups/*.json
 ./*node_modules
 node_modules/*
 web/node_modules/
