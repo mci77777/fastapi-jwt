@@ -128,14 +128,16 @@ class MetricsCollector:
             total = 0
             success = 0
 
-            # 遍历所有标签组合
-            for sample in auth_requests_total._metrics.values():
-                value = sample._value._value
-                labels = sample._labels
-
-                total += value
-                if labels.get("status") == "success":
-                    success += value
+            # 使用 collect() 方法获取指标数据（正确的 Prometheus API）
+            for metric in auth_requests_total.collect():
+                for sample in metric.samples:
+                    # sample.name: 指标名称
+                    # sample.labels: 标签字典 {"status": "success", "user_type": "permanent"}
+                    # sample.value: 指标值
+                    if sample.name == "auth_requests_total":
+                        total += sample.value
+                        if sample.labels.get("status") == "success":
+                            success += sample.value
 
             success_rate = (success / total * 100) if total > 0 else 0
 
