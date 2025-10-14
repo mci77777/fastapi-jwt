@@ -263,5 +263,4 @@ function handleStatClick(stat) {
     font-size: var(--font-size-xl);
   }
 }
-
 </style>

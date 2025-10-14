@@ -1,6 +1,5 @@
 import { getToken } from '@/utils'
 import { resolveResError } from './helpers'
-import { useUserStore } from '@/store'
 
 export function reqResolve(config) {
   // 处理不需要token的请求
@@ -14,6 +13,15 @@ export function reqResolve(config) {
     config.headers.Authorization = config.headers.Authorization || `Bearer ${token}`
   }
 
+  if (
+    config.baseURL &&
+    typeof config.url === 'string' &&
+    config.url.startsWith('/') &&
+    !/^https?:\/\//.test(config.url)
+  ) {
+    config.url = config.url.replace(/^\/+/, '')
+  }
+
   return config
 }
 
@@ -23,6 +31,14 @@ export function reqReject(error) {
 
 export function resResolve(response) {
   const { data, status, statusText } = response
+
+  if (data === null || data === undefined) {
+    return Promise.resolve(data)
+  }
+
+  if (typeof data !== 'object') {
+    return Promise.resolve(data)
+  }
 
   // 如果响应数据没有 code 字段，且 HTTP 状态码是 2xx，则认为是成功的
   if (data && typeof data === 'object' && !('code' in data) && status >= 200 && status < 300) {

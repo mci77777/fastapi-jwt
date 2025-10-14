@@ -1,8 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useMessage, NButton } from 'naive-ui'
-import { storeToRefs } from 'pinia'
-import { useUserStore } from '@/store'
 import { getToken } from '@/utils'
 import draggable from 'vuedraggable'
 
@@ -32,8 +30,6 @@ import {
 
 defineOptions({ name: 'DashboardIndex' })
 
-const userStore = useUserStore()
-const { userInfo } = storeToRefs(userStore)
 const message = useMessage()
 
 // 响应式状态
@@ -86,11 +82,11 @@ const stats = ref([
   {
     id: 5,
     icon: 'key',
-    label: 'JWT 可获取性',
+    label: 'JWT 连通性',
     value: '0%',
     trend: 0,
     color: '#8a2be2',
-    detail: 'JWT 获取成功率',
+    detail: 'JWT 验证成功率',
   },
 ])
 

@@ -1,7 +1,7 @@
 # GymBro 脚本索引
 
-**更新时间**：2025-10-08  
-**总计**：24 个 Python 脚本（scripts/ 目录 16 个，e2e/ 匿名链路 8 个）
+**更新时间**：2025-10-14
+**总计**：26 个 Python 脚本（scripts/ 目录 18 个，e2e/ 匿名链路 8 个）
 
 ---
 
@@ -15,17 +15,19 @@ vue-fastapi-admin/
 
 ---
 
-## scripts/ 目录（16 个）
+## scripts/ 目录（18 个）
 
-### 1. JWT 工具（5 个）
+### 1. JWT 工具（7 个）
 
 | 脚本 | 功能 | 运行方式 |
 |------|------|----------|
+| `test_jwt_complete.py` | ✅ **JWT 完整测试**：获取、验证、失效时间测试 | `python scripts/test_jwt_complete.py` |
 | `verify_jwks_cache.py` | ✅ 综合校验 JWKS 缓存与 JWT 验证链路 | `python scripts/verify_jwks_cache.py` |
 | `verify_jwt_config.py` | 检查 Supabase JWT 配置并尝试初始化验证器 | `python scripts/verify_jwt_config.py` |
 | `create_jwk.py` | 生成 HS256 对应的 JWK | `python scripts/create_jwk.py` |
 | `decode_jwt.py` | 解码 JWT 观察 Claims | `python scripts/decode_jwt.py <token>` |
 | `find_jwt_secret.py` | 辅助定位正确的 JWT Secret | `python scripts/find_jwt_secret.py` |
+| `test_monitoring_pipeline.py` | ✅ **监控管线测试**：验证 Dashboard 监控指标 | `python scripts/test_monitoring_pipeline.py` |
 
 ### 2. Supabase 体检（4 个）
 

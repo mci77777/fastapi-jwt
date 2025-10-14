@@ -33,7 +33,7 @@ import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
 
 defineOptions({ name: 'ModelSwitcher' })
 
-const props = defineProps({
+defineProps({
   compact: {
     type: Boolean,
     default: false,
@@ -47,7 +47,8 @@ const { models, modelsLoading } = storeToRefs(store)
 const message = useMessage()
 
 const selectedModelId = ref(null)
-const loading = ref(false)
+const actionLoading = ref(false)
+const loading = computed(() => modelsLoading.value || actionLoading.value)
 
 // 状态映射
 const statusType = {
@@ -84,7 +85,7 @@ const currentModel = computed(() => {
 async function handleModelChange(modelId) {
   if (!modelId) return
 
-  loading.value = true
+  actionLoading.value = true
   try {
     const model = models.value.find((m) => m.id === modelId)
     if (!model) {
@@ -107,7 +108,7 @@ async function handleModelChange(modelId) {
       selectedModelId.value = defaultModel.id
     }
   } finally {
-    loading.value = false
+    actionLoading.value = false
   }
 }
 
@@ -115,7 +116,7 @@ async function handleModelChange(modelId) {
  * 初始化：加载模型列表并设置默认选中
  */
 async function initializeModels() {
-  loading.value = true
+  actionLoading.value = true
   try {
     // 加载模型列表
     await store.loadModels()
@@ -135,7 +136,7 @@ async function initializeModels() {
     console.error('加载模型列表失败:', error)
     message.error('加载模型列表失败')
   } finally {
-    loading.value = false
+    actionLoading.value = false
   }
 }
 

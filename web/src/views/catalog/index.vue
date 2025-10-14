@@ -62,18 +62,16 @@
 
     <!-- 目录列表（卡片形式） -->
     <div v-if="filteredCatalogs.length > 0" class="catalog-grid">
-      <NCard
-        v-for="catalog in filteredCatalogs"
-        :key="catalog.id"
-        class="catalog-card"
-        hoverable
-      >
+      <NCard v-for="catalog in filteredCatalogs" :key="catalog.id" class="catalog-card" hoverable>
         <div class="catalog-card-header">
           <div class="catalog-icon">
             <HeroIcon :name="catalog.icon" :size="28" :color="catalog.color" />
           </div>
           <div class="catalog-status">
-            <NBadge :value="catalog.status === 'active' ? '启用' : '禁用'" :type="catalog.status === 'active' ? 'success' : 'default'" />
+            <NBadge
+              :value="catalog.status === 'active' ? '启用' : '禁用'"
+              :type="catalog.status === 'active' ? 'success' : 'default'"
+            />
           </div>
         </div>
         <div class="catalog-content">
@@ -121,7 +119,13 @@
 
     <!-- 新建/编辑目录弹窗 -->
     <NModal v-model:show="showCatalogModal" preset="card" :title="modalTitle" class="catalog-modal">
-      <NForm ref="formRef" :model="formData" :rules="formRules" label-placement="left" label-width="80">
+      <NForm
+        ref="formRef"
+        :model="formData"
+        :rules="formRules"
+        label-placement="left"
+        label-width="80"
+      >
         <NFormItem label="目录名称" path="name">
           <NInput v-model:value="formData.name" placeholder="请输入目录名称" />
         </NFormItem>
@@ -158,7 +162,21 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { NCard, NButton, NInput, NSpace, NTag, NBadge, NModal, NForm, NFormItem, NSelect, NSwitch, useMessage, useDialog } from 'naive-ui'
+import {
+  NCard,
+  NButton,
+  NInput,
+  NSpace,
+  NTag,
+  NBadge,
+  NModal,
+  NForm,
+  NFormItem,
+  NSelect,
+  NSwitch,
+  useMessage,
+  useDialog,
+} from 'naive-ui'
 import HeroIcon from '@/components/common/HeroIcon.vue'
 
 defineOptions({ name: 'CatalogIndex' })
@@ -559,4 +577,3 @@ function handleSubmit() {
   }
 }
 </style>
-

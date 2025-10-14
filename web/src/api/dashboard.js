@@ -94,8 +94,8 @@ export function getApiConnectivity() {
 }
 
 /**
- * 获取 JWT 可获取性
- * @returns {Promise} JWT 可获取性数据
+ * 获取 JWT 连通性
+ * @returns {Promise} JWT 连通性数据
  */
 export function getJwtAvailability() {
   return request.get('/stats/jwt-availability')
@@ -186,7 +186,7 @@ export function stopMonitor() {
  * @returns {Promise<string>} Prometheus 文本格式的指标数据
  */
 export function getSystemMetrics() {
-  return request.get('/metrics', { responseType: 'text' })
+  return request.get('metrics', { responseType: 'text' })
 }
 
 /**

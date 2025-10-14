@@ -22,7 +22,40 @@ import {
   DocumentTextIcon,
   WrenchScrewdriverIcon,
   ClipboardDocumentListIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  MagnifyingGlassIcon,
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
 } from '@heroicons/vue/24/outline'
+
+// 图标映射表（SSOT）
+const iconMap = {
+  'chart-bar': ChartBarIcon,
+  'cpu-chip': CpuChipIcon,
+  'currency-dollar': CurrencyDollarIcon,
+  signal: SignalIcon,
+  key: KeyIcon,
+  'arrow-path': ArrowPathIcon,
+  'cog-6-tooth': Cog6ToothIcon,
+  'user-group': UserGroupIcon,
+  clock: ClockIcon,
+  'exclamation-triangle': ExclamationTriangleIcon,
+  'information-circle': InformationCircleIcon,
+  'x-circle': XCircleIcon,
+  'rectangle-stack': RectangleStackIcon,
+  map: MapIcon,
+  'document-text': DocumentTextIcon,
+  'wrench-screwdriver': WrenchScrewdriverIcon,
+  'clipboard-document-list': ClipboardDocumentListIcon,
+  folder: FolderIcon,
+  'folder-open': FolderOpenIcon,
+  'magnifying-glass': MagnifyingGlassIcon,
+  pencil: PencilIcon,
+  plus: PlusIcon,
+  trash: TrashIcon,
+}
 
 defineOptions({ name: 'HeroIcon' })
 
@@ -49,6 +82,12 @@ const props = defineProps({
         'document-text',
         'wrench-screwdriver',
         'clipboard-document-list',
+        'folder',
+        'folder-open',
+        'magnifying-glass',
+        'pencil',
+        'plus',
+        'trash',
       ]
       return validIcons.includes(value)
     },
@@ -62,27 +101,6 @@ const props = defineProps({
     default: 'currentColor',
   },
 })
-
-// 图标映射表（SSOT）
-const iconMap = {
-  'chart-bar': ChartBarIcon,
-  'cpu-chip': CpuChipIcon,
-  'currency-dollar': CurrencyDollarIcon,
-  signal: SignalIcon,
-  key: KeyIcon,
-  'arrow-path': ArrowPathIcon,
-  'cog-6-tooth': Cog6ToothIcon,
-  'user-group': UserGroupIcon,
-  clock: ClockIcon,
-  'exclamation-triangle': ExclamationTriangleIcon,
-  'information-circle': InformationCircleIcon,
-  'x-circle': XCircleIcon,
-  'rectangle-stack': RectangleStackIcon,
-  map: MapIcon,
-  'document-text': DocumentTextIcon,
-  'wrench-screwdriver': WrenchScrewdriverIcon,
-  'clipboard-document-list': ClipboardDocumentListIcon,
-}
 
 // 动态获取图标组件
 const iconComponent = computed(() => {

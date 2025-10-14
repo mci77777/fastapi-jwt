@@ -1,92 +1,356 @@
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',))
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',)) completed
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F1FC0>)
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F1FC0>) completed
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F1FC0>)
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F1FC0>) completed
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',))
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',)) completed
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F3840>)
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F3840>) completed
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F3840>)
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F3840>) completed
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ())
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ()) completed
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F2040>)
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F2040>) completed
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F2040>)
-2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F2040>) completed
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',))
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',)) completed
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F30C0>)
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F30C0>) completed
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F30C0>)
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F30C0>) completed
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',))
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',)) completed
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F00C0>)
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F00C0>) completed
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F00C0>)
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F00C0>) completed
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ())
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ()) completed
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F0AC0>)
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F0AC0>) completed
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F0AC0>)
-2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F0AC0>) completed
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',))
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',)) completed
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F3240>)
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F3240>) completed
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F3240>)
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F3240>) completed
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',))
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',)) completed
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F0940>)
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F0940>) completed
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F0940>)
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F0940>) completed
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ())
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ()) completed
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F1C40>)
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F1C40>) completed
-2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F1C40>)
-<html>
-<head><title>502 Bad Gateway</title></head>
-<body>
-<center><h1>502 Bad Gateway</h1></center>
-<hr><center>nginx</center>
-</body>
-</html>
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<html>
-<head><title>502 Bad Gateway</title></head>
-<body>
-<center><h1>502 Bad Gateway</h1></center>
-<hr><center>nginx</center>
-</body>
-</html>
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<html>
-<head><title>502 Bad Gateway</title></head>
-<body>
-<center><h1>502 Bad Gateway</h1></center>
-<hr><center>nginx</center>
-</body>
-</html>
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
-<!-- a padding to disable MSIE and Chrome friendly error page -->
+CrudTable.vue:110 [Vue warn]: Non-function value encountered for default slot. Prefer function slots for better performance. 
+  at <Space justify="center" > 
+  at <DataTableCell clsPrefix="n" index=0 row= 
+{id: 1, supabase_id: 3, name: 'stander', content: '"systemPrompt": "🔒 **STRICT TAG SPECIFICATION – D…>\\n<final>\\n# 示例最终输出标题\\n1. 正文段落或列表内容…\\n</final>",', version: '1', …}
+  ... > 
+  at <ResizeObserver onResize=fn<handleContentResize> > 
+  at <ResizeObserver onResize=fn<handleContainerResize> > 
+  at <Scrollbar ref="scrollbarInstRef" scrollable=true class="n-data-table-base-table-body"  ... > 
+  at <DataTableBody ref="bodyInstRef" bodyStyle= 
+{maxHeight: undefined, minHeight: undefined}
+ showHeader=true  ... > 
+  at <MainTable ref="mainTableInstRef" > 
+  at <DataTable remote=true loading=false columns= 
+(6) [{…}, {…}, {…}, {…}, {…}, {…}]
+  ... > 
+  at <CrudTable ref="$table" query-items= 
+{keyword: null, only_active: null}
+ onUpdate:queryItems=fn  ... > 
+  at <Card flex-1="" rounded-10="" > 
+  at <BaseTransition mode="out-in" appear=true persisted=false  ... > 
+  at <Transition name="fade-slide" mode="out-in" appear="" > 
+  at <AppPage show-footer=true > 
+  at <CommonPage show-footer="" title="Prompt 模板管理" > 
+  at <AIPromptManager onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > key="/system/ai/prompt" > 
+  at <KeepAlive include= 
+[]
+ > 
+  at <RouterView> 
+  at <AppMain> 
+  at <Layout has-sider="" wh-full="" > 
+  at <Index onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > > 
+  at <RouterView> 
+  at <MessageProvider> 
+  at <NotificationProvider> 
+  at <DialogProvider> 
+  at <LoadingBarProvider> 
+  at <ConfigProvider wh-full="" locale= 
+{name: 'zh-CN', global: {…}, Popconfirm: {…}, Cascader: {…}, Time: {…}, …}
+ date-locale= 
+{name: 'zh-CN', locale: {…}}
+  ... > 
+  at <AppProvider> 
+  at <App>
+CrudTable.vue:110 [Vue warn]: Non-function value encountered for default slot. Prefer function slots for better performance. 
+  at <Space align="center" justify="center" size=6 > 
+  at <Target> 
+  at <Binder ref="binderInstRef" syncTarget=true syncTargetWithParent=false > 
+  at <Popover getDisabled=fn<getTooltipDisabled> theme= 
+{name: 'Popover', common: {…}, self: ƒ}
+ themeOverrides=undefined  ... > 
+  at <Tooltip ref="tooltipRef" placement="top" getDisabled=fn<getTooltipDisabled>  ... > 
+  at <Ellipsis tooltip=true theme= 
+{name: 'Ellipsis', common: {…}, peers: {…}}
+ themeOverrides=undefined > 
+  at <DataTableCell clsPrefix="n" index=1 row= 
+{id: 2, supabase_id: 1, name: 'GymBro Assistant', content: '"id": "thinkingbox-gymbro-strict",\n  "displayName"… 功能无缝衔接",\n    "userExperience": "移动优先，富文本交互"\n  },', version: 'v1.0', …}
+  ... > 
+  at <ResizeObserver onResize=fn<handleContentResize> > 
+  at <ResizeObserver onResize=fn<handleContainerResize> > 
+  at <Scrollbar ref="scrollbarInstRef" scrollable=true class="n-data-table-base-table-body"  ... > 
+  at <DataTableBody ref="bodyInstRef" bodyStyle= 
+{maxHeight: undefined, minHeight: undefined}
+ showHeader=true  ... > 
+  at <MainTable ref="mainTableInstRef" > 
+  at <DataTable remote=true loading=false columns= 
+(6) [{…}, {…}, {…}, {…}, {…}, {…}]
+  ... > 
+  at <CrudTable ref="$table" query-items= 
+{keyword: null, only_active: null}
+ onUpdate:queryItems=fn  ... > 
+  at <Card flex-1="" rounded-10="" > 
+  at <BaseTransition mode="out-in" appear=true persisted=false  ... > 
+  at <Transition name="fade-slide" mode="out-in" appear="" > 
+  at <AppPage show-footer=true > 
+  at <CommonPage show-footer="" title="Prompt 模板管理" > 
+  at <AIPromptManager onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > key="/system/ai/prompt" > 
+  at <KeepAlive include= 
+[]
+ > 
+  at <RouterView> 
+  at <AppMain> 
+  at <Layout has-sider="" wh-full="" > 
+  at <Index onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > > 
+  at <RouterView> 
+  at <MessageProvider> 
+  at <NotificationProvider> 
+  at <DialogProvider> 
+  at <LoadingBarProvider> 
+  at <ConfigProvider wh-full="" locale= 
+{name: 'zh-CN', global: {…}, Popconfirm: {…}, Cascader: {…}, Time: {…}, …}
+ date-locale= 
+{name: 'zh-CN', locale: {…}}
+  ... > 
+  at <AppProvider> 
+  at <App>
+CrudTable.vue:110 [Vue warn]: Non-function value encountered for default slot. Prefer function slots for better performance. 
+  at <Space justify="center" > 
+  at <DataTableCell clsPrefix="n" index=1 row= 
+{id: 2, supabase_id: 1, name: 'GymBro Assistant', content: '"id": "thinkingbox-gymbro-strict",\n  "displayName"… 功能无缝衔接",\n    "userExperience": "移动优先，富文本交互"\n  },', version: 'v1.0', …}
+  ... > 
+  at <ResizeObserver onResize=fn<handleContentResize> > 
+  at <ResizeObserver onResize=fn<handleContainerResize> > 
+  at <Scrollbar ref="scrollbarInstRef" scrollable=true class="n-data-table-base-table-body"  ... > 
+  at <DataTableBody ref="bodyInstRef" bodyStyle= 
+{maxHeight: undefined, minHeight: undefined}
+ showHeader=true  ... > 
+  at <MainTable ref="mainTableInstRef" > 
+  at <DataTable remote=true loading=false columns= 
+(6) [{…}, {…}, {…}, {…}, {…}, {…}]
+  ... > 
+  at <CrudTable ref="$table" query-items= 
+{keyword: null, only_active: null}
+ onUpdate:queryItems=fn  ... > 
+  at <Card flex-1="" rounded-10="" > 
+  at <BaseTransition mode="out-in" appear=true persisted=false  ... > 
+  at <Transition name="fade-slide" mode="out-in" appear="" > 
+  at <AppPage show-footer=true > 
+  at <CommonPage show-footer="" title="Prompt 模板管理" > 
+  at <AIPromptManager onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > key="/system/ai/prompt" > 
+  at <KeepAlive include= 
+[]
+ > 
+  at <RouterView> 
+  at <AppMain> 
+  at <Layout has-sider="" wh-full="" > 
+  at <Index onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > > 
+  at <RouterView> 
+  at <MessageProvider> 
+  at <NotificationProvider> 
+  at <DialogProvider> 
+  at <LoadingBarProvider> 
+  at <ConfigProvider wh-full="" locale= 
+{name: 'zh-CN', global: {…}, Popconfirm: {…}, Cascader: {…}, Time: {…}, …}
+ date-locale= 
+{name: 'zh-CN', locale: {…}}
+  ... > 
+  at <AppProvider> 
+  at <App>
+CrudTable.vue:110 [Vue warn]: Non-function value encountered for default slot. Prefer function slots for better performance. 
+  at <Space align="center" justify="center" size=6 > 
+  at <Target> 
+  at <Binder ref="binderInstRef" syncTarget=true syncTargetWithParent=false > 
+  at <Popover getDisabled=fn<getTooltipDisabled> theme= 
+{name: 'Popover', common: {…}, self: ƒ}
+ themeOverrides=undefined  ... > 
+  at <Tooltip ref="tooltipRef" placement="top" getDisabled=fn<getTooltipDisabled>  ... > 
+  at <Ellipsis tooltip=true theme= 
+{name: 'Ellipsis', common: {…}, peers: {…}}
+ themeOverrides=undefined > 
+  at <DataTableCell clsPrefix="n" index=0 row= 
+{id: 1, supabase_id: 3, name: 'stander', content: '"systemPrompt": "🔒 **STRICT TAG SPECIFICATION – D…>\\n<final>\\n# 示例最终输出标题\\n1. 正文段落或列表内容…\\n</final>",', version: '1', …}
+  ... > 
+  at <ResizeObserver onResize=fn<handleContentResize> > 
+  at <ResizeObserver onResize=fn<handleContainerResize> > 
+  at <Scrollbar ref="scrollbarInstRef" scrollable=true class="n-data-table-base-table-body"  ... > 
+  at <DataTableBody ref="bodyInstRef" bodyStyle= 
+{maxHeight: undefined, minHeight: undefined}
+ showHeader=true  ... > 
+  at <MainTable ref="mainTableInstRef" > 
+  at <DataTable remote=true loading=false columns= 
+(6) [{…}, {…}, {…}, {…}, {…}, {…}]
+  ... > 
+  at <CrudTable ref="$table" query-items= 
+{keyword: null, only_active: null}
+ onUpdate:queryItems=fn  ... > 
+  at <Card flex-1="" rounded-10="" > 
+  at <BaseTransition mode="out-in" appear=true persisted=false  ... > 
+  at <Transition name="fade-slide" mode="out-in" appear="" > 
+  at <AppPage show-footer=true > 
+  at <CommonPage show-footer="" title="Prompt 模板管理" > 
+  at <AIPromptManager onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > key="/system/ai/prompt" > 
+  at <KeepAlive include= 
+[]
+ > 
+  at <RouterView> 
+  at <AppMain> 
+  at <Layout has-sider="" wh-full="" > 
+  at <Index onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > > 
+  at <RouterView> 
+  at <MessageProvider> 
+  at <NotificationProvider> 
+  at <DialogProvider> 
+  at <LoadingBarProvider> 
+  at <ConfigProvider wh-full="" locale= 
+{name: 'zh-CN', global: {…}, Popconfirm: {…}, Cascader: {…}, Time: {…}, …}
+ date-locale= 
+{name: 'zh-CN', locale: {…}}
+  ... > 
+  at <AppProvider> 
+  at <App>
+CrudTable.vue:110 [Vue warn]: Non-function value encountered for default slot. Prefer function slots for better performance. 
+  at <Space align="center" justify="center" size=6 > 
+  at <Target> 
+  at <Binder ref="binderInstRef" syncTarget=true syncTargetWithParent=false > 
+  at <Popover getDisabled=fn<getTooltipDisabled> theme= 
+{name: 'Popover', common: {…}, self: ƒ}
+ themeOverrides=undefined  ... > 
+  at <Tooltip ref="tooltipRef" placement="top" getDisabled=fn<getTooltipDisabled>  ... > 
+  at <Ellipsis tooltip=true theme= 
+{name: 'Ellipsis', common: {…}, peers: {…}}
+ themeOverrides=undefined > 
+  at <DataTableCell clsPrefix="n" index=1 row= 
+{id: 2, supabase_id: 1, name: 'GymBro Assistant', content: '"id": "thinkingbox-gymbro-strict",\n  "displayName"… 功能无缝衔接",\n    "userExperience": "移动优先，富文本交互"\n  },', version: 'v1.0', …}
+  ... > 
+  at <ResizeObserver onResize=fn<handleContentResize> > 
+  at <ResizeObserver onResize=fn<handleContainerResize> > 
+  at <Scrollbar ref="scrollbarInstRef" scrollable=true class="n-data-table-base-table-body"  ... > 
+  at <DataTableBody ref="bodyInstRef" bodyStyle= 
+{maxHeight: undefined, minHeight: undefined}
+ showHeader=true  ... > 
+  at <MainTable ref="mainTableInstRef" > 
+  at <DataTable remote=true loading=false columns= 
+(6) [{…}, {…}, {…}, {…}, {…}, {…}]
+  ... > 
+  at <CrudTable ref="$table" query-items= 
+{keyword: null, only_active: null}
+ onUpdate:queryItems=fn  ... > 
+  at <Card flex-1="" rounded-10="" > 
+  at <BaseTransition mode="out-in" appear=true persisted=false  ... > 
+  at <Transition name="fade-slide" mode="out-in" appear="" > 
+  at <AppPage show-footer=true > 
+  at <CommonPage show-footer="" title="Prompt 模板管理" > 
+  at <AIPromptManager onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > key="/system/ai/prompt" > 
+  at <KeepAlive include= 
+[]
+ > 
+  at <RouterView> 
+  at <AppMain> 
+  at <Layout has-sider="" wh-full="" > 
+  at <Index onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > > 
+  at <RouterView> 
+  at <MessageProvider> 
+  at <NotificationProvider> 
+  at <DialogProvider> 
+  at <LoadingBarProvider> 
+  at <ConfigProvider wh-full="" locale= 
+{name: 'zh-CN', global: {…}, Popconfirm: {…}, Cascader: {…}, Time: {…}, …}
+ date-locale= 
+{name: 'zh-CN', locale: {…}}
+  ... > 
+  at <AppProvider> 
+  at <App>
+index.vue:68 [Vue warn]: Duplicate keys found during update: "/dashboard" Make sure keys are unique. 
+  at <Breadcrumb ml-15="" hidden="" sm:block="" > 
+  at <BreadCrumb ml-15="" hidden="" sm:block="" > 
+  at <Index> 
+  at <Layout has-sider="" wh-full="" > 
+  at <Index onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > > 
+  at <RouterView> 
+  at <MessageProvider> 
+  at <NotificationProvider> 
+  at <DialogProvider> 
+  at <LoadingBarProvider> 
+  at <ConfigProvider wh-full="" locale= 
+{name: 'zh-CN', global: {…}, Popconfirm: {…}, Cascader: {…}, Time: {…}, …}
+ date-locale= 
+{name: 'zh-CN', locale: {…}}
+  ... > 
+  at <AppProvider> 
+  at <App>
+index.vue:68 [Vue warn]: Invalid prop: custom validator check failed for prop "name". 
+  at <HeroIcon name="folder" size=32 color="#da7756" > 
+  at <Card class="quick-access-card" hoverable="" onClick=fn<handleClick>  ... > 
+  at <QuickAccessCard icon="folder" title="目录管理" description="管理内容分类和标签"  ... > 
+  at <Draggable modelValue= 
+(6) [{…}, {…}, {…}, {…}, {…}, {…}]
+ onUpdate:modelValue=fn class="quick-access-section"  ... > 
+  at <DashboardIndex onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< null > key="/dashboard" > 
+  at <KeepAlive include= 
+[]
+ > 
+  at <RouterView> 
+  at <AppMain> 
+  at <Layout has-sider="" wh-full="" > 
+  at <Index onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > > 
+  at <RouterView> 
+  at <MessageProvider> 
+  at <NotificationProvider> 
+  at <DialogProvider> 
+  at <LoadingBarProvider> 
+  at <ConfigProvider wh-full="" locale= 
+{name: 'zh-CN', global: {…}, Popconfirm: {…}, Cascader: {…}, Time: {…}, …}
+ date-locale= 
+{name: 'zh-CN', locale: {…}}
+  ... > 
+  at <AppProvider> 
+  at <App>
+Promise.then		
+handleTagClick	@	index.vue:68
+onClick	@	index.vue:88
+index.vue:468 [Dashboard] Supabase 状态变化: 
+Proxy(Object) {status: 'online', detail: 'ok', latency_ms: 538.5294999996404, last_synced_at: '2025-10-14T01:06:01+00:00'}
+index.js:24 [Vue warn]: Invalid prop: custom validator check failed for prop "name". 
+  at <HeroIcon name="folder" size=32 color="#da7756" > 
+  at <Card class="quick-access-card" hoverable="" onClick=fn<handleClick>  ... > 
+  at <QuickAccessCard icon="folder" title="目录管理" description="管理内容分类和标签"  ... > 
+  at <Draggable modelValue= 
+(6) [{…}, {…}, {…}, {…}, {…}, {…}]
+ onUpdate:modelValue=fn class="quick-access-section"  ... > 
+  at <DashboardIndex onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< null > key="/dashboard" > 
+  at <KeepAlive include= 
+[]
+ > 
+  at <RouterView> 
+  at <AppMain> 
+  at <Layout has-sider="" wh-full="" > 
+  at <Index onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< 
+Proxy(Object) {__v_skip: true}
+ > > 
+  at <RouterView> 
+  at <MessageProvider> 
+  at <NotificationProvider> 
+  at <DialogProvider> 
+  at <LoadingBarProvider> 
+  at <ConfigProvider wh-full="" locale= 
+{name: 'zh-CN', global: {…}, Popconfirm: {…}, Cascader: {…}, Time: {…}, …}
+ date-locale= 
+{name: 'zh-CN', locale: {…}}
+  ... > 
+  at <AppProvider> 
+  at <App>
+index.vue:468 [Dashboard] Supabase 状态变化: 
+Proxy(Object) {status: 'online', detail: 'ok', latency_ms: 558.8490000009187, last_synced_at: '2025-10-14T01:06:01+00:00'}
+[[Handler]]
+: 
+MutableReactiveHandler
+[[Target]]
+: 
+Object
+[[IsRevoked]]
+: 
+false

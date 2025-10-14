@@ -51,7 +51,16 @@ let refreshTimer = null
 async function loadMetrics() {
   loading.value = true
   try {
-    const text = await getSystemMetrics()
+    const res = await getSystemMetrics()
+    let text = ''
+    if (typeof res === 'string') {
+      text = res
+    } else if (res && typeof res === 'object' && typeof res.data === 'string') {
+      text = res.data
+    }
+    if (!text) {
+      throw new Error('指标响应格式异常')
+    }
     const parsed = parsePrometheusMetrics(text)
 
     metrics.value = {

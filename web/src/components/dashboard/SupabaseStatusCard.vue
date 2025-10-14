@@ -88,11 +88,22 @@ async function loadStatus() {
   loading.value = true
   try {
     const res = await getSupabaseStatus()
-    status.value = res.data || {
-      status: 'unknown',
-      detail: '无法获取状态',
-      latency_ms: null,
-      last_synced_at: null,
+    const payload =
+      res && typeof res === 'object' && res.data && typeof res.data === 'object' ? res.data : res
+    if (payload && typeof payload === 'object') {
+      status.value = {
+        status: payload.status ?? 'unknown',
+        detail: payload.detail ?? '',
+        latency_ms: payload.latency_ms ?? null,
+        last_synced_at: payload.last_synced_at ?? null,
+      }
+    } else {
+      status.value = {
+        status: 'unknown',
+        detail: '无法获取状态',
+        latency_ms: null,
+        last_synced_at: null,
+      }
     }
     emit('status-change', status.value)
   } catch (error) {

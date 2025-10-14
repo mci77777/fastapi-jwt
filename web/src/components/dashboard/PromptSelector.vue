@@ -28,7 +28,7 @@ import { ref, computed, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
 
-const props = defineProps({
+defineProps({
   compact: { type: Boolean, default: false },
 })
 

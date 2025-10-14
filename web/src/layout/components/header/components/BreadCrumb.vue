@@ -1,7 +1,7 @@
 <template>
   <n-breadcrumb>
     <n-breadcrumb-item
-      v-for="item in route.matched.filter((item) => !!item.meta?.title)"
+      v-for="item in breadcrumbItems"
       :key="item.path"
       @click="handleBreadClick(item.path)"
     >
@@ -12,10 +12,19 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { renderCustomIcon, renderIcon } from '@/utils'
 
 const router = useRouter()
 const route = useRoute()
+
+const breadcrumbItems = computed(() => {
+  const matched = route.matched.filter((item) => !!item.meta?.title)
+  return matched.filter(
+    (item, index) => matched.findIndex((target) => target.path === item.path) === index
+  )
+})
 
 function handleBreadClick(path) {
   if (path === route.path) return
