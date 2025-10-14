@@ -2,6 +2,7 @@ import { request } from '@/utils'
 
 export const fetchModels = (params = {}) => request.get('/llm/models', { params })
 export const updateModel = (data = {}) => request.put('/llm/models', data)
+export const diagnoseModels = () => request.post('/llm/models/check-all')
 export const syncModel = (endpointId, options = {}) =>
   request.post(`/llm/models/${endpointId}/sync`, {
     direction: options.direction ?? 'push',
@@ -19,6 +20,7 @@ export const fetchMappings = (params = {}) => request.get('/llm/model-groups', {
 export const saveMapping = (data = {}) => request.post('/llm/model-groups', data)
 export const activateMapping = (mappingId, data = {}) =>
   request.post(`/llm/model-groups/${mappingId}/activate`, data)
+export const syncMappingsToSupabase = () => request.post('/llm/model-groups/sync-to-supabase')
 
 export const fetchPrompts = (params = {}) => request.get('/llm/prompts', { params })
 export const fetchPromptTests = (promptId, params = {}) =>

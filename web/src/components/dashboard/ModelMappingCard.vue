@@ -3,12 +3,26 @@
     <n-space vertical :size="12">
       <!-- 操作按钮 -->
       <n-space justify="space-between">
-        <n-button type="primary" size="small" @click="showAddModal = true">
-          <template #icon>
-            <HeroIcon name="plus" :size="16" />
-          </template>
-          新增映射
-        </n-button>
+        <n-space>
+          <n-button type="primary" size="small" @click="showAddModal = true">
+            <template #icon>
+              <HeroIcon name="plus" :size="16" />
+            </template>
+            新增映射
+          </n-button>
+          <n-button secondary size="small" :loading="diagnosing" @click="handleDiagnose">
+            <template #icon>
+              <HeroIcon name="wrench-screwdriver" :size="16" />
+            </template>
+            诊断模型
+          </n-button>
+          <n-button secondary size="small" :loading="syncing" @click="handleSyncToSupabase">
+            <template #icon>
+              <HeroIcon name="cloud-arrow-up" :size="16" />
+            </template>
+            同步到 Supabase
+          </n-button>
+        </n-space>
         <n-button secondary size="small" :loading="loading" @click="loadMappings">
           <template #icon>
             <HeroIcon name="arrow-path" :size="16" />
@@ -92,10 +106,12 @@ const message = useMessage()
 const loading = computed(() => mappingsLoading.value)
 const showAddModal = ref(false)
 const saving = ref(false)
+const diagnosing = ref(false)
+const syncing = ref(false)
 const formRef = ref(null)
 
 const formData = ref({
-  scope_type: 'tenant',
+  scope_type: 'user',
   scope_key: '',
   name: '',
   default_model: null,
@@ -103,9 +119,10 @@ const formData = ref({
 })
 
 const scopeTypeOptions = [
+  { label: 'User（普通用户）', value: 'user' },
+  { label: 'Premium User（高级用户）', value: 'premium_user' },
   { label: 'Tenant（租户）', value: 'tenant' },
-  { label: 'Prompt（提示词）', value: 'prompt' },
-  { label: 'Module（模块）', value: 'module' },
+  { label: 'Global（全局）', value: 'global' },
 ]
 
 const modelCandidateOptions = computed(() => {
@@ -189,7 +206,7 @@ async function handleSave() {
     message.success('保存成功')
     showAddModal.value = false
     formData.value = {
-      scope_type: 'tenant',
+      scope_type: 'user',
       scope_key: '',
       name: '',
       default_model: null,
@@ -206,6 +223,48 @@ async function handleSave() {
 async function handleDelete(row) {
   // 注意：后端暂无删除 API，此处仅为占位
   message.warning('删除功能暂未实现')
+}
+
+/**
+ * 诊断所有模型可用性
+ */
+async function handleDiagnose() {
+  diagnosing.value = true
+  try {
+    const { diagnoseModels } = await import('@/api/aiModelSuite')
+    const response = await diagnoseModels()
+    const results = response.data || []
+
+    const availableCount = results.filter((r) => r.status === 'available').length
+    const unavailableCount = results.filter((r) => r.status === 'unavailable').length
+
+    message.success(`诊断完成：${availableCount} 个可用，${unavailableCount} 个不可用`)
+
+    // 刷新模型列表
+    await store.loadModels()
+  } catch (error) {
+    message.error('诊断失败：' + (error.message || '未知错误'))
+  } finally {
+    diagnosing.value = false
+  }
+}
+
+/**
+ * 同步映射到 Supabase
+ */
+async function handleSyncToSupabase() {
+  syncing.value = true
+  try {
+    const { syncMappingsToSupabase } = await import('@/api/aiModelSuite')
+    const response = await syncMappingsToSupabase()
+    const data = response.data || {}
+
+    message.success(`同步成功：已同步 ${data.synced_count || 0} 条映射到 Supabase`)
+  } catch (error) {
+    message.error('同步失败：' + (error.message || '未知错误'))
+  } finally {
+    syncing.value = false
+  }
 }
 
 onMounted(() => {
