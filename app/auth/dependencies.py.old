@@ -78,4 +78,4 @@ async def _record_user_activity(request: Request, user: AuthenticatedUser) -> No
 
 async def get_authenticated_user_optional(request: Request) -> Optional[AuthenticatedUser]:
     """从请求状态中获取已认证的用户（如果存在）。"""
-    return getattr(request.state, "user", None)
+    return getattr(request.state, 'user', None)
