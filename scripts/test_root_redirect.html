@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>根路径跳转测试工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .status {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .icon {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn.secondary {
+            background: #6c757d;
+        }
+
+        .btn.secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn.danger {
+            background: #dc3545;
+        }
+
+        .btn.danger:hover {
+            background: #c82333;
+        }
+
+        .code {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+
+        .test-result {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .test-result h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .test-result ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .test-result li {
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+        }
+
+        .test-result li:last-child {
+            border-bottom: none;
+        }
+
+        .test-result li strong {
+            color: #667eea;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 根路径跳转测试工具</h1>
+        <p class="subtitle">测试访问 http://localhost:3101/ 时的路由跳转行为</p>
+
+        <!-- Token 状态检查 -->
+        <div class="section">
+            <h2>📋 当前状态</h2>
+            <div id="tokenStatus"></div>
+            <div id="currentUrl" class="status info">
+                <span class="icon">🌐</span>
+                <span>当前 URL: <strong id="urlText"></strong></span>
+            </div>
+        </div>
+
+        <!-- 测试场景 -->
+        <div class="section">
+            <h2>🧪 测试场景</h2>
+            <div class="test-result">
+                <h3>场景 1：未登录用户访问根路径</h3>
+                <ul>
+                    <li><strong>操作:</strong> 清除 Token → 访问 http://localhost:3101/</li>
+                    <li><strong>预期:</strong> 自动跳转到 /login</li>
+                    <li><strong>验证:</strong> 浏览器地址栏显示 http://localhost:3101/login</li>
+                </ul>
+                <button class="btn" onclick="testScenario1()">执行测试 1</button>
+            </div>
+
+            <div class="test-result" style="margin-top: 15px;">
+                <h3>场景 2：已登录用户访问根路径</h3>
+                <ul>
+                    <li><strong>操作:</strong> 登录获取 Token → 访问 http://localhost:3101/</li>
+                    <li><strong>预期:</strong> 自动跳转到 /dashboard</li>
+                    <li><strong>验证:</strong> 浏览器地址栏显示 http://localhost:3101/dashboard</li>
+                </ul>
+                <button class="btn" onclick="testScenario2()">执行测试 2</button>
+            </div>
+
+            <div class="test-result" style="margin-top: 15px;">
+                <h3>场景 3：已登录用户访问登录页</h3>
+                <ul>
+                    <li><strong>操作:</strong> 登录获取 Token → 访问 http://localhost:3101/login</li>
+                    <li><strong>预期:</strong> 自动跳转到 /dashboard</li>
+                    <li><strong>验证:</strong> 浏览器地址栏显示 http://localhost:3101/dashboard</li>
+                </ul>
+                <button class="btn" onclick="testScenario3()">执行测试 3</button>
+            </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="section">
+            <h2>🛠️ 快速操作</h2>
+            <button class="btn secondary" onclick="checkToken()">检查 Token</button>
+            <button class="btn danger" onclick="clearToken()">清除 Token</button>
+            <button class="btn" onclick="goToRoot()">访问根路径 /</button>
+            <button class="btn" onclick="goToLogin()">访问登录页 /login</button>
+            <button class="btn" onclick="goToDashboard()">访问 Dashboard /dashboard</button>
+        </div>
+
+        <!-- 调试信息 -->
+        <div class="section">
+            <h2>🔍 调试信息</h2>
+            <div id="debugInfo"></div>
+        </div>
+    </div>
+
+    <script>
+        // 检查 Token 状态
+        function checkToken() {
+            const tokenItem = localStorage.getItem('ACCESS_TOKEN');
+            const tokenStatusDiv = document.getElementById('tokenStatus');
+            const debugInfoDiv = document.getElementById('debugInfo');
+
+            if (!tokenItem) {
+                tokenStatusDiv.innerHTML = `
+                    <div class="status error">
+                        <span class="icon">❌</span>
+                        <span>未找到 Token（未登录状态）</span>
+                    </div>
+                `;
+                debugInfoDiv.innerHTML = `
+                    <div class="status warning">
+                        <span class="icon">⚠️</span>
+                        <span>localStorage 中没有 ACCESS_TOKEN</span>
+                    </div>
+                `;
+                return false;
+            }
+
+            try {
+                const tokenData = JSON.parse(tokenItem);
+                const token = tokenData.value;
+                const parts = token.split('.');
+
+                if (parts.length !== 3) {
+                    throw new Error('Token 格式错误');
+                }
+
+                const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                const exp = new Date(payload.exp * 1000);
+                const now = new Date();
+                const isExpired = exp < now;
+
+                tokenStatusDiv.innerHTML = `
+                    <div class="status ${isExpired ? 'error' : 'success'}">
+                        <span class="icon">${isExpired ? '❌' : '✅'}</span>
+                        <span>Token ${isExpired ? '已过期' : '有效'}</span>
+                    </div>
+                `;
+
+                debugInfoDiv.innerHTML = `
+                    <div class="code">
+Token 信息:
+- 用户: ${payload.user_metadata?.username || payload.email || '未知'}
+- 过期时间: ${exp.toLocaleString('zh-CN')}
+- 剩余时间: ${isExpired ? '已过期' : Math.floor((exp - now) / 1000 / 60) + ' 分钟'}
+- Token 长度: ${token.length}
+                    </div>
+                `;
+
+                return !isExpired;
+            } catch (error) {
+                tokenStatusDiv.innerHTML = `
+                    <div class="status error">
+                        <span class="icon">❌</span>
+                        <span>Token 解析失败: ${error.message}</span>
+                    </div>
+                `;
+                debugInfoDiv.innerHTML = `
+                    <div class="status error">
+                        <span class="icon">❌</span>
+                        <span>错误: ${error.message}</span>
+                    </div>
+                `;
+                return false;
+            }
+        }
+
+        // 清除 Token
+        function clearToken() {
+            localStorage.removeItem('ACCESS_TOKEN');
+            localStorage.removeItem('token');
+            localStorage.removeItem('userInfo');
+            alert('✅ Token 已清除');
+            checkToken();
+        }
+
+        // 访问根路径
+        function goToRoot() {
+            window.location.href = '/';
+        }
+
+        // 访问登录页
+        function goToLogin() {
+            window.location.href = '/login';
+        }
+
+        // 访问 Dashboard
+        function goToDashboard() {
+            window.location.href = '/dashboard';
+        }
+
+        // 测试场景 1：未登录用户访问根路径
+        function testScenario1() {
+            if (confirm('将清除 Token 并跳转到根路径 /，确认继续？')) {
+                clearToken();
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 500);
+            }
+        }
+
+        // 测试场景 2：已登录用户访问根路径
+        function testScenario2() {
+            const hasToken = checkToken();
+            if (!hasToken) {
+                alert('❌ 请先登录获取 Token\n\n操作步骤：\n1. 点击"访问登录页 /login"\n2. 使用 admin/123456 登录\n3. 再次执行此测试');
+                return;
+            }
+            if (confirm('将跳转到根路径 /，确认继续？')) {
+                window.location.href = '/';
+            }
+        }
+
+        // 测试场景 3：已登录用户访问登录页
+        function testScenario3() {
+            const hasToken = checkToken();
+            if (!hasToken) {
+                alert('❌ 请先登录获取 Token\n\n操作步骤：\n1. 点击"访问登录页 /login"\n2. 使用 admin/123456 登录\n3. 再次执行此测试');
+                return;
+            }
+            if (confirm('将跳转到登录页 /login，确认继续？')) {
+                window.location.href = '/login';
+            }
+        }
+
+        // 更新当前 URL
+        function updateCurrentUrl() {
+            document.getElementById('urlText').textContent = window.location.href;
+        }
+
+        // 页面加载时执行
+        window.onload = function() {
+            checkToken();
+            updateCurrentUrl();
+        };
+    </script>
+</body>
+</html>

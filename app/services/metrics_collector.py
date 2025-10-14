@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from app.core.metrics import auth_requests_total
 from app.db.sqlite_manager import SQLiteManager
@@ -130,12 +130,25 @@ class MetricsCollector:
 
             # 使用 collect() 方法获取指标数据（正确的 Prometheus API）
             metrics_list = list(auth_requests_total.collect())
-            logger.warning(f"[DEBUG] auth_requests_total.collect() returned {len(metrics_list)} metrics")
+            logger.debug(
+                "[metrics] auth_requests_total.collect() returned %d metrics",
+                len(metrics_list),
+            )
 
             for metric in metrics_list:
-                logger.warning(f"[DEBUG] Metric: name={metric.name}, type={metric.type}, samples={len(metric.samples)}")
+                logger.debug(
+                    "[metrics] name=%s type=%s samples=%d",
+                    metric.name,
+                    metric.type,
+                    len(metric.samples),
+                )
                 for sample in metric.samples:
-                    logger.warning(f"[DEBUG] Sample: name={sample.name}, labels={sample.labels}, value={sample.value}")
+                    logger.debug(
+                        "[metrics] sample=%s labels=%s value=%s",
+                        sample.name,
+                        sample.labels,
+                        sample.value,
+                    )
                     # sample.name: 指标名称（Counter 会自动添加 _total 后缀）
                     # sample.labels: 标签字典 {"status": "success", "user_type": "permanent"}
                     # sample.value: 指标值
@@ -145,7 +158,7 @@ class MetricsCollector:
                     if sample.labels.get("status") == "success":
                         success += sample.value
 
-            logger.warning(f"[DEBUG] JWT availability: total={total}, success={success}")
+            logger.debug("[metrics] JWT availability total=%s success=%s", total, success)
             success_rate = (success / total * 100) if total > 0 else 0
 
             return {
@@ -177,4 +190,3 @@ class MetricsCollector:
         else:
             # 默认 24 小时
             return now - timedelta(hours=24)
-

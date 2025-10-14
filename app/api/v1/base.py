@@ -1,4 +1,5 @@
 """基础认证端点（登录、用户信息等）。"""
+
 import time
 from typing import Any, Dict, Optional
 
@@ -43,8 +44,16 @@ def create_response(data: Any = None, code: int = 200, msg: str = "success") -> 
     return {"code": code, "data": data, "msg": msg}
 
 
-def create_test_jwt_token(username: str) -> str:
-    """创建测试JWT token。"""
+def create_test_jwt_token(username: str, expire_hours: int = 24) -> str:
+    """创建测试JWT token。
+
+    Args:
+        username: 用户名
+        expire_hours: Token 有效期（小时），默认 24 小时
+
+    Returns:
+        JWT token 字符串
+    """
     settings = get_settings()
 
     # 创建JWT payload
@@ -55,7 +64,7 @@ def create_test_jwt_token(username: str) -> str:
         "iss": issuer,
         "sub": f"test-user-{username}",
         "aud": "authenticated",
-        "exp": now + 3600,  # 1小时后过期
+        "exp": now + (expire_hours * 3600),  # 默认 24 小时后过期
         "iat": now,
         "email": f"{username}@test.local",
         "role": "authenticated",
@@ -139,6 +148,41 @@ async def login(request: LoginRequest) -> Dict[str, Any]:
     return create_response(code=401, msg="用户名或密码错误", data=None)
 
 
+@router.post("/refresh_token", summary="刷新 Token")
+async def refresh_token(current_user: AuthenticatedUser = Depends(get_current_user_from_token)) -> Dict[str, Any]:
+    """
+    刷新 JWT Token。
+
+    **功能**：
+    - 验证当前 Token 是否有效
+    - 生成新的 Token（延长有效期）
+    - 返回新 Token 给前端
+
+    **使用场景**：
+    - Token 即将过期时自动刷新
+    - 用户长时间使用系统时保持登录状态
+
+    **注意**：
+    - 需要携带有效的 Authorization header
+    - 即使 Token 已过期但在宽限期内（时钟偏移容忍 ±120 秒）仍可刷新
+    """
+    # 从当前用户信息中提取用户名
+    user_metadata = current_user.claims.get("user_metadata", {})
+    username = user_metadata.get("username") or current_user.claims.get("email", "").split("@")[0]
+
+    # 生成新的 Token（24 小时有效期）
+    new_token = create_test_jwt_token(username)
+
+    return create_response(
+        data={
+            "access_token": new_token,
+            "token_type": "bearer",
+            "expires_in": 86400,  # 24 小时（秒）
+        },
+        msg="Token 刷新成功",
+    )
+
+
 @router.get("/userinfo", summary="获取用户信息")
 async def get_user_info(current_user: AuthenticatedUser = Depends(get_current_user_from_token)) -> Dict[str, Any]:
     """获取当前登录用户的信息。"""
@@ -178,8 +222,28 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
             "icon": "mdi:view-dashboard-outline",
             "order": 0,
             "is_hidden": False,
-            "redirect": None,
+            "redirect": None,  # 修复：不设置 redirect，让前端自动跳转到第一个子路由
             "keepalive": False,
+            "children": [
+                {
+                    "name": "概览",
+                    "path": "",  # 修复：使用空路径作为默认子路由
+                    "component": "/dashboard",
+                    "icon": "mdi:chart-box-outline",
+                    "order": 1,
+                    "is_hidden": True,  # 修复：隐藏默认子路由，避免在菜单中重复显示
+                    "keepalive": False,
+                },
+                {
+                    "name": "API 监控",
+                    "path": "api-monitor",
+                    "component": "/dashboard/ApiMonitor",
+                    "icon": "mdi:api",
+                    "order": 2,
+                    "is_hidden": False,
+                    "keepalive": False,
+                },
+            ],
         },
         {
             "name": "系统管理",

@@ -6,7 +6,8 @@ const Layout = () => import('@/layout/index.vue')
 export const basicRoutes = [
   {
     path: '/',
-    redirect: '/login', // 未登录默认跳转登录页
+    name: 'Root',
+    redirect: '/dashboard', // 默认跳转到 Dashboard，路由守卫会根据 Token 状态处理
     meta: { order: 0 },
   },
   {

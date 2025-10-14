@@ -1,7 +1,9 @@
 """v1 版本路由集合。"""
 import logging
+
 from fastapi import APIRouter
 
+from .agents import router as agents_router
 from .base import router as base_router
 from .dashboard import router as dashboard_router
 from .health import router as health_router
@@ -19,5 +21,7 @@ v1_router.include_router(health_router)
 v1_router.include_router(llm_router)
 v1_router.include_router(messages_router)
 v1_router.include_router(metrics_router)
+v1_router.include_router(agents_router)
+logger.info("[ROUTER_INIT] Agents router registered with %d routes", len(agents_router.routes))
 
 __all__ = ["v1_router"]

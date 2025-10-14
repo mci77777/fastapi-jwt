@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { useMessage, NButton } from 'naive-ui'
+import { useMessage, NButton, NModal, NCard, NSpace, NText } from 'naive-ui'
 import { getToken } from '@/utils'
 import draggable from 'vuedraggable'
 
@@ -40,6 +40,7 @@ const logsLoading = ref(false)
 const showConfigModal = ref(false)
 const showStatDetailModal = ref(false)
 const showApiModal = ref(false)
+const showSupabaseModal = ref(false)
 const selectedStat = ref(null)
 
 // 统计数据（图标已改为 Heroicons 名称）
@@ -130,6 +131,15 @@ const defaultQuickAccessCards = [
     iconColor: '#2080f0',
   },
 
+  // 监控工具
+  {
+    icon: 'chart-line',
+    title: 'API 监控',
+    description: '监控后端 API 端点健康状态',
+    path: '/dashboard/api-monitor',
+    iconColor: '#f0a020',
+  },
+
   // 内容管理
   {
     icon: 'folder',
@@ -145,7 +155,7 @@ const defaultQuickAccessCards = [
     title: 'JWT 测试',
     description: '测试 JWT 认证',
     path: '/ai/jwt',
-    iconColor: '#f0a020',
+    iconColor: '#999',
   },
 ]
 
@@ -552,20 +562,29 @@ onBeforeUnmount(() => {
       </template>
     </draggable>
 
-    <!-- 控制面板：模型切换器 + Prompt 选择器 + Supabase 状态 + 服务器负载 -->
+    <!-- 控制面板：模型切换器 + Prompt 选择器 + 服务器负载（含 API 监控） -->
     <div class="dashboard-controls">
       <ModelSwitcher :compact="false" @change="handleModelChange" />
       <PromptSelector :compact="false" @change="handlePromptChange" />
-      <SupabaseStatusCard
-        :auto-refresh="true"
-        :refresh-interval="30"
-        @status-change="handleSupabaseStatusChange"
-      />
       <ServerLoadCard
         :auto-refresh="true"
         :refresh-interval="60"
         @metrics-update="handleMetricsUpdate"
       />
+      <!-- Supabase 状态触发按钮 -->
+      <n-card title="数据库状态">
+        <n-space vertical>
+          <n-button type="primary" @click="showSupabaseModal = true">
+            <template #icon>
+              <HeroIcon name="circle-stack" :size="18" />
+            </template>
+            查看 Supabase 状态
+          </n-button>
+          <n-text depth="3" style="font-size: 12px">
+            点击查看数据库连接详情
+          </n-text>
+        </n-space>
+      </n-card>
     </div>
 
     <!-- 模型映射管理卡片 -->
@@ -609,6 +628,15 @@ onBeforeUnmount(() => {
 
     <!-- API 连通性详情弹窗 -->
     <ApiConnectivityModal v-model:show="showApiModal" />
+
+    <!-- Supabase 状态弹窗 -->
+    <NModal v-model:show="showSupabaseModal" preset="card" title="Supabase 连接状态" style="width: 600px">
+      <SupabaseStatusCard
+        :auto-refresh="true"
+        :refresh-interval="30"
+        @status-change="handleSupabaseStatusChange"
+      />
+    </NModal>
   </div>
 </template>
 

@@ -10,7 +10,12 @@ export function createAuthGuard(router) {
     /** 没有token的情况 */
     if (isNullOrWhitespace(token)) {
       if (WHITE_LIST.includes(to.path)) return true
-      return { path: 'login', query: { ...to.query, redirect: to.path } }
+      // 修复：使用绝对路径 '/login' 而不是相对路径 'login'
+      // 如果访问根路径 '/'，不保存 redirect 参数（避免循环重定向）
+      if (to.path === '/') {
+        return { path: '/login' }
+      }
+      return { path: '/login', query: { ...to.query, redirect: to.path } }
     }
 
     /** 有token的情况 */

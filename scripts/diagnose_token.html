@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token 诊断工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .status {
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .status-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 5px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+            margin: 10px 0;
+        }
+        .token-preview {
+            word-break: break-all;
+            background: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Token 诊断工具</h1>
+        <p class="subtitle">快速诊断和修复 JWT 认证问题</p>
+
+        <!-- 诊断结果 -->
+        <div class="section">
+            <h2>📊 诊断结果</h2>
+            <div id="diagnosisResult">
+                <div class="status status-info">点击"开始诊断"按钮检查 Token 状态</div>
+            </div>
+        </div>
+
+        <!-- Token 详情 -->
+        <div class="section">
+            <h2>🔑 Token 详情</h2>
+            <div id="tokenDetails">
+                <div class="status status-info">等待诊断...</div>
+            </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="section">
+            <h2>🛠️ 操作</h2>
+            <button onclick="diagnose()">🔍 开始诊断</button>
+            <button onclick="clearToken()" class="btn-danger">🗑️ 清除 Token</button>
+            <button onclick="goToLogin()" class="btn-success">🔐 前往登录</button>
+        </div>
+
+        <!-- 解决方案 -->
+        <div class="section">
+            <h2>💡 常见问题解决方案</h2>
+            <div id="solutions"></div>
+        </div>
+    </div>
+
+    <script>
+        // 诊断 Token 状态
+        function diagnose() {
+            const resultDiv = document.getElementById('diagnosisResult');
+            const detailsDiv = document.getElementById('tokenDetails');
+            const solutionsDiv = document.getElementById('solutions');
+
+            resultDiv.innerHTML = '<div class="status status-info">正在诊断...</div>';
+            detailsDiv.innerHTML = '';
+            solutionsDiv.innerHTML = '';
+
+            try {
+                // 1. 检查 localStorage 中的 token
+                const tokenKey = 'ACCESS_TOKEN';
+                const tokenItem = localStorage.getItem(tokenKey);
+
+                if (!tokenItem) {
+                    resultDiv.innerHTML = `
+                        <div class="status status-error">
+                            ❌ 未找到 Token<br>
+                            localStorage 中没有 "${tokenKey}" 键
+                        </div>
+                    `;
+                    solutionsDiv.innerHTML = `
+                        <div class="status status-warning">
+                            <strong>解决方案：</strong><br>
+                            1. 点击"前往登录"按钮<br>
+                            2. 使用 admin / 123456 登录<br>
+                            3. 登录成功后会自动保存 Token
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 2. 解析 token 对象
+                let tokenData;
+                try {
+                    tokenData = JSON.parse(tokenItem);
+                } catch (e) {
+                    resultDiv.innerHTML = `
+                        <div class="status status-error">
+                            ❌ Token 格式错误<br>
+                            无法解析 JSON: ${e.message}
+                        </div>
+                    `;
+                    solutionsDiv.innerHTML = `
+                        <div class="status status-warning">
+                            <strong>解决方案：</strong><br>
+                            1. 点击"清除 Token"按钮<br>
+                            2. 点击"前往登录"重新登录
+                        </div>
+                    `;
+                    return;
+                }
+
+                const token = tokenData.value;
+                if (!token) {
+                    resultDiv.innerHTML = `
+                        <div class="status status-error">
+                            ❌ Token 值为空<br>
+                            localStorage 中的 token.value 不存在
+                        </div>
+                    `;
+                    solutionsDiv.innerHTML = `
+                        <div class="status status-warning">
+                            <strong>解决方案：</strong><br>
+                            1. 点击"清除 Token"按钮<br>
+                            2. 点击"前往登录"重新登录
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 3. 解码 JWT
+                const parts = token.split('.');
+                if (parts.length !== 3) {
+                    resultDiv.innerHTML = `
+                        <div class="status status-error">
+                            ❌ Token 格式无效<br>
+                            JWT 应该包含 3 个部分（header.payload.signature），当前只有 ${parts.length} 个部分
+                        </div>
+                    `;
+                    solutionsDiv.innerHTML = `
+                        <div class="status status-warning">
+                            <strong>解决方案：</strong><br>
+                            1. 点击"清除 Token"按钮<br>
+                            2. 点击"前往登录"重新登录
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 解码 header 和 payload
+                const decode = (str) => {
+                    try {
+                        return JSON.parse(atob(str.replace(/-/g, '+').replace(/_/g, '/')));
+                    } catch (e) {
+                        throw new Error(`解码失败: ${e.message}`);
+                    }
+                };
+
+                let header, payload;
+                try {
+                    header = decode(parts[0]);
+                    payload = decode(parts[1]);
+                } catch (e) {
+                    resultDiv.innerHTML = `
+                        <div class="status status-error">
+                            ❌ Token 解码失败<br>
+                            ${e.message}
+                        </div>
+                    `;
+                    solutionsDiv.innerHTML = `
+                        <div class="status status-warning">
+                            <strong>解决方案：</strong><br>
+                            1. 点击"清除 Token"按钮<br>
+                            2. 点击"前往登录"重新登录
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 4. 检查过期时间
+                const now = Math.floor(Date.now() / 1000);
+                const exp = payload.exp;
+                const isExpired = exp < now;
+                const remainingSeconds = exp - now;
+                const remainingMinutes = Math.floor(remainingSeconds / 60);
+
+                // 显示诊断结果
+                if (isExpired) {
+                    resultDiv.innerHTML = `
+                        <div class="status status-error">
+                            ❌ Token 已过期<br>
+                            过期时间: ${new Date(exp * 1000).toLocaleString()}<br>
+                            已过期: ${Math.abs(remainingMinutes)} 分钟
+                        </div>
+                    `;
+                    solutionsDiv.innerHTML = `
+                        <div class="status status-warning">
+                            <strong>解决方案：</strong><br>
+                            1. 点击"清除 Token"按钮<br>
+                            2. 点击"前往登录"重新登录<br>
+                            3. 登录后会获得新的 Token（有效期 24 小时）
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="status status-success">
+                            ✅ Token 有效<br>
+                            过期时间: ${new Date(exp * 1000).toLocaleString()}<br>
+                            剩余时间: ${remainingMinutes} 分钟
+                        </div>
+                    `;
+                    solutionsDiv.innerHTML = `
+                        <div class="status status-info">
+                            <strong>Token 状态正常</strong><br>
+                            如果仍然遇到 401 错误，请检查：<br>
+                            1. 浏览器 DevTools → Network 标签<br>
+                            2. 查看请求是否携带 Authorization header<br>
+                            3. 检查后端日志中的详细错误信息
+                        </div>
+                    `;
+                }
+
+                // 显示 Token 详情
+                detailsDiv.innerHTML = `
+                    <div class="status status-info">
+                        <strong>Header:</strong>
+                        <pre>${JSON.stringify(header, null, 2)}</pre>
+                    </div>
+                    <div class="status status-info">
+                        <strong>Payload:</strong>
+                        <pre>${JSON.stringify(payload, null, 2)}</pre>
+                    </div>
+                    <div class="status status-info">
+                        <strong>Token 预览:</strong>
+                        <div class="token-preview">${token}</div>
+                    </div>
+                `;
+
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="status status-error">
+                        ❌ 诊断失败<br>
+                        ${error.message}
+                    </div>
+                `;
+                console.error('诊断错误:', error);
+            }
+        }
+
+        // 清除 Token
+        function clearToken() {
+            try {
+                localStorage.removeItem('ACCESS_TOKEN');
+                localStorage.removeItem('token');
+                localStorage.removeItem('userInfo');
+
+                document.getElementById('diagnosisResult').innerHTML = `
+                    <div class="status status-success">
+                        ✅ Token 已清除<br>
+                        localStorage 中的所有认证信息已删除
+                    </div>
+                `;
+                document.getElementById('tokenDetails').innerHTML = '';
+                document.getElementById('solutions').innerHTML = `
+                    <div class="status status-info">
+                        <strong>下一步：</strong><br>
+                        点击"前往登录"按钮重新登录
+                    </div>
+                `;
+            } catch (error) {
+                alert('清除失败: ' + error.message);
+            }
+        }
+
+        // 前往登录页
+        function goToLogin() {
+            window.location.href = 'http://localhost:3101/login';
+        }
+
+        // 页面加载时自动诊断
+        window.onload = function() {
+            diagnose();
+        };
+    </script>
+</body>
+</html>

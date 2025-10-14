@@ -1,26 +1,76 @@
 <template>
-  <n-card title="服务器负载">
-    <n-space vertical>
-      <n-grid :cols="2" :x-gap="12" :y-gap="12">
-        <n-grid-item>
-          <n-statistic label="总请求数" :value="metrics.totalRequests" />
-        </n-grid-item>
-        <n-grid-item>
-          <n-statistic label="错误率" :value="metrics.errorRate" suffix="%" />
-        </n-grid-item>
-        <n-grid-item>
-          <n-statistic label="活跃连接" :value="metrics.activeConnections" />
-        </n-grid-item>
-        <n-grid-item>
-          <n-statistic label="限流阻止" :value="metrics.rateLimitBlocks" />
-        </n-grid-item>
-      </n-grid>
+  <n-card title="服务器负载 & API 监控">
+    <n-space vertical :size="16">
+      <!-- 服务器负载指标 -->
+      <div>
+        <n-text depth="3" style="font-size: 12px; margin-bottom: 8px; display: block">
+          服务器指标
+        </n-text>
+        <n-grid :cols="2" :x-gap="12" :y-gap="12">
+          <n-grid-item>
+            <n-statistic label="总请求数" :value="metrics.totalRequests" />
+          </n-grid-item>
+          <n-grid-item>
+            <n-statistic label="错误率" :value="metrics.errorRate" suffix="%" />
+          </n-grid-item>
+          <n-grid-item>
+            <n-statistic label="活跃连接" :value="metrics.activeConnections" />
+          </n-grid-item>
+          <n-grid-item>
+            <n-statistic label="限流阻止" :value="metrics.rateLimitBlocks" />
+          </n-grid-item>
+        </n-grid>
+      </div>
 
-      <n-button text :loading="loading" @click="loadMetrics">
+      <!-- API 端点监控指标 -->
+      <div>
+        <n-text depth="3" style="font-size: 12px; margin-bottom: 8px; display: block">
+          API 端点健康
+        </n-text>
+        <n-grid :cols="2" :x-gap="12" :y-gap="12">
+          <n-grid-item>
+            <n-statistic label="在线端点" :value="apiMetrics.onlineEndpoints">
+              <template #suffix>
+                <n-text depth="3" style="font-size: 12px">
+                  / {{ apiMetrics.totalEndpoints }}
+                </n-text>
+              </template>
+            </n-statistic>
+          </n-grid-item>
+          <n-grid-item>
+            <n-statistic label="离线端点" :value="apiMetrics.offlineEndpoints">
+              <template #suffix>
+                <n-tag
+                  v-if="apiMetrics.offlineEndpoints > 0"
+                  type="error"
+                  size="small"
+                  style="margin-left: 8px"
+                >
+                  异常
+                </n-tag>
+              </template>
+            </n-statistic>
+          </n-grid-item>
+          <n-grid-item>
+            <n-statistic label="平均响应" :value="apiMetrics.avgLatency" suffix="ms" />
+          </n-grid-item>
+          <n-grid-item>
+            <n-button text type="primary" @click="navigateToApiMonitor">
+              <template #icon>
+                <HeroIcon name="chart-bar" :size="16" />
+              </template>
+              查看详情
+            </n-button>
+          </n-grid-item>
+        </n-grid>
+      </div>
+
+      <!-- 刷新按钮 -->
+      <n-button text :loading="loading" @click="loadAllMetrics">
         <template #icon>
           <HeroIcon name="arrow-path" :size="16" />
         </template>
-        刷新
+        刷新所有指标
       </n-button>
     </n-space>
   </n-card>
@@ -28,8 +78,13 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { getSystemMetrics, parsePrometheusMetrics } from '@/api/dashboard'
+import { getCheckableEndpoints } from '@/config/apiEndpoints'
+import { request } from '@/utils/http'
 import HeroIcon from '@/components/common/HeroIcon.vue'
+
+const router = useRouter()
 
 const props = defineProps({
   autoRefresh: { type: Boolean, default: true },
@@ -46,10 +101,16 @@ const metrics = ref({
   rateLimitBlocks: 0,
 })
 
+const apiMetrics = ref({
+  totalEndpoints: 0,
+  onlineEndpoints: 0,
+  offlineEndpoints: 0,
+  avgLatency: 0,
+})
+
 let refreshTimer = null
 
 async function loadMetrics() {
-  loading.value = true
   try {
     const res = await getSystemMetrics()
     let text = ''
@@ -73,6 +134,51 @@ async function loadMetrics() {
     emit('metrics-update', metrics.value)
   } catch (error) {
     window.$message?.error('获取服务器指标失败')
+  }
+}
+
+async function loadApiMetrics() {
+  try {
+    const endpoints = getCheckableEndpoints()
+    apiMetrics.value.totalEndpoints = endpoints.length
+
+    let onlineCount = 0
+    let offlineCount = 0
+    let totalLatency = 0
+    let latencyCount = 0
+
+    // 快速检测前 5 个端点（避免阻塞）
+    const checkPromises = endpoints.slice(0, 5).map(async (endpoint) => {
+      const startTime = Date.now()
+      try {
+        await request({
+          url: endpoint.path,
+          method: endpoint.method,
+          timeout: 3000,
+        })
+        const latency = Date.now() - startTime
+        onlineCount++
+        totalLatency += latency
+        latencyCount++
+      } catch {
+        offlineCount++
+      }
+    })
+
+    await Promise.all(checkPromises)
+
+    apiMetrics.value.onlineEndpoints = onlineCount
+    apiMetrics.value.offlineEndpoints = offlineCount
+    apiMetrics.value.avgLatency = latencyCount > 0 ? Math.round(totalLatency / latencyCount) : 0
+  } catch (error) {
+    console.error('加载 API 指标失败:', error)
+  }
+}
+
+async function loadAllMetrics() {
+  loading.value = true
+  try {
+    await Promise.all([loadMetrics(), loadApiMetrics()])
   } finally {
     loading.value = false
   }
@@ -84,10 +190,14 @@ function calculateErrorRate(parsed) {
   return total > 0 ? parseFloat(((errors / total) * 100).toFixed(2)) : 0
 }
 
+function navigateToApiMonitor() {
+  router.push('/dashboard/api-monitor')
+}
+
 onMounted(() => {
-  loadMetrics()
+  loadAllMetrics()
   if (props.autoRefresh && props.refreshInterval > 0) {
-    refreshTimer = setInterval(loadMetrics, props.refreshInterval * 1000)
+    refreshTimer = setInterval(loadAllMetrics, props.refreshInterval * 1000)
   }
 })
 
