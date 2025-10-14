@@ -1,169 +1,92 @@
-CrudTable.vue:110 [Vue warn]: Non-function value encountered for default slot. Prefer function slots for better performance. 
-  at <Space align="center" justify="center" size=6 > 
-  at <Target> 
-  at <Binder ref="binderInstRef" syncTarget=true syncTargetWithParent=false > 
-  at <Popover getDisabled=fn<getTooltipDisabled> theme= {name: 'Popover', common: {…}, self: ƒ} themeOverrides=undefined  ... > 
-  at <Tooltip ref="tooltipRef" placement="top" getDisabled=fn<getTooltipDisabled>  ... > 
-  at <Ellipsis tooltip=true theme= {name: 'Ellipsis', common: {…}, peers: {…}} themeOverrides=undefined > 
-  at <DataTableCell clsPrefix="n" index=1 row= {id: 2, supabase_id: 1, name: 'GymBro Assistant', content: '"id": "thinkingbox-gymbro-strict",\n  "displayName"… 功能无缝衔接",\n    "userExperience": "移动优先，富文本交互"\n  },', version: 'v1.0', …}  ... > 
-  at <ResizeObserver onResize=fn<handleContentResize> > 
-  at <ResizeObserver onResize=fn<handleContainerResize> > 
-  at <Scrollbar ref="scrollbarInstRef" scrollable=true class="n-data-table-base-table-body"  ... > 
-  at <DataTableBody ref="bodyInstRef" bodyStyle= {maxHeight: undefined, minHeight: undefined} showHeader=true  ... > 
-  at <MainTable ref="mainTableInstRef" > 
-  at <DataTable remote=true loading=false columns= (6) [{…}, {…}, {…}, {…}, {…}, {…}]  ... > 
-  at <CrudTable ref="$table" query-items= {keyword: null, only_active: null} onUpdate:queryItems=fn  ... > 
-  at <Card flex-1="" rounded-10="" > 
-  at <BaseTransition mode="out-in" appear=true persisted=false  ... > 
-  at <Transition name="fade-slide" mode="out-in" appear="" > 
-  at <AppPage show-footer=true > 
-  at <CommonPage show-footer="" title="Prompt 模板管理" > 
-  at <AIPromptManager onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< Proxy(Object) {__v_skip: true} > key="/system/ai/prompt" > 
-  at <KeepAlive include= [] > 
-  at <RouterView> 
-  at <AppMain> 
-  at <Layout has-sider="" wh-full="" > 
-  at <Index onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< Proxy(Object) {__v_skip: true} > > 
-  at <RouterView> 
-  at <MessageProvider> 
-  at <NotificationProvider> 
-  at <DialogProvider> 
-  at <LoadingBarProvider> 
-  at <ConfigProvider wh-full="" locale= {name: 'zh-CN', global: {…}, Popconfirm: {…}, Cascader: {…}, Time: {…}, …} date-locale= {name: 'zh-CN', locale: {…}}  ... > 
-  at <AppProvider> 
-  at <App>
-warn$1 @ chunk-AELGWVTF.js?v=26d9abdc:1534
-normalizeVNodeSlots @ chunk-AELGWVTF.js?v=26d9abdc:4679
-updateSlots @ chunk-AELGWVTF.js?v=26d9abdc:4730
-updateComponentPreRender @ chunk-AELGWVTF.js?v=26d9abdc:6630
-componentUpdateFn @ chunk-AELGWVTF.js?v=26d9abdc:6545
-run @ chunk-AELGWVTF.js?v=26d9abdc:438
-instance.update @ chunk-AELGWVTF.js?v=26d9abdc:6612
-updateComponent @ chunk-AELGWVTF.js?v=26d9abdc:6421
-processComponent @ chunk-AELGWVTF.js?v=26d9abdc:6355
-patch @ chunk-AELGWVTF.js?v=26d9abdc:5859
-patchKeyedChildren @ chunk-AELGWVTF.js?v=26d9abdc:6765
-patchChildren @ chunk-AELGWVTF.js?v=26d9abdc:6679
-patchElement @ chunk-AELGWVTF.js?v=26d9abdc:6144
-processElement @ chunk-AELGWVTF.js?v=26d9abdc:5990
-patch @ chunk-AELGWVTF.js?v=26d9abdc:5847
-patchKeyedChildren @ chunk-AELGWVTF.js?v=26d9abdc:6765
-patchChildren @ chunk-AELGWVTF.js?v=26d9abdc:6679
-patchElement @ chunk-AELGWVTF.js?v=26d9abdc:6144
-processElement @ chunk-AELGWVTF.js?v=26d9abdc:5990
-patch @ chunk-AELGWVTF.js?v=26d9abdc:5847
-componentUpdateFn @ chunk-AELGWVTF.js?v=26d9abdc:6568
-run @ chunk-AELGWVTF.js?v=26d9abdc:438
-instance.update @ chunk-AELGWVTF.js?v=26d9abdc:6612
-updateComponent @ chunk-AELGWVTF.js?v=26d9abdc:6421
-processComponent @ chunk-AELGWVTF.js?v=26d9abdc:6355
-patch @ chunk-AELGWVTF.js?v=26d9abdc:5859
-patchKeyedChildren @ chunk-AELGWVTF.js?v=26d9abdc:6765
-patchChildren @ chunk-AELGWVTF.js?v=26d9abdc:6679
-processFragment @ chunk-AELGWVTF.js?v=26d9abdc:6318
-patch @ chunk-AELGWVTF.js?v=26d9abdc:5833
-componentUpdateFn @ chunk-AELGWVTF.js?v=26d9abdc:6568
-run @ chunk-AELGWVTF.js?v=26d9abdc:438
-instance.update @ chunk-AELGWVTF.js?v=26d9abdc:6612
-callWithErrorHandling @ chunk-AELGWVTF.js?v=26d9abdc:1685
-flushJobs @ chunk-AELGWVTF.js?v=26d9abdc:1901
-flushJobs @ chunk-AELGWVTF.js?v=26d9abdc:1915
-Promise.then
-queueFlush @ chunk-AELGWVTF.js?v=26d9abdc:1808
-queueJob @ chunk-AELGWVTF.js?v=26d9abdc:1802
-（匿名） @ chunk-AELGWVTF.js?v=26d9abdc:6606
-resetScheduling @ chunk-AELGWVTF.js?v=26d9abdc:520
-triggerEffects @ chunk-AELGWVTF.js?v=26d9abdc:564
-triggerRefValue @ chunk-AELGWVTF.js?v=26d9abdc:1331
-set value @ chunk-AELGWVTF.js?v=26d9abdc:1378
-handleQuery @ CrudTable.vue:110
-await in handleQuery
-handleSearch @ CrudTable.vue:122
-（匿名） @ index.vue:382
-（匿名） @ chunk-AELGWVTF.js?v=26d9abdc:3033
-callWithErrorHandling @ chunk-AELGWVTF.js?v=26d9abdc:1685
-callWithAsyncErrorHandling @ chunk-AELGWVTF.js?v=26d9abdc:1692
-hook.__weh.hook.__weh @ chunk-AELGWVTF.js?v=26d9abdc:3013
-flushPostFlushCbs @ chunk-AELGWVTF.js?v=26d9abdc:1869
-flushJobs @ chunk-AELGWVTF.js?v=26d9abdc:1911
-Promise.then
-queueFlush @ chunk-AELGWVTF.js?v=26d9abdc:1808
-queuePostFlushCb @ chunk-AELGWVTF.js?v=26d9abdc:1828
-queueEffectWithSuspense @ chunk-AELGWVTF.js?v=26d9abdc:8624
-scheduler @ chunk-AELGWVTF.js?v=26d9abdc:7468
-resetScheduling @ chunk-AELGWVTF.js?v=26d9abdc:520
-triggerEffects @ chunk-AELGWVTF.js?v=26d9abdc:564
-triggerRefValue @ chunk-AELGWVTF.js?v=26d9abdc:1331
-set value @ chunk-AELGWVTF.js?v=26d9abdc:1378
-finalizeNavigation @ vue-router.js?v=26d9abdc:2487
-（匿名） @ vue-router.js?v=26d9abdc:2397
-Promise.then
-pushWithRedirect @ vue-router.js?v=26d9abdc:2365
-push @ vue-router.js?v=26d9abdc:2291
-handleClick @ QuickAccessCard.vue:55
-callWithErrorHandling @ chunk-AELGWVTF.js?v=26d9abdc:1685
-callWithAsyncErrorHandling @ chunk-AELGWVTF.js?v=26d9abdc:1692
-invoker @ chunk-AELGWVTF.js?v=26d9abdc:10389
-chunk-AELGWVTF.js?v=26d9abdc:1534 [Vue warn]: Duplicate keys found during update: "/dashboard" Make sure keys are unique. 
-  at <Breadcrumb ml-15="" hidden="" sm:block="" > 
-  at <BreadCrumb ml-15="" hidden="" sm:block="" > 
-  at <Index> 
-  at <Layout has-sider="" wh-full="" > 
-  at <Index onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< Proxy(Object) {__v_skip: true} > > 
-  at <RouterView> 
-  at <MessageProvider> 
-  at <NotificationProvider> 
-  at <DialogProvider> 
-  at <LoadingBarProvider> 
-  at <ConfigProvider wh-full="" locale= {name: 'zh-CN', global: {…}, Popconfirm: {…}, Cascader: {…}, Time: {…}, …} date-locale= {name: 'zh-CN', locale: {…}}  ... > 
-  at <AppProvider> 
-  at <App>
-warn$1 @ chunk-AELGWVTF.js?v=26d9abdc:1534
-patchKeyedChildren @ chunk-AELGWVTF.js?v=26d9abdc:6834
-patchChildren @ chunk-AELGWVTF.js?v=26d9abdc:6642
-processFragment @ chunk-AELGWVTF.js?v=26d9abdc:6318
-patch @ chunk-AELGWVTF.js?v=26d9abdc:5833
-patchKeyedChildren @ chunk-AELGWVTF.js?v=26d9abdc:6765
-patchChildren @ chunk-AELGWVTF.js?v=26d9abdc:6679
-patchElement @ chunk-AELGWVTF.js?v=26d9abdc:6144
-processElement @ chunk-AELGWVTF.js?v=26d9abdc:5990
-patch @ chunk-AELGWVTF.js?v=26d9abdc:5847
-patchKeyedChildren @ chunk-AELGWVTF.js?v=26d9abdc:6765
-patchChildren @ chunk-AELGWVTF.js?v=26d9abdc:6679
-patchElement @ chunk-AELGWVTF.js?v=26d9abdc:6144
-processElement @ chunk-AELGWVTF.js?v=26d9abdc:5990
-patch @ chunk-AELGWVTF.js?v=26d9abdc:5847
-componentUpdateFn @ chunk-AELGWVTF.js?v=26d9abdc:6568
-run @ chunk-AELGWVTF.js?v=26d9abdc:438
-instance.update @ chunk-AELGWVTF.js?v=26d9abdc:6612
-callWithErrorHandling @ chunk-AELGWVTF.js?v=26d9abdc:1685
-flushJobs @ chunk-AELGWVTF.js?v=26d9abdc:1901
-Promise.then
-queueFlush @ chunk-AELGWVTF.js?v=26d9abdc:1808
-queuePostFlushCb @ chunk-AELGWVTF.js?v=26d9abdc:1828
-queueEffectWithSuspense @ chunk-AELGWVTF.js?v=26d9abdc:8624
-scheduler @ chunk-AELGWVTF.js?v=26d9abdc:7468
-resetScheduling @ chunk-AELGWVTF.js?v=26d9abdc:520
-triggerEffects @ chunk-AELGWVTF.js?v=26d9abdc:564
-triggerRefValue @ chunk-AELGWVTF.js?v=26d9abdc:1331
-set value @ chunk-AELGWVTF.js?v=26d9abdc:1378
-finalizeNavigation @ vue-router.js?v=26d9abdc:2487
-（匿名） @ vue-router.js?v=26d9abdc:2542
-Promise.then
-（匿名） @ vue-router.js?v=26d9abdc:2541
-（匿名） @ vue-router.js?v=26d9abdc:311
-popStateHandler @ vue-router.js?v=26d9abdc:310
-index.vue:428 [Dashboard] 快速访问卡片点击，路径: /system/ai
-chunk-AELGWVTF.js?v=26d9abdc:1534 [Vue warn]: Duplicate keys found during update: "/dashboard" Make sure keys are unique. 
-  at <Breadcrumb ml-15="" hidden="" sm:block="" > 
-  at <BreadCrumb ml-15="" hidden="" sm:block="" > 
-  at <Index> 
-  at <Layout has-sider="" wh-full="" > 
-  at <Index onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< Proxy(Object) {__v_skip: true} > > 
-  at <RouterView> 
-  at <MessageProvider> 
-  at <NotificationProvider> 
-  at <DialogProvider> 
-  at <LoadingBarProvider> 
-  at <ConfigProvider wh-full="" locale= {name: 'zh-CN', global: {…}, Popconfirm: {…}, Cascader: {…}, Time: {…}, …} date-locale= {name: 'zh-CN', locale: {…}}  ... > 
-  at <AppProvider> 
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',))
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',)) completed
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F1FC0>)
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F1FC0>) completed
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F1FC0>)
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F1FC0>) completed
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',))
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',)) completed
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F3840>)
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F3840>) completed
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F3840>)
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F3840>) completed
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ())
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ()) completed
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F2040>)
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F2040>) completed
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F2040>)
+2025-10-14 09:49:36 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F2040>) completed
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',))
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',)) completed
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F30C0>)
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F30C0>) completed
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F30C0>)
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F30C0>) completed
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',))
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',)) completed
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F00C0>)
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F00C0>) completed
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F00C0>)
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F00C0>) completed
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ())
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ()) completed
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F0AC0>)
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F0AC0>) completed
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F0AC0>)
+2025-10-14 09:49:38 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F0AC0>) completed
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',))
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT COUNT(DISTINCT user_id) as total\n            FROM user_activity_stats\n            WHERE activity_date >= ?\n        ', ('2025-10-13',)) completed
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F3240>)
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F3240>) completed
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F3240>)
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F3240>) completed
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',))
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT\n                SUM(count) as total_count,\n                SUM(success_count) as total_success,\n                SUM(error_count) as total_error,\n                AVG(total_latency_ms / NULLIF(count, 0)) as avg_latency\n            FROM ai_request_stats\n            WHERE request_date >= ?\n        ', ('2025-10-13',)) completed
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F0940>)
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x000001A93F1F0940>) completed
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F0940>)
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F0940>) completed
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ())
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x000001A93F0E0130>, '\n            SELECT status FROM ai_endpoints WHERE is_active = 1\n        ', ()) completed
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F1C40>)
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x000001A93F1F1C40>) completed
+2025-10-14 09:49:39 | DEBUG    | logging:callHandlers:1762 - executing functools.partial(<built-in method close of sqlite3.Cursor object at 0x000001A93F1F1C40>)
+<html>
+<head><title>502 Bad Gateway</title></head>
+<body>
+<center><h1>502 Bad Gateway</h1></center>
+<hr><center>nginx</center>
+</body>
+</html>
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<html>
+<head><title>502 Bad Gateway</title></head>
+<body>
+<center><h1>502 Bad Gateway</h1></center>
+<hr><center>nginx</center>
+</body>
+</html>
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<html>
+<head><title>502 Bad Gateway</title></head>
+<body>
+<center><h1>502 Bad Gateway</h1></center>
+<hr><center>nginx</center>
+</body>
+</html>
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->
+<!-- a padding to disable MSIE and Chrome friendly error page -->

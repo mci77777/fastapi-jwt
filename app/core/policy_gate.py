@@ -49,7 +49,7 @@ class PolicyGateMiddleware(BaseHTTPMiddleware):
             re.compile(r'^/api/v1/llm/models/(check-all|sync)$', re.IGNORECASE),
             re.compile(r'^/api/v1/llm/models/\d+/(sync|check)$', re.IGNORECASE),
             re.compile(r'^/api/v1/llm/monitor/(start|stop|status)$', re.IGNORECASE),
-            re.compile(r'^/api/v1/llm/status/supabase$', re.IGNORECASE),
+            # 注意：/api/v1/llm/status/supabase 已移至公开端点，不再限制匿名用户
             re.compile(r'^/api/v1/llm/model-groups.*$', re.IGNORECASE),
             re.compile(r'^/api/v1/llm/tests/.*$', re.IGNORECASE),
             re.compile(r'^/api/v1/llm/prompts/.*$'),
@@ -82,6 +82,9 @@ class PolicyGateMiddleware(BaseHTTPMiddleware):
 
             # 指标端点
             re.compile(r'^/api/v1/metrics$'),
+
+            # Supabase 状态（Dashboard 公开页面使用）
+            re.compile(r'^/api/v1/llm/status/supabase$'),
 
             # API文档
             re.compile(r'^/docs$'),
@@ -190,10 +193,34 @@ def get_anonymous_restricted_endpoints() -> List[str]:
         "POST /api/v1/llm/models/{id}/sync",
         "POST /api/v1/llm/models/sync",
         "GET/POST/PUT/DELETE /api/v1/llm/model-groups*",
-        "GET /api/v1/llm/status/supabase",
+        # 注意：/api/v1/llm/status/supabase 已移至公开端点
         "GET/POST /api/v1/llm/monitor/(status|start|stop)",
         "GET/POST /api/v1/llm/tests/*",
         "GET/POST/PUT/DELETE /api/v1/llm/prompts/*",
+    ]
+
+
+def get_public_endpoints() -> List[str]:
+    """获取公开端点列表（无需认证，用于文档生成）。"""
+    return [
+        # 认证端点
+        "POST /api/v1/base/access_token",
+
+        # 健康探针
+        "GET /api/v1/healthz",
+        "GET /api/v1/livez",
+        "GET /api/v1/readyz",
+
+        # 监控指标
+        "GET /api/v1/metrics",
+
+        # Supabase 状态（Dashboard 公开页面）
+        "GET /api/v1/llm/status/supabase",
+
+        # API 文档
+        "GET /docs",
+        "GET /redoc",
+        "GET /openapi.json",
     ]
 
 
@@ -207,8 +234,6 @@ def get_anonymous_allowed_endpoints() -> List[str]:
         # 模型查询
         "GET /api/v1/llm/models",
 
-        # 公共端点
-        "GET /health",
-        "GET /docs",
-        "GET /openapi.json",
+        # 公共端点（继承自公开端点）
+        *get_public_endpoints(),
     ]

@@ -321,6 +321,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         "/api/v1/livez",
         "/api/v1/readyz",
         "/api/v1/metrics",
+        "/api/v1/llm/status/supabase",  # Supabase 状态（Dashboard 公开页面）
         "/docs",
         "/redoc",
         "/openapi.json",

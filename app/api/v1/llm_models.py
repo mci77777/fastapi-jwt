@@ -237,10 +237,15 @@ async def sync_all_endpoints(
 
 
 @router.get("/status/supabase")
-async def supabase_status(
-    request: Request,
-    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
-) -> dict[str, Any]:
+async def supabase_status(request: Request) -> dict[str, Any]:
+    """
+    获取 Supabase 连接状态（公开端点，无需认证）。
+
+    返回 Supabase REST API 的连接状态、延迟和最近同步时间。
+    此端点用于 Dashboard 公开页面的状态监控，不涉及敏感数据。
+
+    注意：此端点已配置为公开访问，无需 JWT 认证。
+    """
     service = get_service(request)
     status_payload = await service.supabase_status()
     return create_response(data=status_payload)
