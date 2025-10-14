@@ -1,4 +1,5 @@
 """全局异常处理。"""
+
 from __future__ import annotations
 
 import logging
@@ -13,11 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_error_response(
-    status_code: int,
-    code: str,
-    message: str,
-    trace_id: str = None,
-    headers: Dict[str, str] = None
+    status_code: int, code: str, message: str, trace_id: str = None, headers: Dict[str, str] = None
 ) -> JSONResponse:
     """创建统一格式的错误响应。"""
     from app.core.middleware import get_current_trace_id
@@ -25,18 +22,9 @@ def create_error_response(
     if trace_id is None:
         trace_id = get_current_trace_id()
 
-    payload = {
-        "status": status_code,
-        "code": code,
-        "message": message,
-        "trace_id": trace_id
-    }
+    payload = {"status": status_code, "code": code, "message": message, "trace_id": trace_id}
 
-    return JSONResponse(
-        status_code=status_code,
-        content=payload,
-        headers=headers or {}
-    )
+    return JSONResponse(status_code=status_code, content=payload, headers=headers or {})
 
 
 def _build_detail(detail: Any, default_code: str) -> Dict[str, Any]:
@@ -49,16 +37,8 @@ def _build_detail(detail: Any, default_code: str) -> Dict[str, Any]:
         result.setdefault("message", default_code.replace("_", " "))
         return result
     if detail is None:
-        return {
-            "status": 500,
-            "code": default_code,
-            "message": default_code.replace("_", " ")
-        }
-    return {
-        "status": 500,
-        "code": default_code,
-        "message": str(detail)
-    }
+        return {"status": 500, "code": default_code, "message": default_code.replace("_", " ")}
+    return {"status": 500, "code": default_code, "message": str(detail)}
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -83,7 +63,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                     "status": 401,
                     "code": "unauthorized",
                     "message": "Authentication required",
-                    "trace_id": trace_id
+                    "trace_id": trace_id,
                 }
 
         return JSONResponse(status_code=exc.status_code, content=payload)

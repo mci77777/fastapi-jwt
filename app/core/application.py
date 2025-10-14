@@ -13,6 +13,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.middleware import TraceIDMiddleware
 from app.core.policy_gate import PolicyGateMiddleware
 from app.core.rate_limiter import RateLimitMiddleware
+from app.db import SQLiteManager
 from app.services.ai_config_service import AIConfigService
 from app.services.ai_service import AIService, MessageEventBroker
 from app.services.dashboard_broker import DashboardBroker
@@ -23,7 +24,6 @@ from app.services.model_mapping_service import ModelMappingService
 from app.services.monitor_service import EndpointMonitor
 from app.services.sync_service import SyncService
 from app.settings.config import get_settings
-from app.db import SQLiteManager
 
 
 @asynccontextmanager

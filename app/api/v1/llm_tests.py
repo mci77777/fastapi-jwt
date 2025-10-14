@@ -11,7 +11,6 @@ from app.auth import AuthenticatedUser, get_current_user
 
 from .llm_common import create_response, get_jwt_test_service, get_service
 
-
 router = APIRouter(prefix="/llm", tags=["llm"])
 
 

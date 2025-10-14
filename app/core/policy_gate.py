@@ -1,4 +1,5 @@
 """策略门中间件 - 限制匿名用户访问敏感端点。"""
+
 from __future__ import annotations
 
 import logging
@@ -27,69 +28,60 @@ class PolicyGateMiddleware(BaseHTTPMiddleware):
         # 定义匿名用户禁止访问的端点模式
         self.anonymous_restricted_patterns: List[Pattern] = [
             # 管理后台相关端点
-            re.compile(r'^/api/v1/admin/.*$'),
-            re.compile(r'^/api/v1/base/.*$'),
-            re.compile(r'^/api/v1/user/.*$'),
-            re.compile(r'^/api/v1/role/.*$'),
-            re.compile(r'^/api/v1/menu/.*$'),
-            re.compile(r'^/api/v1/api/.*$'),
-            re.compile(r'^/api/v1/dept/.*$'),
-            re.compile(r'^/api/v1/auditlog/.*$'),
-
+            re.compile(r"^/api/v1/admin/.*$"),
+            re.compile(r"^/api/v1/base/.*$"),
+            re.compile(r"^/api/v1/user/.*$"),
+            re.compile(r"^/api/v1/role/.*$"),
+            re.compile(r"^/api/v1/menu/.*$"),
+            re.compile(r"^/api/v1/api/.*$"),
+            re.compile(r"^/api/v1/dept/.*$"),
+            re.compile(r"^/api/v1/auditlog/.*$"),
             # 公开分享相关端点
-            re.compile(r'^/api/v1/conversations/.+/share$'),
-            re.compile(r'^/api/v1/public_shares/.*$'),
-
+            re.compile(r"^/api/v1/conversations/.+/share$"),
+            re.compile(r"^/api/v1/public_shares/.*$"),
             # 批量操作端点
-            re.compile(r'^/api/v1/messages/batch$'),
-            re.compile(r'^/api/v1/conversations/batch$'),
-
+            re.compile(r"^/api/v1/messages/batch$"),
+            re.compile(r"^/api/v1/conversations/batch$"),
             # LLM管理端点（仅允许查看模型列表）
-            re.compile(r'^/api/v1/llm/models$', re.IGNORECASE),  # POST/PUT/DELETE 禁止
-            re.compile(r'^/api/v1/llm/models/(check-all|sync)$', re.IGNORECASE),
-            re.compile(r'^/api/v1/llm/models/\d+/(sync|check)$', re.IGNORECASE),
-            re.compile(r'^/api/v1/llm/monitor/(start|stop|status)$', re.IGNORECASE),
+            re.compile(r"^/api/v1/llm/models$", re.IGNORECASE),  # POST/PUT/DELETE 禁止
+            re.compile(r"^/api/v1/llm/models/(check-all|sync)$", re.IGNORECASE),
+            re.compile(r"^/api/v1/llm/models/\d+/(sync|check)$", re.IGNORECASE),
+            re.compile(r"^/api/v1/llm/monitor/(start|stop|status)$", re.IGNORECASE),
             # 注意：/api/v1/llm/status/supabase 已移至公开端点，不再限制匿名用户
-            re.compile(r'^/api/v1/llm/model-groups.*$', re.IGNORECASE),
-            re.compile(r'^/api/v1/llm/tests/.*$', re.IGNORECASE),
-            re.compile(r'^/api/v1/llm/prompts/.*$'),
+            re.compile(r"^/api/v1/llm/model-groups.*$", re.IGNORECASE),
+            re.compile(r"^/api/v1/llm/tests/.*$", re.IGNORECASE),
+            re.compile(r"^/api/v1/llm/prompts/.*$"),
         ]
 
         # 定义匿名用户允许的端点（白名单）
         self.anonymous_allowed_patterns: List[Pattern] = [
             # 基础对话功能
-            re.compile(r'^/api/v1/messages$'),  # POST 创建消息
-            re.compile(r'^/api/v1/messages/[^/]+/events$'),  # GET SSE事件流
-
+            re.compile(r"^/api/v1/messages$"),  # POST 创建消息
+            re.compile(r"^/api/v1/messages/[^/]+/events$"),  # GET SSE事件流
             # 获取模型列表（只读）
-            re.compile(r'^/api/v1/llm/models$'),  # GET 获取模型列表
-
+            re.compile(r"^/api/v1/llm/models$"),  # GET 获取模型列表
             # 健康检查等公共端点
-            re.compile(r'^/health$'),
-            re.compile(r'^/docs$'),
-            re.compile(r'^/openapi\.json$'),
+            re.compile(r"^/health$"),
+            re.compile(r"^/docs$"),
+            re.compile(r"^/openapi\.json$"),
         ]
 
         # 定义公开端点（无需认证）
         self.public_endpoints: List[Pattern] = [
             # 登录端点
-            re.compile(r'^/api/v1/base/access_token$'),
-
+            re.compile(r"^/api/v1/base/access_token$"),
             # 健康探针
-            re.compile(r'^/api/v1/healthz$'),
-            re.compile(r'^/api/v1/livez$'),
-            re.compile(r'^/api/v1/readyz$'),
-
+            re.compile(r"^/api/v1/healthz$"),
+            re.compile(r"^/api/v1/livez$"),
+            re.compile(r"^/api/v1/readyz$"),
             # 指标端点
-            re.compile(r'^/api/v1/metrics$'),
-
+            re.compile(r"^/api/v1/metrics$"),
             # Supabase 状态（Dashboard 公开页面使用）
-            re.compile(r'^/api/v1/llm/status/supabase$'),
-
+            re.compile(r"^/api/v1/llm/status/supabase$"),
             # API文档
-            re.compile(r'^/docs$'),
-            re.compile(r'^/redoc$'),
-            re.compile(r'^/openapi\.json$'),
+            re.compile(r"^/docs$"),
+            re.compile(r"^/redoc$"),
+            re.compile(r"^/openapi\.json$"),
         ]
 
     async def dispatch(self, request: Request, call_next) -> Response:
@@ -105,7 +97,7 @@ class PolicyGateMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # 获取用户信息
-        user: Optional[AuthenticatedUser] = getattr(request.state, 'user', None)
+        user: Optional[AuthenticatedUser] = getattr(request.state, "user", None)
 
         # 如果用户未认证或不是匿名用户，直接通过
         if not user or not user.is_anonymous:
@@ -135,7 +127,7 @@ class PolicyGateMiddleware(BaseHTTPMiddleware):
         for pattern in self.anonymous_allowed_patterns:
             if pattern.match(path):
                 # 对于模型端点，只允许GET请求
-                if '/llm/models' in path and method != 'GET':
+                if "/llm/models" in path and method != "GET":
                     return False
                 return True
         return False
@@ -151,17 +143,14 @@ class PolicyGateMiddleware(BaseHTTPMiddleware):
         """创建匿名用户访问限制错误响应。"""
         trace_id = get_current_trace_id()
 
-        logger.warning(
-            "匿名用户访问受限端点被拒绝 path=%s method=%s trace_id=%s",
-            path, method, trace_id
-        )
+        logger.warning("匿名用户访问受限端点被拒绝 path=%s method=%s trace_id=%s", path, method, trace_id)
 
         return create_error_response(
             status_code=403,
             code="ANONYMOUS_ACCESS_DENIED",
             message="Anonymous users cannot access this endpoint",
             hint="Please upgrade your account to access this feature",
-            headers={}
+            headers={},
         )
 
 
@@ -177,15 +166,12 @@ def get_anonymous_restricted_endpoints() -> List[str]:
         "GET/POST/PUT/DELETE /api/v1/api/*",
         "GET/POST/PUT/DELETE /api/v1/dept/*",
         "GET/POST/PUT/DELETE /api/v1/auditlog/*",
-
         # 公开分享
         "POST /api/v1/conversations/{id}/share",
         "GET/POST/PUT/DELETE /api/v1/public_shares/*",
-
         # 批量操作
         "POST /api/v1/messages/batch",
         "POST /api/v1/conversations/batch",
-
         # LLM管理（除了GET /api/v1/llm/models）
         "POST/PUT/DELETE /api/v1/llm/models",
         "POST /api/v1/llm/models/{id}/check",
@@ -205,18 +191,14 @@ def get_public_endpoints() -> List[str]:
     return [
         # 认证端点
         "POST /api/v1/base/access_token",
-
         # 健康探针
         "GET /api/v1/healthz",
         "GET /api/v1/livez",
         "GET /api/v1/readyz",
-
         # 监控指标
         "GET /api/v1/metrics",
-
         # Supabase 状态（Dashboard 公开页面）
         "GET /api/v1/llm/status/supabase",
-
         # API 文档
         "GET /docs",
         "GET /redoc",
@@ -230,10 +212,8 @@ def get_anonymous_allowed_endpoints() -> List[str]:
         # 基础对话功能
         "POST /api/v1/messages",
         "GET /api/v1/messages/{message_id}/events",
-
         # 模型查询
         "GET /api/v1/llm/models",
-
         # 公共端点（继承自公开端点）
         *get_public_endpoints(),
     ]

@@ -1,4 +1,5 @@
 """指标收集与日志输出。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,7 +9,7 @@ import time
 from dataclasses import asdict, dataclass
 from typing import Dict, Optional
 
-from prometheus_client import Counter, Gauge, Histogram, CollectorRegistry, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Gauge, Histogram
 
 from app.core.middleware import get_current_trace_id
 from app.core.rate_limiter import get_rate_limiter
@@ -18,50 +19,34 @@ logger = logging.getLogger(__name__)
 
 # Prometheus指标定义
 # 1. 认证请求总数（按状态和用户类型分类）
-auth_requests_total = Counter(
-    'auth_requests_total',
-    'Total number of authentication requests',
-    ['status', 'user_type']
-)
+auth_requests_total = Counter("auth_requests_total", "Total number of authentication requests", ["status", "user_type"])
 
 # 2. 认证请求持续时间（按端点分类）
 auth_request_duration_seconds = Histogram(
-    'auth_request_duration_seconds',
-    'Duration of authentication requests in seconds',
-    ['endpoint']
+    "auth_request_duration_seconds", "Duration of authentication requests in seconds", ["endpoint"]
 )
 
 # 3. JWT验证错误总数（按错误代码分类）
-jwt_validation_errors_total = Counter(
-    'jwt_validation_errors_total',
-    'Total number of JWT validation errors',
-    ['code']
-)
+jwt_validation_errors_total = Counter("jwt_validation_errors_total", "Total number of JWT validation errors", ["code"])
 
 # 4. JWKS缓存命中总数（按结果分类）
 jwks_cache_hits_total = Counter(
-    'jwks_cache_hits_total',
-    'Total number of JWKS cache hits',
-    ['result']  # hit, miss, error
+    "jwks_cache_hits_total", "Total number of JWKS cache hits", ["result"]  # hit, miss, error
 )
 
 # 5. 活跃连接数（Gauge类型）
-active_connections = Gauge(
-    'active_connections',
-    'Number of active connections'
-)
+active_connections = Gauge("active_connections", "Number of active connections")
 
 # 6. 限流阻止总数（按原因分类）
 rate_limit_blocks_total = Counter(
-    'rate_limit_blocks_total',
-    'Total number of rate limit blocks',
-    ['reason', 'user_type']
+    "rate_limit_blocks_total", "Total number of rate limit blocks", ["reason", "user_type"]
 )
 
 
 @dataclass
 class RateLimitMetrics:
     """限流指标。"""
+
     total_requests: int = 0
     blocked_requests: int = 0
     user_qps_blocks: int = 0
@@ -90,6 +75,7 @@ class RateLimitMetrics:
 @dataclass
 class SSEMetrics:
     """SSE指标。"""
+
     total_connection_attempts: int = 0
     successful_connections: int = 0
     rejected_connections: int = 0
@@ -132,6 +118,7 @@ class MetricsCollector:
 
     def _start_metrics_task(self):
         """启动定期指标输出任务。"""
+
         async def output_metrics():
             while True:
                 await asyncio.sleep(300)  # 5分钟输出一次
@@ -143,7 +130,7 @@ class MetricsCollector:
         """输出指标日志。"""
         try:
             # 收集限流器指标
-            rate_limiter = get_rate_limiter()
+            _ = get_rate_limiter()
 
             # 收集SSE守卫指标
             sse_guard = get_sse_guard()
@@ -180,8 +167,8 @@ class MetricsCollector:
                         "ip_daily": self.rate_limit_metrics.ip_daily_blocks,
                         "cooldown": self.rate_limit_metrics.cooldown_blocks,
                         "anonymous": self.rate_limit_metrics.anonymous_blocks,
-                        "suspicious_ua": self.rate_limit_metrics.suspicious_ua_blocks
-                    }
+                        "suspicious_ua": self.rate_limit_metrics.suspicious_ua_blocks,
+                    },
                 },
                 "sse_concurrency": {
                     "total_attempts": self.sse_metrics.total_connection_attempts,
@@ -192,35 +179,31 @@ class MetricsCollector:
                     "active_connections": self.sse_metrics.active_connections,
                     "rejections_by_type": {
                         "user_limit": self.sse_metrics.user_limit_rejections,
-                        "conversation_limit": self.sse_metrics.conversation_limit_rejections
-                    }
-                }
+                        "conversation_limit": self.sse_metrics.conversation_limit_rejections,
+                    },
+                },
             }
 
             # 输出结构化日志
-            logger.info(
-                "系统指标报告 %s",
-                json.dumps(metrics_report, ensure_ascii=False, separators=(',', ':'))
-            )
+            logger.info("系统指标报告 %s", json.dumps(metrics_report, ensure_ascii=False, separators=(",", ":")))
 
             # 如果有异常情况，输出警告
             if self.rate_limit_metrics.block_rate > 20:
                 logger.warning(
                     "限流阻止率过高 block_rate=%.2f%% trace_id=%s",
-                    self.rate_limit_metrics.block_rate, get_current_trace_id()
+                    self.rate_limit_metrics.block_rate,
+                    get_current_trace_id(),
                 )
 
             if self.sse_metrics.rejection_rate > 10:
                 logger.warning(
                     "SSE拒绝率过高 rejection_rate=%.2f%% trace_id=%s",
-                    self.sse_metrics.rejection_rate, get_current_trace_id()
+                    self.sse_metrics.rejection_rate,
+                    get_current_trace_id(),
                 )
 
         except Exception as e:
-            logger.error(
-                "指标收集失败 error=%s trace_id=%s",
-                str(e), get_current_trace_id()
-            )
+            logger.error("指标收集失败 error=%s trace_id=%s", str(e), get_current_trace_id())
 
     def record_rate_limit_request(self, blocked: bool, block_reason: Optional[str] = None):
         """记录限流请求。"""
@@ -273,9 +256,9 @@ class MetricsCollector:
                 **asdict(self.sse_metrics),
                 "current_active": sse_stats["active_connections"],
                 "current_users": sse_stats["active_users"],
-                "current_conversations": sse_stats["active_conversations"]
+                "current_conversations": sse_stats["active_conversations"],
             },
-            "uptime_seconds": time.time() - self.start_time
+            "uptime_seconds": time.time() - self.start_time,
         }
 
 
@@ -297,8 +280,7 @@ def log_rate_limit_hit(reason: str, user_id: Optional[str], client_ip: str):
     collector.record_rate_limit_request(blocked=True, block_reason=reason)
 
     logger.warning(
-        "限流命中 reason=%s user_id=%s client_ip=%s trace_id=%s",
-        reason, user_id, client_ip, get_current_trace_id()
+        "限流命中 reason=%s user_id=%s client_ip=%s trace_id=%s", reason, user_id, client_ip, get_current_trace_id()
     )
 
 
@@ -309,7 +291,10 @@ def log_sse_rejection(reason: str, user_id: str, conversation_id: Optional[str])
 
     logger.warning(
         "SSE连接拒绝 reason=%s user_id=%s conversation_id=%s trace_id=%s",
-        reason, user_id, conversation_id, get_current_trace_id()
+        reason,
+        user_id,
+        conversation_id,
+        get_current_trace_id(),
     )
 
 
@@ -317,5 +302,8 @@ def log_cooldown_triggered(client_ip: str, failure_count: int, cooldown_seconds:
     """记录冷静期触发的便捷函数。"""
     logger.warning(
         "冷静期触发 client_ip=%s failure_count=%d cooldown_seconds=%d trace_id=%s",
-        client_ip, failure_count, cooldown_seconds, get_current_trace_id()
+        client_ip,
+        failure_count,
+        cooldown_seconds,
+        get_current_trace_id(),
     )

@@ -11,7 +11,6 @@ from app.auth import AuthenticatedUser, get_current_user
 
 from .llm_common import SyncDirection, SyncRequest, create_response, get_monitor, get_service
 
-
 router = APIRouter(prefix="/llm", tags=["llm"])
 
 

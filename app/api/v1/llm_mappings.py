@@ -11,7 +11,6 @@ from app.auth import AuthenticatedUser, get_current_user
 
 from .llm_common import create_response, get_mapping_service
 
-
 router = APIRouter(prefix="/llm", tags=["llm"])
 
 
@@ -92,7 +91,7 @@ async def sync_mappings_to_supabase(
     # 当前返回映射数量作为占位实现
     return create_response(
         data={"synced_count": len(mappings), "mappings": mappings},
-        msg=f"已同步 {len(mappings)} 条映射到 Supabase（占位实现）"
+        msg=f"已同步 {len(mappings)} 条映射到 Supabase（占位实现）",
     )
 
 

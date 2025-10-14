@@ -1,4 +1,5 @@
 """Dashboard WebSocket 和统计 API 路由。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +11,6 @@ from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
 from app.auth.jwt_verifier import get_jwt_verifier
-from app.core.exceptions import create_error_response
 from app.log import logger
 from app.services.dashboard_broker import DashboardBroker
 from app.services.log_collector import LogCollector
@@ -37,7 +37,12 @@ async def get_current_user_ws(token: str) -> AuthenticatedUser:
         HTTPException: 验证失败
     """
     import sys
-    print(f"[WS_DEBUG_AUTH] get_current_user_ws called, token length: {len(token) if token else 0}", file=sys.stderr, flush=True)
+
+    print(
+        f"[WS_DEBUG_AUTH] get_current_user_ws called, token length: {len(token) if token else 0}",
+        file=sys.stderr,
+        flush=True,
+    )
     logger.info("[WS_DEBUG_AUTH] get_current_user_ws called, token length: %d", len(token) if token else 0)
 
     if not token:
@@ -56,8 +61,9 @@ async def get_current_user_ws(token: str) -> AuthenticatedUser:
         logger.info("[WS_DEBUG_AUTH] WebSocket JWT verification success: uid=%s user_type=%s", user.uid, user.user_type)
         return user
     except HTTPException as exc:
-        logger.warning("WebSocket JWT verification failed: HTTPException status=%s detail=%s",
-                      exc.status_code, exc.detail)
+        logger.warning(
+            "WebSocket JWT verification failed: HTTPException status=%s detail=%s", exc.status_code, exc.detail
+        )
         raise
     except Exception as exc:
         logger.error("WebSocket JWT verification failed: unexpected error=%s", exc, exc_info=True)
@@ -89,15 +95,26 @@ async def dashboard_websocket(
     # 在接受连接之前就记录日志（绕过所有日志系统，直接写入文件）
     import sys
     from datetime import datetime
-    with open("ws_debug.log", "a", encoding="utf-8") as f:
-        f.write(f"[{datetime.now().isoformat()}] [WS_DEBUG_ENTRY] WebSocket endpoint called, token length: {len(token) if token else 0}\n")
 
-    print(f"[WS_DEBUG_ENTRY] WebSocket endpoint called, token length: {len(token) if token else 0}", file=sys.stderr, flush=True)
+    with open("ws_debug.log", "a", encoding="utf-8") as f:
+        f.write(
+            f"[{datetime.now().isoformat()}] [WS_DEBUG_ENTRY] WebSocket endpoint called, token length: {len(token) if token else 0}\n"
+        )
+
+    print(
+        f"[WS_DEBUG_ENTRY] WebSocket endpoint called, token length: {len(token) if token else 0}",
+        file=sys.stderr,
+        flush=True,
+    )
     logger.info("[WS_DEBUG_ENTRY] WebSocket endpoint called, token length: %d", len(token) if token else 0)
 
     # 先接受连接（必须在任何操作之前）
     await websocket.accept()
-    print(f"[WS_DEBUG] WebSocket connection accepted, token length: {len(token) if token else 0}", file=sys.stderr, flush=True)
+    print(
+        f"[WS_DEBUG] WebSocket connection accepted, token length: {len(token) if token else 0}",
+        file=sys.stderr,
+        flush=True,
+    )
     logger.info("[WS_DEBUG] WebSocket connection accepted, token length: %d", len(token) if token else 0)
 
     # JWT 验证
@@ -105,7 +122,9 @@ async def dashboard_websocket(
         user = await get_current_user_ws(token)
         logger.info("[WS_DEBUG] JWT verification success: uid=%s, user_type=%s", user.uid, user.user_type)
     except HTTPException as exc:
-        logger.warning("[WS_DEBUG] JWT verification failed (HTTPException): status=%s, detail=%s", exc.status_code, exc.detail)
+        logger.warning(
+            "[WS_DEBUG] JWT verification failed (HTTPException): status=%s, detail=%s", exc.status_code, exc.detail
+        )
         await websocket.close(code=1008, reason="Unauthorized")
         logger.warning("WebSocket connection rejected: unauthorized")
         return

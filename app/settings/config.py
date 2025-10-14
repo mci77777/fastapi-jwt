@@ -1,8 +1,9 @@
 """应用配置与环境变量加载逻辑。"""
+
 from functools import lru_cache
 from typing import List, Optional
 
-from pydantic import AnyHttpUrl, Field, field_validator, ConfigDict
+from pydantic import AnyHttpUrl, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -10,9 +11,7 @@ class Settings(BaseSettings):
     """集中式配置定义，便于后续依赖注入与测试覆盖。"""
 
     app_name: str = Field("GymBro API", env="APP_NAME")
-    app_description: str = Field(
-        "GymBro 对话与认证服务", env="APP_DESCRIPTION"
-    )
+    app_description: str = Field("GymBro 对话与认证服务", env="APP_DESCRIPTION")
     app_version: str = Field("0.1.0", env="APP_VERSION")
     debug: bool = Field(False, env="DEBUG")
 
@@ -74,12 +73,7 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = Field(True, env="RATE_LIMIT_ENABLED")
     policy_gate_enabled: bool = Field(True, env="POLICY_GATE_ENABLED")
 
-    model_config = ConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore"
-    )
+    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
     @field_validator("cors_allow_origins", mode="before")
     @classmethod

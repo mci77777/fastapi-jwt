@@ -580,9 +580,7 @@ onBeforeUnmount(() => {
             </template>
             查看 Supabase 状态
           </n-button>
-          <n-text depth="3" style="font-size: 12px">
-            点击查看数据库连接详情
-          </n-text>
+          <n-text depth="3" style="font-size: 12px"> 点击查看数据库连接详情 </n-text>
         </n-space>
       </n-card>
     </div>
@@ -630,7 +628,12 @@ onBeforeUnmount(() => {
     <ApiConnectivityModal v-model:show="showApiModal" />
 
     <!-- Supabase 状态弹窗 -->
-    <NModal v-model:show="showSupabaseModal" preset="card" title="Supabase 连接状态" style="width: 600px">
+    <NModal
+      v-model:show="showSupabaseModal"
+      preset="card"
+      title="Supabase 连接状态"
+      style="width: 600px"
+    >
       <SupabaseStatusCard
         :auto-refresh="true"
         :refresh-interval="30"

@@ -1,4 +1,5 @@
 """对话消息相关路由。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -71,9 +72,7 @@ async def stream_message_events(
     conversation_id = request.query_params.get("conversation_id")
     connection_id = f"{current_user.uid}:{message_id}"
 
-    concurrency_error = await check_sse_concurrency(
-        connection_id, current_user, conversation_id, message_id, request
-    )
+    concurrency_error = await check_sse_concurrency(connection_id, current_user, conversation_id, message_id, request)
     if concurrency_error:
         return concurrency_error
 
@@ -107,5 +106,5 @@ async def stream_message_events(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-        }
+        },
     )

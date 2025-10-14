@@ -1,4 +1,5 @@
 """AI 端点与 Prompt 配置服务。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -72,11 +73,7 @@ class AIConfigService:
         return self._backup_dir / f"{name}-{slug}.json"
 
     def _list_backup_archives(self, name: str) -> list[Path]:
-        return [
-            path
-            for path in self._backup_dir.glob(f"{name}-*.json")
-            if not path.name.endswith("-latest.json")
-        ]
+        return [path for path in self._backup_dir.glob(f"{name}-*.json") if not path.name.endswith("-latest.json")]
 
     async def _trim_backups(self, name: str, *, keep: int) -> None:
         archives = sorted(
@@ -135,11 +132,7 @@ class AIConfigService:
         if not self._supabase_available():
             return
         data = remote_snapshot or await self._fetch_supabase_models()
-        remote_ids = {
-            int(item["id"])
-            for item in data
-            if isinstance(item, dict) and item.get("id") is not None
-        }
+        remote_ids = {int(item["id"]) for item in data if isinstance(item, dict) and item.get("id") is not None}
         to_delete = [sid for sid in remote_ids if sid not in keep_ids]
         for supabase_id in to_delete:
             try:
@@ -336,11 +329,7 @@ class AIConfigService:
         endpoint = await self.get_endpoint(endpoint_id)
         await self._db.execute("DELETE FROM ai_endpoints WHERE id = ?", [endpoint_id])
 
-        if (
-            sync_remote
-            and endpoint.get("supabase_id")
-            and self._supabase_available()
-        ):
+        if sync_remote and endpoint.get("supabase_id") and self._supabase_available():
             headers = self._supabase_headers()
             base_url = self._supabase_base_url()
             try:
@@ -511,11 +500,7 @@ class AIConfigService:
         if supabase_id:
             if remote_row is None and remote_collection:
                 remote_row = next(
-                    (
-                        item
-                        for item in remote_collection
-                        if str(item.get("id")) == str(supabase_id)
-                    ),
+                    (item for item in remote_collection if str(item.get("id")) == str(supabase_id)),
                     None,
                 )
             if remote_row is None:
@@ -523,6 +508,7 @@ class AIConfigService:
                     remote_row = await self._fetch_supabase_model(int(supabase_id))
                 except Exception:  # pragma: no cover - 读取远端失败不阻断
                     logger.warning("获取 Supabase 端点信息失败 supabase_id=%s", supabase_id)
+
         def _parse_dt(value: Any) -> Optional[datetime]:
             if not value:
                 return None
@@ -838,8 +824,7 @@ class AIConfigService:
                 name, content, version, category, description, tools_json,
                 is_active, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            ,
+            """,
             [
                 payload["name"],
                 payload["content"],
@@ -902,11 +887,7 @@ class AIConfigService:
         prompt = await self.get_prompt(prompt_id)
         await self._db.execute("DELETE FROM ai_prompts WHERE id = ?", [prompt_id])
 
-        if (
-            sync_remote
-            and prompt.get("supabase_id")
-            and self._supabase_available()
-        ):
+        if sync_remote and prompt.get("supabase_id") and self._supabase_available():
             headers = self._supabase_headers()
             base_url = self._supabase_base_url()
             try:

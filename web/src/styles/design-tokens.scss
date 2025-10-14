@@ -1,10 +1,10 @@
 /**
  * Claude Anthropic Design System - Design Tokens
- * 
+ *
  * 基于 Claude Console UI 官方设计规范
  * 参考文档: docs/dashboard-refactor/CLAUDE_STYLE_ITERATION_SUMMARY.md
  * 设计原型: docs/dashboard-refactor/UI_DESIGN_V6_CLAUDE.html
- * 
+ *
  * 核心设计理念:
  * 1. 温暖优雅 (Warm & Elegant) - 暖色背景 + Serif 标题
  * 2. 呼吸留白 (Breathing Space) - 统一间距系统
@@ -15,37 +15,38 @@
 /* ========== Claude 品牌色板 (Color Palette) ========== */
 :root {
   /* 主色调 - Terra Cotta 橙色系 */
-  --claude-terra-cotta: #da7756;      /* 品牌主色 Terra Cotta */
-  --claude-button-orange: #bd5d3a;    /* 按钮/高亮色 */
-  
+  --claude-terra-cotta: #da7756; /* 品牌主色 Terra Cotta */
+  --claude-button-orange: #bd5d3a; /* 按钮/高亮色 */
+
   /* 背景色 - 暖白色系 */
-  --claude-bg-warm: #eeece2;          /* 暖白背景（页面背景） */
-  --claude-card-bg: #fefdfb;          /* 卡片背景（更白，用于卡片） */
-  --claude-hover-bg: #fef3e2;         /* 悬停背景（淡橙色） */
-  
+  --claude-bg-warm: #eeece2; /* 暖白背景（页面背景） */
+  --claude-card-bg: #fefdfb; /* 卡片背景（更白，用于卡片） */
+  --claude-hover-bg: #fef3e2; /* 悬停背景（淡橙色） */
+
   /* 文本色 - 深棕色系 */
-  --claude-text-dark: #3d3929;        /* 深棕文本（主要文本） */
-  --claude-text-gray: #78716c;        /* 灰色辅助文本（描述、占位符） */
-  --claude-black: #000000;            /* 纯黑（强调文本） */
-  
+  --claude-text-dark: #3d3929; /* 深棕文本（主要文本） */
+  --claude-text-gray: #78716c; /* 灰色辅助文本（描述、占位符） */
+  --claude-black: #000000; /* 纯黑（强调文本） */
+
   /* 边框色 */
-  --claude-border: #e8dfd6;           /* 边框色（柔和的米色） */
-  
+  --claude-border: #e8dfd6; /* 边框色（柔和的米色） */
+
   /* 状态色（保留原有状态指示） */
-  --claude-success: #18a058;          /* 成功/在线 */
-  --claude-warning: #f0a020;          /* 警告 */
-  --claude-error: #dc2626;            /* 错误/离线 */
-  --claude-info: #2080f0;             /* 信息 */
+  --claude-success: #18a058; /* 成功/在线 */
+  --claude-warning: #f0a020; /* 警告 */
+  --claude-error: #dc2626; /* 错误/离线 */
+  --claude-info: #2080f0; /* 信息 */
 }
 
 /* ========== 字体系统 (Font Stack) ========== */
 :root {
   /* Serif 字体 - 用于标题、章节标题、数值 */
-  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
-  
+  --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+
   /* Sans-serif 字体 - 用于正文、按钮、输入框 */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+
   /* 字体大小 */
   --font-size-xs: 12px;
   --font-size-sm: 13px;
@@ -56,38 +57,38 @@
   --font-size-2xl: 24px;
   --font-size-3xl: 28px;
   --font-size-4xl: 32px;
-  
+
   /* 字重 */
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
-  
+
   /* 字母间距 */
-  --letter-spacing-tight: -0.02em;    /* 负间距，用于大标题和数值 */
+  --letter-spacing-tight: -0.02em; /* 负间距，用于大标题和数值 */
   --letter-spacing-normal: 0;
-  --letter-spacing-wide: 0.05em;      /* 正间距，用于大写标签 */
+  --letter-spacing-wide: 0.05em; /* 正间距，用于大写标签 */
 }
 
 /* ========== 圆角系统 (Border Radius) ========== */
 :root {
-  --radius-sm: 8px;   /* 小圆角：输入框、按钮、映射项 */
-  --radius-md: 12px;  /* 中圆角：卡片、图表占位符 */
-  --radius-lg: 16px;  /* 大圆角：控制卡片、日志窗口、趋势卡片 */
-  --radius-xl: 20px;  /* 超大圆角：页头、标签页容器、页脚 */
+  --radius-sm: 8px; /* 小圆角：输入框、按钮、映射项 */
+  --radius-md: 12px; /* 中圆角：卡片、图表占位符 */
+  --radius-lg: 16px; /* 大圆角：控制卡片、日志窗口、趋势卡片 */
+  --radius-xl: 20px; /* 超大圆角：页头、标签页容器、页脚 */
 }
 
 /* ========== 阴影系统 (Shadows) ========== */
 :root {
   /* 柔和阴影 - 默认卡片 */
   --shadow-soft: 0 2px 12px rgba(218, 119, 86, 0.08);
-  
+
   /* 悬停阴影 - 卡片 hover */
   --shadow-hover: 0 4px 20px rgba(218, 119, 86, 0.15);
-  
+
   /* 浮空阴影 - 统计卡片、激活按钮 */
   --shadow-float: 0 8px 32px rgba(218, 119, 86, 0.12);
-  
+
   /* 黑色阴影（备用，用于非 Claude 色系的组件） */
   --shadow-soft-black: 0 2px 12px rgba(0, 0, 0, 0.08);
   --shadow-hover-black: 0 4px 20px rgba(0, 0, 0, 0.12);
@@ -113,7 +114,7 @@
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.6, 1);
-  
+
   /* 过渡时长 */
   --duration-fast: 0.15s;
   --duration-normal: 0.25s;
@@ -124,8 +125,12 @@
 /* ========== 渐变背景 (Gradients) ========== */
 :root {
   /* Terra Cotta 渐变 - 用于统计卡片、按钮 */
-  --gradient-terra-cotta: linear-gradient(135deg, var(--claude-terra-cotta) 0%, var(--claude-button-orange) 100%);
-  
+  --gradient-terra-cotta: linear-gradient(
+    135deg,
+    var(--claude-terra-cotta) 0%,
+    var(--claude-button-orange) 100%
+  );
+
   /* 暖色渐变 - 用于图表占位符、背景 */
   --gradient-warm: linear-gradient(135deg, var(--claude-bg-warm) 0%, var(--claude-hover-bg) 100%);
 }
@@ -158,7 +163,8 @@
 
 /* 脉冲动画 - 用于加载指示器 */
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -310,4 +316,3 @@
 .claude-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--claude-button-orange);
 }
-

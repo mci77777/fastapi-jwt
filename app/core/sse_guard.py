@@ -1,12 +1,13 @@
 """SSE 并发控制守卫。"""
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Dict, Set, Optional
+from dataclasses import dataclass
+from typing import Dict, Optional, Set
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ConnectionInfo:
     """连接信息。"""
+
     user_id: str
     conversation_id: Optional[str]
     message_id: str
@@ -55,7 +57,7 @@ class SSEConcurrencyGuard:
         conversation_id: Optional[str],
         message_id: str,
         client_ip: str,
-        user_agent: str
+        user_agent: str,
     ) -> tuple[bool, str, Optional[int]]:
         """
         检查并注册SSE连接。
@@ -70,7 +72,8 @@ class SSEConcurrencyGuard:
             user_connection_count = len(self.user_connections.get(user_id, set()))
             is_anonymous = user.user_type == "anonymous"
             max_concurrent = (
-                self.settings.sse_max_concurrent_per_anonymous_user if is_anonymous
+                self.settings.sse_max_concurrent_per_anonymous_user
+                if is_anonymous
                 else self.settings.sse_max_concurrent_per_user
             )
 
@@ -80,8 +83,11 @@ class SSEConcurrencyGuard:
 
                 logger.warning(
                     "SSE用户并发限制 user_id=%s user_type=%s current=%d max=%d trace_id=%s",
-                    user_id, user.user_type, user_connection_count, max_concurrent,
-                    get_current_trace_id()
+                    user_id,
+                    user.user_type,
+                    user_connection_count,
+                    max_concurrent,
+                    get_current_trace_id(),
                 )
                 return False, f"User concurrent SSE limit exceeded ({user_connection_count}/{max_concurrent})", 30
 
@@ -94,11 +100,16 @@ class SSEConcurrencyGuard:
 
                     logger.warning(
                         "SSE对话并发限制 conversation_id=%s current=%d max=%d trace_id=%s",
-                        conversation_id, conv_connection_count,
+                        conversation_id,
+                        conv_connection_count,
                         self.settings.sse_max_concurrent_per_conversation,
-                        get_current_trace_id()
+                        get_current_trace_id(),
                     )
-                    return False, f"Conversation concurrent SSE limit exceeded ({conv_connection_count}/{self.settings.sse_max_concurrent_per_conversation})", 10
+                    return (
+                        False,
+                        f"Conversation concurrent SSE limit exceeded ({conv_connection_count}/{self.settings.sse_max_concurrent_per_conversation})",
+                        10,
+                    )
 
             # 注册连接
             connection_info = ConnectionInfo(
@@ -107,7 +118,7 @@ class SSEConcurrencyGuard:
                 message_id=message_id,
                 start_time=time.time(),
                 client_ip=client_ip,
-                user_agent=user_agent
+                user_agent=user_agent,
             )
 
             self.active_connections[connection_id] = connection_info
@@ -119,7 +130,11 @@ class SSEConcurrencyGuard:
 
             logger.info(
                 "SSE连接已注册 connection_id=%s user_id=%s conversation_id=%s message_id=%s trace_id=%s",
-                connection_id, user_id, conversation_id, message_id, get_current_trace_id()
+                connection_id,
+                user_id,
+                conversation_id,
+                message_id,
+                get_current_trace_id(),
             )
 
             return True, "OK", None
@@ -149,7 +164,10 @@ class SSEConcurrencyGuard:
             duration = time.time() - connection_info.start_time
             logger.info(
                 "SSE连接已注销 connection_id=%s user_id=%s duration=%.2fs trace_id=%s",
-                connection_id, connection_info.user_id, duration, get_current_trace_id()
+                connection_id,
+                connection_info.user_id,
+                duration,
+                get_current_trace_id(),
             )
 
     async def get_user_connections(self, user_id: str) -> Set[str]:
@@ -170,8 +188,7 @@ class SSEConcurrencyGuard:
                 await self.unregister_connection(connection_id)
 
             logger.warning(
-                "强制断开用户连接 user_id=%s count=%d trace_id=%s",
-                user_id, len(connection_ids), get_current_trace_id()
+                "强制断开用户连接 user_id=%s count=%d trace_id=%s", user_id, len(connection_ids), get_current_trace_id()
             )
             return len(connection_ids)
 
@@ -186,8 +203,10 @@ class SSEConcurrencyGuard:
                 "total_rejected": self.total_connections_rejected,
                 "rejection_reasons": dict(self.rejection_reasons),
                 "rejection_rate": (
-                    self.total_connections_rejected / max(1, self.total_connections_created + self.total_connections_rejected)
-                ) * 100
+                    self.total_connections_rejected
+                    / max(1, self.total_connections_created + self.total_connections_rejected)
+                )
+                * 100,
             }
 
     async def cleanup_stale_connections(self, max_age_seconds: int = 3600) -> int:
@@ -206,7 +225,9 @@ class SSEConcurrencyGuard:
             if stale_connections:
                 logger.info(
                     "清理过期SSE连接 count=%d max_age=%ds trace_id=%s",
-                    len(stale_connections), max_age_seconds, get_current_trace_id()
+                    len(stale_connections),
+                    max_age_seconds,
+                    get_current_trace_id(),
                 )
 
             return len(stale_connections)
@@ -225,11 +246,7 @@ def get_sse_guard() -> SSEConcurrencyGuard:
 
 
 async def check_sse_concurrency(
-    connection_id: str,
-    user: AuthenticatedUser,
-    conversation_id: Optional[str],
-    message_id: str,
-    request: Request
+    connection_id: str, user: AuthenticatedUser, conversation_id: Optional[str], message_id: str, request: Request
 ) -> Optional[JSONResponse]:
     """
     检查SSE并发限制的便捷函数。
@@ -254,7 +271,7 @@ async def check_sse_concurrency(
             status_code=429,
             code="SSE_CONCURRENCY_LIMIT_EXCEEDED",
             message=f"SSE concurrency limit exceeded: {reason}",
-            headers=headers
+            headers=headers,
         )
 
     return None

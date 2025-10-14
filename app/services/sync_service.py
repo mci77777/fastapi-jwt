@@ -1,4 +1,5 @@
 """数据同步服务（Phase 1: 仅提供接口，Supabase 同步在后续阶段实现）。"""
+
 from __future__ import annotations
 
 import logging
@@ -38,4 +39,3 @@ class SyncService:
     def last_sync_time(self) -> Optional[datetime]:
         """获取最后同步时间。"""
         return self._last_sync_time
-

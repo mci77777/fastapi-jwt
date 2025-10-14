@@ -71,9 +71,9 @@
               v-model:value="formData.candidates"
               :options="modelCandidateOptions"
               placeholder="选择候选模型"
-              multiple
               filterable
               tag
+              multiple
             />
           </n-form-item>
         </n-form>
@@ -220,7 +220,7 @@ async function handleSave() {
   }
 }
 
-async function handleDelete(row) {
+async function handleDelete() {
   // 注意：后端暂无删除 API，此处仅为占位
   message.warning('删除功能暂未实现')
 }
@@ -281,4 +281,3 @@ onMounted(() => {
   height: 100%;
 }
 </style>
-

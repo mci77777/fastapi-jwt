@@ -1,5 +1,6 @@
 """认证模块公共导出。"""
-from .dependencies import get_current_user, get_authenticated_user_optional
+
+from .dependencies import get_authenticated_user_optional, get_current_user
 from .jwt_verifier import AuthenticatedUser, JWTVerifier, get_jwt_verifier
 from .provider import AuthProvider, InMemoryProvider, ProviderError, UserDetails, get_auth_provider
 from .supabase_provider import SupabaseProvider, get_supabase_provider

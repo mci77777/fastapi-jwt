@@ -1,4 +1,5 @@
 """SQLite 连接与表结构管理。"""
+
 from __future__ import annotations
 
 import asyncio

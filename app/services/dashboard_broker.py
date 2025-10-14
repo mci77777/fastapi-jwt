@@ -1,4 +1,5 @@
 """Dashboard WebSocket 推送服务。"""
+
 from __future__ import annotations
 
 import logging
@@ -42,9 +43,7 @@ class DashboardBroker:
         """
         if user_id in self.connections:
             self.connections.pop(user_id)
-            logger.info(
-                "WebSocket connection removed: user_id=%s total_connections=%d", user_id, len(self.connections)
-            )
+            logger.info("WebSocket connection removed: user_id=%s total_connections=%d", user_id, len(self.connections))
 
     def get_active_connections_count(self) -> int:
         """获取当前活跃连接数。

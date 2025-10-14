@@ -1,4 +1,5 @@
 """AI 调用与会话事件管理。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,12 +13,7 @@ from uuid import uuid4
 import anyio
 import httpx
 
-from app.auth import (
-    AuthenticatedUser,
-    ProviderError,
-    UserDetails,
-    get_auth_provider,
-)
+from app.auth import AuthenticatedUser, ProviderError, UserDetails, get_auth_provider
 from app.auth.provider import AuthProvider
 from app.settings.config import get_settings
 

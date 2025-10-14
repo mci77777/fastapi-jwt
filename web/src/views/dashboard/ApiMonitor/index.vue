@@ -4,9 +4,7 @@
     <div class="control-panel">
       <div class="panel-left">
         <h2 class="page-title">API 端点健康监控</h2>
-        <NText depth="3" class="page-subtitle">
-          实时监控后端 API 端点的连通性和响应时间
-        </NText>
+        <NText depth="3" class="page-subtitle"> 实时监控后端 API 端点的连通性和响应时间 </NText>
       </div>
       <div class="panel-right">
         <NSpace :size="12">
@@ -22,12 +20,7 @@
             style="width: 150px"
             placeholder="轮询间隔"
           />
-          <NButton
-            v-if="!isPolling"
-            type="success"
-            :disabled="loading"
-            @click="startPolling"
-          >
+          <NButton v-if="!isPolling" type="success" :disabled="loading" @click="startPolling">
             <template #icon>
               <TheIcon icon="mdi:play" />
             </template>
@@ -83,7 +76,7 @@
 import { ref, computed, onMounted, onUnmounted, h } from 'vue'
 import { NDataTable, NButton, NSelect, NSpace, NText, NTag, useMessage } from 'naive-ui'
 import { getToken } from '@/utils'
-import { API_ENDPOINTS, getCheckableEndpoints, CATEGORY_LABELS, CATEGORY_COLORS } from '@/config/apiEndpoints'
+import { getCheckableEndpoints, CATEGORY_LABELS, CATEGORY_COLORS } from '@/config/apiEndpoints'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
 defineOptions({ name: 'ApiMonitor' })
@@ -222,7 +215,9 @@ const onlineCount = computed(() => endpoints.value.filter((e) => e.status === 'o
 const offlineCount = computed(() => endpoints.value.filter((e) => e.status === 'offline').length)
 const unknownCount = computed(() => endpoints.value.filter((e) => e.status === 'unknown').length)
 const avgLatency = computed(() => {
-  const validLatencies = endpoints.value.filter((e) => e.latency !== null && e.latency !== undefined)
+  const validLatencies = endpoints.value.filter(
+    (e) => e.latency !== null && e.latency !== undefined
+  )
   if (validLatencies.length === 0) return '-'
   const sum = validLatencies.reduce((acc, e) => acc + e.latency, 0)
   return (sum / validLatencies.length).toFixed(0)

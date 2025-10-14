@@ -25,9 +25,7 @@
                 <n-button type="primary" :loading="gettingToken" @click="handleGetToken">
                   获取 JWT Token
                 </n-button>
-                <n-button v-if="jwtToken" secondary @click="handleCopyToken">
-                  复制 Token
-                </n-button>
+                <n-button v-if="jwtToken" secondary @click="handleCopyToken"> 复制 Token </n-button>
               </n-space>
             </n-form-item>
           </n-form>
@@ -299,4 +297,3 @@ async function streamSSEEvents(msgId) {
   margin-bottom: 16px;
 }
 </style>
-

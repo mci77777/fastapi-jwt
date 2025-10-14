@@ -1,4 +1,5 @@
 """v1 版本路由集合。"""
+
 import logging
 
 from fastapi import APIRouter

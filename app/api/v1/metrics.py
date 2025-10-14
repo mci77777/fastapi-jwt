@@ -1,6 +1,7 @@
 """Prometheus指标导出端点。"""
+
 from fastapi import APIRouter, Response
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 router = APIRouter(tags=["metrics"])
 
@@ -9,9 +10,9 @@ router = APIRouter(tags=["metrics"])
 async def metrics():
     """
     Prometheus指标导出端点。
-    
+
     返回Prometheus格式的指标数据，供Grafana等监控系统抓取。
-    
+
     指标包括：
     - auth_requests_total: 认证请求总数（按状态和用户类型）
     - auth_request_duration_seconds: 认证请求持续时间
@@ -22,4 +23,3 @@ async def metrics():
     """
     metrics_data = generate_latest()
     return Response(content=metrics_data, media_type=CONTENT_TYPE_LATEST)
-

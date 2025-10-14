@@ -1,4 +1,5 @@
 """限流器实现 - 令牌桶算法与滑动窗口。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,14 +7,14 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Set, Tuple
+from typing import Dict, Optional, Tuple
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
 from starlette.types import ASGIApp
 
-from app.auth import AuthenticatedUser, get_authenticated_user_optional
+from app.auth import get_authenticated_user_optional
 from app.core.exceptions import create_error_response
 from app.core.middleware import get_current_trace_id
 from app.settings.config import get_settings
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TokenBucket:
     """令牌桶实现。"""
+
     capacity: int
     tokens: float
     last_refill: float
@@ -50,6 +52,7 @@ class TokenBucket:
 @dataclass
 class SlidingWindow:
     """滑动窗口计数器。"""
+
     window_size: int  # seconds
     max_requests: int
     requests: list = field(default_factory=list)
@@ -70,6 +73,7 @@ class SlidingWindow:
 @dataclass
 class CooldownTracker:
     """冷静期跟踪器。"""
+
     failure_count: int = 0
     last_failure: float = 0
     cooldown_until: float = 0
@@ -84,7 +88,9 @@ class CooldownTracker:
             self.cooldown_until = now + cooldown_seconds
             logger.warning(
                 "触发冷静期 failure_count=%d cooldown_until=%f trace_id=%s",
-                self.failure_count, self.cooldown_until, get_current_trace_id()
+                self.failure_count,
+                self.cooldown_until,
+                get_current_trace_id(),
             )
 
     def is_in_cooldown(self) -> bool:
@@ -119,6 +125,7 @@ class RateLimiter:
 
     def _start_cleanup_task(self):
         """启动定期清理任务。"""
+
         async def cleanup():
             while True:
                 await asyncio.sleep(300)  # 5分钟清理一次
@@ -132,26 +139,21 @@ class RateLimiter:
         cutoff = now - 3600  # 1小时前的条目
 
         # 清理用户桶
-        expired_users = [
-            user_id for user_id, bucket in self.user_qps_buckets.items()
-            if bucket.last_refill < cutoff
-        ]
+        expired_users = [user_id for user_id, bucket in self.user_qps_buckets.items() if bucket.last_refill < cutoff]
         for user_id in expired_users:
             self.user_qps_buckets.pop(user_id, None)
             self.user_daily_windows.pop(user_id, None)
 
         # 清理IP桶
-        expired_ips = [
-            ip for ip, bucket in self.ip_qps_buckets.items()
-            if bucket.last_refill < cutoff
-        ]
+        expired_ips = [ip for ip, bucket in self.ip_qps_buckets.items() if bucket.last_refill < cutoff]
         for ip in expired_ips:
             self.ip_qps_buckets.pop(ip, None)
             self.ip_daily_windows.pop(ip, None)
 
         # 清理冷静期跟踪器
         expired_cooldowns = [
-            ip for ip, tracker in self.cooldown_trackers.items()
+            ip
+            for ip, tracker in self.cooldown_trackers.items()
             if tracker.last_failure < cutoff and not tracker.is_in_cooldown()
         ]
         for ip in expired_cooldowns:
@@ -161,14 +163,10 @@ class RateLimiter:
         """获取用户QPS令牌桶。"""
         if user_id not in self.user_qps_buckets:
             qps_limit = (
-                self.settings.rate_limit_anonymous_qps if is_anonymous
-                else self.settings.rate_limit_per_user_qps
+                self.settings.rate_limit_anonymous_qps if is_anonymous else self.settings.rate_limit_per_user_qps
             )
             self.user_qps_buckets[user_id] = TokenBucket(
-                capacity=qps_limit,
-                tokens=qps_limit,
-                last_refill=time.time(),
-                refill_rate=qps_limit
+                capacity=qps_limit, tokens=qps_limit, last_refill=time.time(), refill_rate=qps_limit
             )
         return self.user_qps_buckets[user_id]
 
@@ -176,27 +174,17 @@ class RateLimiter:
         """获取用户日限制滑动窗口。"""
         if user_id not in self.user_daily_windows:
             daily_limit = (
-                self.settings.rate_limit_anonymous_daily if is_anonymous
-                else self.settings.rate_limit_per_user_daily
+                self.settings.rate_limit_anonymous_daily if is_anonymous else self.settings.rate_limit_per_user_daily
             )
-            self.user_daily_windows[user_id] = SlidingWindow(
-                window_size=86400,  # 24小时
-                max_requests=daily_limit
-            )
+            self.user_daily_windows[user_id] = SlidingWindow(window_size=86400, max_requests=daily_limit)  # 24小时
         return self.user_daily_windows[user_id]
 
     def _get_ip_qps_bucket(self, ip: str, is_anonymous: bool = False) -> TokenBucket:
         """获取IP QPS令牌桶。"""
         if ip not in self.ip_qps_buckets:
-            qps_limit = (
-                self.settings.rate_limit_anonymous_qps if is_anonymous
-                else self.settings.rate_limit_per_ip_qps
-            )
+            qps_limit = self.settings.rate_limit_anonymous_qps if is_anonymous else self.settings.rate_limit_per_ip_qps
             self.ip_qps_buckets[ip] = TokenBucket(
-                capacity=qps_limit,
-                tokens=qps_limit,
-                last_refill=time.time(),
-                refill_rate=qps_limit
+                capacity=qps_limit, tokens=qps_limit, last_refill=time.time(), refill_rate=qps_limit
             )
         return self.ip_qps_buckets[ip]
 
@@ -204,12 +192,13 @@ class RateLimiter:
         """获取IP日限制滑动窗口。"""
         if ip not in self.ip_daily_windows:
             self.ip_daily_windows[ip] = SlidingWindow(
-                window_size=86400,  # 24小时
-                max_requests=self.settings.rate_limit_per_ip_daily
+                window_size=86400, max_requests=self.settings.rate_limit_per_ip_daily  # 24小时
             )
         return self.ip_daily_windows[ip]
 
-    def check_rate_limit(self, user_id: Optional[str], client_ip: str, user_agent: str, user_type: str = "permanent") -> Tuple[bool, str, Optional[int]]:
+    def check_rate_limit(
+        self, user_id: Optional[str], client_ip: str, user_agent: str, user_type: str = "permanent"
+    ) -> Tuple[bool, str, Optional[int]]:
         """
         检查限流状态。
 
@@ -226,10 +215,7 @@ class RateLimiter:
         cooldown_tracker = self.cooldown_trackers[client_ip]
         if cooldown_tracker.is_in_cooldown():
             retry_after = int(cooldown_tracker.cooldown_until - time.time())
-            logger.warning(
-                "请求被冷静期阻止 ip=%s retry_after=%d trace_id=%s",
-                client_ip, retry_after, get_current_trace_id()
-            )
+            logger.warning("请求被冷静期阻止 ip=%s retry_after=%d trace_id=%s", client_ip, retry_after, get_current_trace_id())
             return False, "IP in cooldown period", retry_after
 
         # 检查异常UA和用户类型
@@ -241,16 +227,16 @@ class RateLimiter:
         if not ip_qps_bucket.consume():
             logger.warning(
                 "IP QPS限流触发 ip=%s is_anonymous=%s is_suspicious=%s trace_id=%s",
-                client_ip, is_anonymous, is_suspicious, get_current_trace_id()
+                client_ip,
+                is_anonymous,
+                is_suspicious,
+                get_current_trace_id(),
             )
             return False, "IP QPS limit exceeded", 60
 
         ip_daily_window = self._get_ip_daily_window(client_ip)
         if not ip_daily_window.add_request():
-            logger.warning(
-                "IP日限制触发 ip=%s trace_id=%s",
-                client_ip, get_current_trace_id()
-            )
+            logger.warning("IP日限制触发 ip=%s trace_id=%s", client_ip, get_current_trace_id())
             return False, "IP daily limit exceeded", 3600
 
         # 用户限流检查（如果已认证）
@@ -258,16 +244,14 @@ class RateLimiter:
             user_qps_bucket = self._get_user_qps_bucket(user_id, is_anonymous)
             if not user_qps_bucket.consume():
                 logger.warning(
-                    "用户QPS限流触发 user_id=%s user_type=%s trace_id=%s",
-                    user_id, user_type, get_current_trace_id()
+                    "用户QPS限流触发 user_id=%s user_type=%s trace_id=%s", user_id, user_type, get_current_trace_id()
                 )
                 return False, "User QPS limit exceeded", 60
 
             user_daily_window = self._get_user_daily_window(user_id, is_anonymous)
             if not user_daily_window.add_request():
                 logger.warning(
-                    "用户日限制触发 user_id=%s user_type=%s trace_id=%s",
-                    user_id, user_type, get_current_trace_id()
+                    "用户日限制触发 user_id=%s user_type=%s trace_id=%s", user_id, user_type, get_current_trace_id()
                 )
                 return False, "User daily limit exceeded", 3600
 
@@ -277,8 +261,7 @@ class RateLimiter:
         """记录失败请求，可能触发冷静期。"""
         cooldown_tracker = self.cooldown_trackers[client_ip]
         cooldown_tracker.record_failure(
-            self.settings.rate_limit_cooldown_seconds,
-            self.settings.rate_limit_failure_threshold
+            self.settings.rate_limit_cooldown_seconds, self.settings.rate_limit_failure_threshold
         )
 
     def record_success(self, client_ip: str) -> None:
@@ -293,8 +276,18 @@ class RateLimiter:
 
         user_agent_lower = user_agent.lower()
         suspicious_patterns = [
-            'bot', 'crawler', 'spider', 'scraper', 'curl', 'wget', 'python-requests',
-            'postman', 'insomnia', 'httpie', 'test', 'monitor'
+            "bot",
+            "crawler",
+            "spider",
+            "scraper",
+            "curl",
+            "wget",
+            "python-requests",
+            "postman",
+            "insomnia",
+            "httpie",
+            "test",
+            "monitor",
         ]
 
         return any(pattern in user_agent_lower for pattern in suspicious_patterns)
@@ -346,15 +339,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         user_type = user.user_type if user else "permanent"
 
         # 检查限流
-        allowed, reason, retry_after = self.rate_limiter.check_rate_limit(
-            user_id, client_ip, user_agent, user_type
-        )
+        allowed, reason, retry_after = self.rate_limiter.check_rate_limit(user_id, client_ip, user_agent, user_type)
 
         if not allowed:
             # 记录限流命中
             logger.info(
                 "限流命中 ip=%s user_id=%s user_type=%s reason=%s retry_after=%s trace_id=%s",
-                client_ip, user_id, user_type, reason, retry_after, get_current_trace_id()
+                client_ip,
+                user_id,
+                user_type,
+                reason,
+                retry_after,
+                get_current_trace_id(),
             )
 
             # 返回429错误
@@ -363,10 +359,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 headers["Retry-After"] = str(retry_after)
 
             return create_error_response(
-                status_code=429,
-                code="RATE_LIMIT_EXCEEDED",
-                message=f"Rate limit exceeded: {reason}",
-                headers=headers
+                status_code=429, code="RATE_LIMIT_EXCEEDED", message=f"Rate limit exceeded: {reason}", headers=headers
             )
 
         # 执行请求

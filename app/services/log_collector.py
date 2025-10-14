@@ -1,10 +1,11 @@
 """日志收集服务，收集后端 Python logger 输出。"""
+
 from __future__ import annotations
 
 import logging
 from collections import deque
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +60,7 @@ class LogCollector:
 
         logger.info("LogCollector initialized with max_size=%d", max_size)
 
-    def get_recent_logs(
-        self, level: str = "WARNING", limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    def get_recent_logs(self, level: str = "WARNING", limit: int = 100) -> List[Dict[str, Any]]:
         """获取最近的日志。
 
         Args:
@@ -89,4 +88,3 @@ class LogCollector:
         root_logger = logging.getLogger()
         root_logger.removeHandler(self.handler)
         logger.info("LogCollector shutdown")
-

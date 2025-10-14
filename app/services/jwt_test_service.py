@@ -145,7 +145,6 @@ class JWTTestService:
                     # 添加重试机制处理速率限制
                     max_retries = 3
                     base_delay = 1.0
-                    last_error = None
                     for attempt in range(max_retries):
                         try:
                             # 在请求间添加小延迟以避免速率限制
@@ -162,10 +161,8 @@ class JWTTestService:
                             if run_id in self._active_runs:
                                 self._active_runs[run_id].success_count = success_count
                                 self._active_runs[run_id].completed_count = success_count + failure_count
-                            last_error = None
                             break
                         except RuntimeError as exc:
-                            last_error = exc
                             error_msg = str(exc)
                             # 检查是否是速率限制错误
                             if "429" in error_msg and attempt < max_retries - 1:

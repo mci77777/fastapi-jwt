@@ -1,4 +1,5 @@
 """API 总路由注册入口。"""
+
 from fastapi import APIRouter
 
 from .v1 import v1_router

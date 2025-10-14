@@ -1,4 +1,5 @@
 """认证相关的 FastAPI 依赖声明。"""
+
 import logging
 from datetime import datetime
 from typing import Optional

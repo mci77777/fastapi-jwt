@@ -1,4 +1,5 @@
 """Dashboard 统计数据聚合服务。"""
+
 from __future__ import annotations
 
 import logging
