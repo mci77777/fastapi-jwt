@@ -85,3 +85,23 @@ migrate: ## 运行aerich migrate命令生成迁移文件
 .PHONY: upgrade
 upgrade: ## 运行aerich upgrade命令应用迁移
 	aerich upgrade
+
+# Security targets
+# ----------------
+
+.PHONY: remove-leaked-key
+remove-leaked-key: ## 🔒 从 Git 历史中删除泄露的密钥
+	@echo "⚠️  此操作将重写 Git 历史"
+	pwsh -ExecutionPolicy Bypass -File ./scripts/remove_leaked_key.ps1
+
+.PHONY: setup-git-hooks
+setup-git-hooks: ## 🪝 安装 pre-commit hooks 防止密钥泄露
+	pip install pre-commit detect-secrets
+	pre-commit install
+	detect-secrets scan > .secrets.baseline
+	@echo "✅ Git hooks 已安装"
+
+.PHONY: check-secrets
+check-secrets: ## 🔍 扫描代码中的敏感信息
+	@echo "🔍 扫描密钥泄露..."
+	detect-secrets scan --baseline .secrets.baseline

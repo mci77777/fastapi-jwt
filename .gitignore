@@ -1,25 +1,68 @@
+# ============ Python ============
 __pycache__/
-.idea/
+*.py[cod]
+*$py.class
+*.so
+.Python
 venv/
 .mypy_cache/
-.vscode
 .ruff_cache/
 .pytest_cache/
-migrations/
 
+# ============ IDE ============
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ============ 数据库 ============
 db.sqlite3
 db.sqlite3-journal
 db.sqlite3-shm
 db.sqlite3-wal
-./storage/ai_runtime/backups/*.json
+*.db
+migrations/
+
+# ============ 敏感配置文件 - 严格禁止提交 ============
+.env
+.env.*
+*.env
+!.env.example
+
+# API 密钥和凭证
+**/api_keys.json
+**/credentials.json
+**/secrets.json
+**/*_endpoints*.json
+**/*-latest.json
+**/supabase_endpoints*.json
+
+# Storage 目录下的所有 JSON 配置（可能包含密钥）
+storage/**/*.json
+storage/ai_runtime/**
+storage/ai_router/**
+
+# JWT 测试数据
+**/jwt_test_*.json
+
+# ============ 前端 ============
+node_modules/
 ./*node_modules
-node_modules/*
 web/node_modules/
 web/dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
+# ============ 系统文件 ============
 .DS_Store
 ._.DS_Store
+Thumbs.db
 
+# ============ 编辑器残留 ============
 .bmad
 .bmad-core
 .qoder
@@ -42,9 +85,13 @@ web/dist/
 .claude\commands
 .claude\commands\BMad
 
-.env
-
-# FRP 客户端文件
+# ============ FRP 客户端文件 ============
 frp/
 frpc.toml
 frpc.log
+frpc.pid
+
+# ============ 备份文件 ============
+*.bak
+*.backup
+*~

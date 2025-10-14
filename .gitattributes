@@ -1,1 +1,41 @@
+# ============ Linguist 语言检测 ============
 *.html linguist-language=python
+
+# ============ 敏感文件保护 ============
+# 标记敏感文件类型（防止意外提交）
+*.env filter=secret
+**/api_keys.json filter=secret
+**/credentials.json filter=secret
+**/*_endpoints*.json filter=secret
+**/*-latest.json filter=secret
+
+# ============ 二进制文件 ============
+*.sqlite3 binary
+*.db binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+
+# ============ 文本文件行尾规范化 ============
+*.py text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.vue text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.sh text eol=lf
+
+# Windows 脚本
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf

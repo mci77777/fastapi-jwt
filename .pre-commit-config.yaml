@@ -1,0 +1,82 @@
+# ============ Pre-commit Hooks Configuration ============
+# 安装: pip install pre-commit
+# 激活: pre-commit install
+# 运行: pre-commit run --all-files
+
+repos:
+  # 密钥检测 - Yelp detect-secrets
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+            \.git/|
+            \.venv/|
+            venv/|
+            node_modules/|
+            web/dist/|
+            web/node_modules/|
+            .*\.min\.js$|
+            .*\.lock$|
+            uv\.lock$|
+            package-lock\.json$
+          )
+
+  # 密钥泄露扫描 - Gitleaks
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.1
+    hooks:
+      - id: gitleaks
+
+  # 通用检查
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-json
+        exclude: |
+          (?x)^(
+            storage/.*\.json$|
+            .*-latest\.json$
+          )
+      - id: check-yaml
+      - id: check-toml
+      - id: end-of-file-fixer
+        exclude: |
+          (?x)^(
+            \.gitignore$|
+            \.env\.example$
+          )
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: detect-private-key
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Python 代码质量
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        language_version: python3.11
+        args: ['--line-length=120']
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ['--profile', 'black', '--line-length', '120']
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.9
+    hooks:
+      - id: ruff
+        args: ['--fix', '--exit-non-zero-on-fix']
+
+# 跳过某些 hooks（如需要）
+# SKIP=gitleaks pre-commit run --all-files
