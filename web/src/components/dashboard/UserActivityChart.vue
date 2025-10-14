@@ -247,6 +247,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* ========== Claude 风格用户活跃度图表 ========== */
 .user-activity-chart {
   height: 100%;
   display: flex;
@@ -256,13 +257,18 @@ onBeforeUnmount(() => {
 .user-activity-chart :deep(.n-card__content) {
   flex: 1;
   overflow: hidden;
-  padding: 12px;
+  padding: var(--spacing-md);
+  /* Claude 卡片背景 */
+  background: var(--claude-card-bg);
 }
 
 .chart-container {
   width: 100%;
   height: 100%;
   min-height: 300px;
+  border-radius: var(--radius-md);
+  /* 淡淡的边框 */
+  border: 1px solid var(--claude-border);
 }
 
 .chart-loading {

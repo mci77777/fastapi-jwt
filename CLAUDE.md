@@ -8,6 +8,17 @@ D:\GymBro\vue-fastapi-admin\docs\dashboard-refactor\CODE_REVIEW_AND_GAP_ANALYSIS
 D:\GymBro\vue-fastapi-admin\docs\dashboard-refactor\IMPLEMENTATION_PLAN.md
 D:\GymBro\vue-fastapi-admin\docs\dashboard-refactor\IMPLEMENTATION_SPEC.md
 ```
+后端已上线
+https://web.gymbro.cloud/
+https://web.gymbro.cloud/dashboard
+
+https://api.gymbro.cloud/
+https://api.gymbro.cloud/docs
+
+服务器启动前后端
+start-dev.ps1
+不要改动端口
+不要尝试一直启动.
 
 ## 🏗️ 架构总览
 

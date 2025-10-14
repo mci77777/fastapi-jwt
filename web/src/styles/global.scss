@@ -1,3 +1,6 @@
+/* 导入 Claude Design Tokens */
+@import './design-tokens.scss';
+
 html,
 body {
   width: 100%;
@@ -11,6 +14,9 @@ html {
 
 body {
   font-size: 16px;
+  font-family: var(--font-sans); /* 应用 Claude Sans-serif 字体 */
+  background: var(--claude-bg-warm); /* 应用 Claude 暖白背景 */
+  color: var(--claude-text-dark); /* 应用 Claude 深棕文本 */
 }
 
 #app {

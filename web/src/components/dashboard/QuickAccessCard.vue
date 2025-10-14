@@ -57,29 +57,31 @@ function handleClick() {
 </script>
 
 <style scoped>
-/* ========== 黑白风格快速访问卡片 ========== */
+/* ========== Claude 风格快速访问卡片 ========== */
 .quick-access-card {
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--duration-slow) var(--ease-smooth);
   height: 100%;
-  background: #ffffff;
-  border: 1px solid #e0e0e0;
-  border-radius: 16px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  /* Claude 暖白卡片背景 */
+  background: var(--claude-card-bg);
+  border: 1px solid var(--claude-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
 }
 
 .quick-access-card:hover {
+  /* 悬停效果：位移 + 缩放 + 阴影加深 + 边框变色 */
   transform: translateY(-4px) scale(1.02);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
-  border-color: #000000;
+  box-shadow: var(--shadow-hover);
+  border-color: var(--claude-terra-cotta);
 }
 
 .card-content {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
-  padding: 4px;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm);
 }
 
 .icon-wrapper {
@@ -90,14 +92,16 @@ function handleClick() {
   justify-content: center;
   width: 48px;
   height: 48px;
-  background: #f5f5f5;
-  border-radius: 12px;
-  transition: all 0.3s ease;
+  /* Claude 暖白背景 */
+  background: var(--claude-bg-warm);
+  border-radius: var(--radius-md);
+  transition: all var(--duration-slow) ease;
 }
 
 .quick-access-card:hover .icon-wrapper {
-  background: #e0e0e0;
-  transform: scale(1.05);
+  /* 悬停时背景变为淡橙色 */
+  background: var(--claude-hover-bg);
+  transform: scale(1.1);
 }
 
 .badge {
@@ -114,23 +118,41 @@ function handleClick() {
 
 .title {
   margin: 0 0 6px 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 15px;
-  font-weight: 600;
-  color: #000000;
+  /* Sans-serif 字体 + 黑色强调 */
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--claude-black); /* 使用纯黑色提高对比度 */
   line-height: 1.4;
 }
 
 .description {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
-  color: #666666;
+  /* Sans-serif 字体 + 灰色辅助文本 */
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  color: var(--claude-text-gray);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .icon-wrapper {
+    width: 40px;
+    height: 40px;
+  }
+
+  .title {
+    font-size: var(--font-size-base);
+  }
+
+  .description {
+    font-size: var(--font-size-xs);
+  }
 }
 </style>

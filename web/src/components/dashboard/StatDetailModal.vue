@@ -156,15 +156,16 @@ watch(visible, (newValue) => {
 </script>
 
 <style scoped>
+/* ========== Claude 风格统计详情弹窗 ========== */
 .stat-detail-content {
-  padding: 8px 0;
+  padding: var(--spacing-sm) 0;
 }
 
 .stat-value-section {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 16px 0;
+  gap: var(--spacing-2xl);
+  padding: var(--spacing-lg) 0;
 }
 
 .stat-value-info {
@@ -172,63 +173,75 @@ watch(visible, (newValue) => {
 }
 
 .stat-value-large {
+  /* Serif 字体 + 负字母间距 */
+  font-family: var(--font-serif);
   font-size: 36px;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   line-height: 1.2;
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-sm);
+  color: var(--claude-terra-cotta);
+  letter-spacing: var(--letter-spacing-tight);
 }
 
 .stat-trend-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
 }
 
 .trend-badge {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: 600;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
 }
 
 .trend-up {
   background-color: rgba(24, 160, 88, 0.1);
-  color: #18a058;
+  color: var(--claude-success);
 }
 
 .trend-down {
-  background-color: rgba(208, 48, 80, 0.1);
-  color: #d03050;
+  background-color: rgba(220, 38, 38, 0.1);
+  color: var(--claude-error);
 }
 
 .trend-label {
-  font-size: 13px;
-  color: #999;
+  font-size: var(--font-size-sm);
+  color: var(--claude-text-gray);
 }
 
 .stat-details {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--spacing-md);
 }
 
 .detail-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--claude-border);
+}
+
+.detail-item:last-child {
+  border-bottom: none;
 }
 
 .detail-label {
-  font-size: 14px;
-  color: #666;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  color: var(--claude-text-gray);
+  font-weight: var(--font-weight-medium);
 }
 
 .detail-value {
-  font-size: 14px;
-  color: #333;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  color: var(--claude-text-dark);
+  font-weight: var(--font-weight-semibold);
 }
 
 .modal-footer {
@@ -236,18 +249,8 @@ watch(visible, (newValue) => {
   justify-content: flex-end;
 }
 
-/* 暗色模式适配 */
+/* Modal 背景色 */
 :deep(.n-card.n-modal) {
-  background-color: var(--n-color);
-}
-
-@media (prefers-color-scheme: dark) {
-  .detail-label {
-    color: #aaa;
-  }
-
-  .detail-value {
-    color: #ddd;
-  }
+  background-color: var(--claude-card-bg);
 }
 </style>

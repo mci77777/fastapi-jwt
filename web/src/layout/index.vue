@@ -22,7 +22,7 @@
       <section v-if="tags.visible" hidden border-b bc-eee sm:block dark:border-0>
         <AppTags :style="{ height: `${tags.height}px` }" />
       </section>
-      <section flex-1 overflow-hidden bg-hex-f5f6fb dark:bg-hex-101014>
+      <section flex-1 overflow-auto bg-hex-f5f6fb dark:bg-hex-101014 class="app-main-container">
         <AppMain />
       </section>
     </article>
@@ -72,3 +72,30 @@ watchEffect(() => {
   }
 })
 </script>
+
+<style scoped>
+/* ========== Claude 风格滚动条 ========== */
+.app-main-container {
+  scrollbar-width: thin;
+  scrollbar-color: var(--claude-terra-cotta) var(--claude-bg-warm);
+}
+
+.app-main-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.app-main-container::-webkit-scrollbar-track {
+  background: var(--claude-bg-warm);
+  border-radius: 4px;
+}
+
+.app-main-container::-webkit-scrollbar-thumb {
+  background: var(--claude-terra-cotta);
+  border-radius: 4px;
+  transition: background var(--duration-fast);
+}
+
+.app-main-container::-webkit-scrollbar-thumb:hover {
+  background: var(--claude-button-orange);
+}
+</style>

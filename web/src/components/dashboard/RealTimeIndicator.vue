@@ -55,6 +55,7 @@ const statusClass = computed(() => {
 </script>
 
 <style scoped>
+/* ========== Claude 风格实时状态指示器 ========== */
 .real-time-indicator {
   display: inline-flex;
   align-items: center;
@@ -65,32 +66,33 @@ const statusClass = computed(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  margin-right: 4px;
+  margin-right: var(--spacing-xs);
 }
 
 .status-connected {
-  background-color: #18a058;
+  background-color: var(--claude-success);
   animation: pulse 2s infinite;
 }
 
 .status-disconnected {
-  background-color: #d0d0d0;
+  background-color: var(--claude-text-gray);
 }
 
 .status-connecting {
-  background-color: #2080f0;
+  background-color: var(--claude-info);
   animation: blink 1s infinite;
 }
 
 .status-error {
-  background-color: #d03050;
+  background-color: var(--claude-error);
 }
 
 .status-polling {
-  background-color: #f0a020;
+  background-color: var(--claude-warning);
   animation: pulse 2s infinite;
 }
 
+/* 使用 Design Tokens 中定义的 pulse 动画 */
 @keyframes pulse {
   0%,
   100% {

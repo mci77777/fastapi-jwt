@@ -113,26 +113,27 @@ function handleStatClick(stat) {
 </script>
 
 <style scoped>
-/* ========== 黑白风格统计横幅 ========== */
+/* ========== Claude 风格统计横幅 ========== */
 .stats-banner {
   width: 100%;
 }
 
 .stat-card {
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 16px;
+  transition: all var(--duration-slow) var(--ease-smooth);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  background: #ffffff;
-  color: #000000;
-  border: 1px solid #e0e0e0;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  /* Claude 渐变背景：Terra Cotta → Button Orange */
+  background: var(--gradient-terra-cotta);
+  color: white;
+  border: none;
+  box-shadow: var(--shadow-soft);
 }
 
 .stat-card:hover {
+  /* 更大的悬停位移 + 缩放 + 浮空阴影 */
   transform: translateY(-6px) scale(1.02);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
-  border-color: #000000;
+  box-shadow: var(--shadow-float);
 }
 
 .stat-card:active {
@@ -144,8 +145,8 @@ function handleStatClick(stat) {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 24px 20px;
-  gap: 12px;
+  padding: var(--spacing-2xl) var(--spacing-xl);
+  gap: var(--spacing-md);
 }
 
 .stat-icon-wrapper {
@@ -154,15 +155,16 @@ function handleStatClick(stat) {
   justify-content: center;
   width: 48px;
   height: 48px;
-  border-radius: 12px;
-  background: #f5f5f5;
+  border-radius: var(--radius-md);
+  /* 半透明白色背景 */
+  background: rgba(255, 255, 255, 0.2);
   flex-shrink: 0;
-  transition: all 0.3s ease;
+  transition: all var(--duration-slow) ease;
 }
 
 .stat-card:hover .stat-icon-wrapper {
   transform: scale(1.1);
-  background: #e0e0e0;
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .stat-info {
@@ -172,13 +174,14 @@ function handleStatClick(stat) {
 }
 
 .stat-label {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 12px;
-  color: #666666;
+  /* Sans-serif 字体 + 大写 + 字母间距 */
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--spacing-md);
+  color: white;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--letter-spacing-wide);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -188,35 +191,36 @@ function handleStatClick(stat) {
   display: flex;
   align-items: baseline;
   justify-content: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
 }
 
 .stat-value {
-  font-family: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
-  font-size: 32px;
-  font-weight: 600;
+  /* Serif 字体 + 负字母间距 */
+  font-family: var(--font-serif);
+  font-size: var(--font-size-4xl);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.2;
-  letter-spacing: -0.02em;
-  color: #000000;
+  letter-spacing: var(--letter-spacing-tight);
+  color: white;
 }
 
 .stat-trend {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   padding: 4px 8px;
-  border-radius: 12px;
-  background: #f5f5f5;
-  color: #666666;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
 .trend-up {
-  background: #e8f5e9;
-  color: #00aa00;
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
 }
 
 .trend-down {
-  background: #ffebee;
-  color: #cc0000;
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
 }
 
 /* 响应式布局 */
@@ -237,7 +241,7 @@ function handleStatClick(stat) {
   }
 
   .stat-value {
-    font-size: 24px;
+    font-size: var(--font-size-2xl);
   }
 }
 
@@ -252,22 +256,12 @@ function handleStatClick(stat) {
   }
 
   .stat-label {
-    font-size: 13px;
+    font-size: var(--font-size-sm);
   }
 
   .stat-value {
-    font-size: 22px;
+    font-size: var(--font-size-xl);
   }
 }
 
-/* 暗色模式适配 */
-@media (prefers-color-scheme: dark) {
-  .stat-label {
-    color: #aaa;
-  }
-
-  .stat-value {
-    color: #ddd;
-  }
-}
 </style>

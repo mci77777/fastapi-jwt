@@ -187,6 +187,7 @@ function handleRefresh() {
 </script>
 
 <style scoped>
+/* ========== Claude 风格日志窗口 ========== */
 .log-window {
   height: 100%;
   display: flex;
@@ -202,7 +203,29 @@ function handleRefresh() {
 .log-content {
   height: 100%;
   overflow-y: auto;
-  padding: 12px;
+  padding: var(--spacing-md);
+  /* 应用 Claude 自定义滚动条 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--claude-terra-cotta) var(--claude-bg-warm);
+}
+
+.log-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.log-content::-webkit-scrollbar-track {
+  background: var(--claude-bg-warm);
+  border-radius: 4px;
+}
+
+.log-content::-webkit-scrollbar-thumb {
+  background: var(--claude-terra-cotta);
+  border-radius: 4px;
+  transition: background var(--duration-fast);
+}
+
+.log-content::-webkit-scrollbar-thumb:hover {
+  background: var(--claude-button-orange);
 }
 
 .log-loading {
@@ -215,78 +238,70 @@ function handleRefresh() {
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: #999;
-  font-size: 14px;
+  color: var(--claude-text-gray);
+  font-size: var(--font-size-base);
 }
 
 .log-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--spacing-sm);
 }
 
 .log-item {
-  padding: 12px;
-  background-color: #f5f5f5;
-  border-radius: 4px;
+  padding: var(--spacing-md);
+  /* Claude 暖白背景 */
+  background-color: var(--claude-bg-warm);
+  border: 1px solid var(--claude-border);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--duration-normal) var(--ease-smooth);
 }
 
 .log-item:hover {
-  background-color: #e8e8e8;
-  transform: translateX(2px);
+  /* 悬停时背景变为淡橙色 + 横向滑入 */
+  background-color: var(--claude-hover-bg);
+  border-color: var(--claude-terra-cotta);
+  transform: translateX(4px);
 }
 
 .log-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-sm);
 }
 
 .log-time {
-  font-size: 12px;
-  color: #999;
+  font-size: var(--font-size-xs);
+  color: var(--claude-text-gray);
 }
 
 .log-message {
-  font-size: 13px;
-  color: #333;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  color: var(--claude-black); /* 使用纯黑色提高可读性 */
   line-height: 1.5;
   word-break: break-word;
+  font-weight: var(--font-weight-medium);
 }
 
 .log-user {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #666;
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--claude-text-gray);
 }
 
 .log-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  border-top: 1px solid #e8e8e8;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-top: 1px solid var(--claude-border);
 }
 
 .log-count {
-  font-size: 12px;
-  color: #999;
-}
-
-/* 滚动条样式 */
-.log-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.log-content::-webkit-scrollbar-thumb {
-  background-color: #d0d0d0;
-  border-radius: 3px;
-}
-
-.log-content::-webkit-scrollbar-thumb:hover {
-  background-color: #b0b0b0;
+  font-size: var(--font-size-xs);
+  color: var(--claude-text-gray);
 }
 </style>

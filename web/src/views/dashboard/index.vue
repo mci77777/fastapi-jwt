@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { useMessage } from 'naive-ui'
+import { useMessage, NButton } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store'
 import { getToken } from '@/utils'
+import draggable from 'vuedraggable'
 
 // Dashboard 组件
 import StatsBanner from '@/components/dashboard/StatsBanner.vue'
@@ -18,6 +19,7 @@ import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
 import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
 import QuickAccessCard from '@/components/dashboard/QuickAccessCard.vue'
 import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
+import HeroIcon from '@/components/common/HeroIcon.vue'
 
 // Dashboard API
 import {
@@ -99,8 +101,8 @@ const logs = ref([])
 const chartTimeRange = ref('24h')
 const chartData = ref([])
 
-// 快速访问卡片配置
-const quickAccessCards = [
+// 默认快速访问卡片配置
+const defaultQuickAccessCards = [
   // 核心 AI 管理卡片（4 个强关联）
   {
     icon: 'wrench-screwdriver',
@@ -131,6 +133,15 @@ const quickAccessCards = [
     iconColor: '#2080f0',
   },
 
+  // 内容管理
+  {
+    icon: 'folder',
+    title: '目录管理',
+    description: '管理内容分类和标签',
+    path: '/catalog',
+    iconColor: '#da7756', // Claude Terra Cotta 主色
+  },
+
   // 测试工具
   {
     icon: 'key',
@@ -140,6 +151,49 @@ const quickAccessCards = [
     iconColor: '#f0a020',
   },
 ]
+
+// 从 localStorage 加载保存的卡片顺序
+const loadSavedCardOrder = () => {
+  try {
+    const saved = localStorage.getItem('dashboard_card_order')
+    if (saved) {
+      const savedOrder = JSON.parse(saved)
+      // 验证保存的数据是否有效
+      if (Array.isArray(savedOrder) && savedOrder.length === defaultQuickAccessCards.length) {
+        return savedOrder
+      }
+    }
+  } catch (error) {
+    console.error('加载卡片顺序失败:', error)
+  }
+  return defaultQuickAccessCards
+}
+
+// 快速访问卡片配置（响应式）
+const quickAccessCards = ref(loadSavedCardOrder())
+
+// 保存卡片顺序到 localStorage
+const saveCardOrder = () => {
+  try {
+    localStorage.setItem('dashboard_card_order', JSON.stringify(quickAccessCards.value))
+    message.success('布局已保存')
+  } catch (error) {
+    console.error('保存卡片顺序失败:', error)
+    message.error('保存布局失败')
+  }
+}
+
+// 重置卡片顺序
+const resetCardOrder = () => {
+  quickAccessCards.value = [...defaultQuickAccessCards]
+  localStorage.removeItem('dashboard_card_order')
+  message.success('布局已重置')
+}
+
+// 拖拽结束事件
+const onDragEnd = () => {
+  saveCardOrder()
+}
 
 // Dashboard 配置
 const dashboardConfig = ref({
@@ -459,19 +513,39 @@ onBeforeUnmount(() => {
     <!-- 统计横幅（包含实时指示器和操作按钮） -->
     <StatsBanner :stats="stats" :loading="statsLoading" @stat-click="handleStatClick" />
 
-    <!-- 快速访问卡片组 -->
-    <div class="quick-access-section">
-      <QuickAccessCard
-        v-for="card in quickAccessCards"
-        :key="card.path"
-        :icon="card.icon"
-        :title="card.title"
-        :description="card.description"
-        :path="card.path"
-        :icon-color="card.iconColor"
-        @click="handleQuickAccessClick"
-      />
+    <!-- 快速访问卡片组（支持拖拽重排） -->
+    <div class="quick-access-header">
+      <h2 class="section-title">快速访问</h2>
+      <NButton text @click="resetCardOrder">
+        <template #icon>
+          <HeroIcon name="arrow-path" :size="18" color="var(--claude-terra-cotta)" />
+        </template>
+        重置布局
+      </NButton>
     </div>
+    <draggable
+      v-model="quickAccessCards"
+      class="quick-access-section"
+      item-key="path"
+      :animation="300"
+      :delay="100"
+      :delay-on-touch-only="true"
+      ghost-class="ghost-card"
+      chosen-class="chosen-card"
+      drag-class="drag-card"
+      @end="onDragEnd"
+    >
+      <template #item="{ element }">
+        <QuickAccessCard
+          :icon="element.icon"
+          :title="element.title"
+          :description="element.description"
+          :path="element.path"
+          :icon-color="element.iconColor"
+          @click="handleQuickAccessClick"
+        />
+      </template>
+    </draggable>
 
     <!-- 控制面板：模型切换器 + Prompt 选择器 + Supabase 状态 + 服务器负载 -->
     <div class="dashboard-controls">
@@ -529,73 +603,76 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* ========== 黑白设计系统 ========== */
-:root {
-  /* 主色调 */
-  --bw-black: #000000;
-  --bw-dark-gray: #1a1a1a;
-  --bw-medium-gray: #333333;
-
-  /* 背景色 */
-  --bw-white: #ffffff;
-  --bw-light-gray: #f5f5f5;
-  --bw-ultra-light: #fafafa;
-
-  /* 文本色 */
-  --bw-text-primary: #000000;
-  --bw-text-secondary: #666666;
-  --bw-text-tertiary: #999999;
-
-  /* 边框色 */
-  --bw-border-light: #e0e0e0;
-  --bw-border-medium: #d0d0d0;
-
-  /* 强调色（状态指示） */
-  --bw-accent-blue: #0066cc;
-  --bw-accent-green: #00aa00;
-  --bw-accent-red: #cc0000;
-
-  /* 圆角系统 */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
-
-  /* 阴影系统（黑色半透明） */
-  --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.08);
-  --shadow-hover: 0 4px 20px rgba(0, 0, 0, 0.12);
-  --shadow-float: 0 8px 32px rgba(0, 0, 0, 0.16);
-}
+/* ========== Claude 设计系统（Design Tokens 已在全局导入） ========== */
 
 .dashboard-container {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 24px;
+  gap: var(--spacing-lg); /* 从 24px 减少到 16px */
+  padding: var(--spacing-xl); /* 从 24px 减少到 20px */
   min-height: auto;
-  background: var(--bw-light-gray);
+  /* Claude 暖白背景 */
+  background: var(--claude-bg-warm);
 }
 
-/* ========== 快速访问卡片组（网格布局） ========== */
+/* ========== 快速访问区域标题 ========== */
+.quick-access-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.section-title {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--claude-black);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+/* ========== 快速访问卡片组（网格布局 + 拖拽支持） ========== */
 .quick-access-section {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
+  gap: var(--spacing-lg); /* 保持 16px */
+}
+
+/* ========== 拖拽状态样式 ========== */
+.ghost-card {
+  opacity: 0.4;
+  background: var(--claude-hover-bg);
+  border: 2px dashed var(--claude-terra-cotta);
+  transform: rotate(2deg);
+}
+
+.chosen-card {
+  cursor: move;
+  box-shadow: var(--shadow-float);
+  transform: scale(1.05);
+  transition: all var(--duration-normal) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drag-card {
+  opacity: 0.8;
+  transform: rotate(-2deg);
+  cursor: grabbing;
 }
 
 /* ========== 控制面板区域（2 列网格） ========== */
 .dashboard-controls {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-  margin: 16px 0;
+  gap: var(--spacing-lg); /* 从 20px 减少到 16px */
+  margin: var(--spacing-md) 0; /* 从 16px 减少到 12px */
 }
 
 /* ========== 主内容区域（60% + 40% 网格） ========== */
 .dashboard-main {
   display: grid;
   grid-template-columns: 60% 40%;
-  gap: 24px;
+  gap: var(--spacing-lg); /* 从 24px 减少到 16px */
   min-height: 600px;
 }
 
