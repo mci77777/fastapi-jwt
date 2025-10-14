@@ -33,18 +33,28 @@ async def get_current_user(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ) -> AuthenticatedUser:
     """解析并验证当前请求的 Bearer Token。"""
+    from app.core.metrics import auth_requests_total
 
     token = _extract_bearer_token(authorization)
     verifier = get_jwt_verifier()
-    user = verifier.verify_token(token)
-    request.state.user = user
-    request.state.token = token
-    request.state.user_type = user.user_type  # 设置用户类型到请求上下文
 
-    # 记录用户活跃度（Phase 1）
-    await _record_user_activity(request, user)
+    try:
+        user = verifier.verify_token(token)
+        request.state.user = user
+        request.state.token = token
+        request.state.user_type = user.user_type  # 设置用户类型到请求上下文
 
-    return user
+        # 记录用户活跃度（Phase 1）
+        await _record_user_activity(request, user)
+
+        # 记录 JWT 验证成功（Phase 1）
+        auth_requests_total.labels(status="success", user_type=user.user_type).inc()
+
+        return user
+    except HTTPException:
+        # 记录 JWT 验证失败（Phase 1）
+        auth_requests_total.labels(status="failure", user_type="unknown").inc()
+        raise
 
 
 async def _record_user_activity(request: Request, user: AuthenticatedUser) -> None:
