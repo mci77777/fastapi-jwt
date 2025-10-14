@@ -129,16 +129,23 @@ class MetricsCollector:
             success = 0
 
             # 使用 collect() 方法获取指标数据（正确的 Prometheus API）
-            for metric in auth_requests_total.collect():
+            metrics_list = list(auth_requests_total.collect())
+            logger.warning(f"[DEBUG] auth_requests_total.collect() returned {len(metrics_list)} metrics")
+
+            for metric in metrics_list:
+                logger.warning(f"[DEBUG] Metric: name={metric.name}, type={metric.type}, samples={len(metric.samples)}")
                 for sample in metric.samples:
-                    # sample.name: 指标名称
+                    logger.warning(f"[DEBUG] Sample: name={sample.name}, labels={sample.labels}, value={sample.value}")
+                    # sample.name: 指标名称（Counter 会自动添加 _total 后缀）
                     # sample.labels: 标签字典 {"status": "success", "user_type": "permanent"}
                     # sample.value: 指标值
-                    if sample.name == "auth_requests_total":
-                        total += sample.value
-                        if sample.labels.get("status") == "success":
-                            success += sample.value
+                    # 注意：Prometheus Counter 的 sample.name 会自动添加 _total 后缀
+                    # 例如：auth_requests_total{status="success",user_type="permanent"}
+                    total += sample.value
+                    if sample.labels.get("status") == "success":
+                        success += sample.value
 
+            logger.warning(f"[DEBUG] JWT availability: total={total}, success={success}")
             success_rate = (success / total * 100) if total > 0 else 0
 
             return {

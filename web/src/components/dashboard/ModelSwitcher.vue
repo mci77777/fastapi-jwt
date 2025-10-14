@@ -26,7 +26,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { NCard, NSelect, NSpace, NText, NTag, useMessage } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
@@ -43,12 +43,12 @@ defineProps({
 const emit = defineEmits(['change'])
 
 const store = useAiModelSuiteStore()
-const { models, modelsLoading } = storeToRefs(store)
+const { models, modelsLoading, mappings, mappingsLoading } = storeToRefs(store)
 const message = useMessage()
 
 const selectedModelId = ref(null)
 const actionLoading = ref(false)
-const loading = computed(() => modelsLoading.value || actionLoading.value)
+const loading = computed(() => modelsLoading.value || actionLoading.value || mappingsLoading.value)
 
 // 状态映射
 const statusType = {
@@ -65,8 +65,45 @@ const statusLabel = {
   unknown: '未知',
 }
 
-// 模型选项（从 store 计算）
+// 标准模型名称映射（从 Model Mapping 数据生成）
+const standardModelMap = computed(() => {
+  const map = new Map()
+
+  // 从 mappings 中提取标准模型名称
+  mappings.value.forEach((mapping) => {
+    if (mapping.default_model && mapping.candidates && mapping.candidates.length > 0) {
+      // 使用 mapping.name 作为标准模型名称
+      const standardName = mapping.name || mapping.default_model
+      const apiModel = mapping.default_model
+
+      // 查找对应的 model 对象
+      const modelObj = models.value.find((m) => m.model === apiModel || m.name === apiModel)
+      if (modelObj) {
+        map.set(standardName, {
+          standardName,
+          apiModel,
+          modelId: modelObj.id,
+          modelObj,
+        })
+      }
+    }
+  })
+
+  return map
+})
+
+// 模型选项（优先使用标准模型名称）
 const modelOptions = computed(() => {
+  // 如果有 Model Mapping 数据，使用标准名称
+  if (standardModelMap.value.size > 0) {
+    return Array.from(standardModelMap.value.values()).map((item) => ({
+      label: `${item.standardName} (${item.apiModel})`,
+      value: item.modelId,
+      disabled: !item.modelObj.is_active,
+    }))
+  }
+
+  // 否则回退到原始模型列表
   return models.value.map((model) => ({
     label: `${model.model || model.name} (${model.provider || 'Unknown'})`,
     value: model.id,
@@ -78,6 +115,24 @@ const modelOptions = computed(() => {
 const currentModel = computed(() => {
   return models.value.find((m) => m.id === selectedModelId.value)
 })
+
+// 监听 mappings 变化，自动刷新选项
+watch(
+  () => mappings.value,
+  () => {
+    // 如果当前选中的模型不在新的选项中，重置为默认模型
+    if (selectedModelId.value) {
+      const exists = modelOptions.value.some((opt) => opt.value === selectedModelId.value)
+      if (!exists) {
+        const defaultModel = models.value.find((m) => m.is_default)
+        if (defaultModel) {
+          selectedModelId.value = defaultModel.id
+        }
+      }
+    }
+  },
+  { deep: true }
+)
 
 /**
  * 处理模型切换
@@ -113,13 +168,13 @@ async function handleModelChange(modelId) {
 }
 
 /**
- * 初始化：加载模型列表并设置默认选中
+ * 初始化：加载模型列表、映射数据并设置默认选中
  */
 async function initializeModels() {
   actionLoading.value = true
   try {
-    // 加载模型列表
-    await store.loadModels()
+    // 并行加载模型列表和映射数据
+    await Promise.all([store.loadModels(), store.loadMappings()])
 
     // 设置默认选中的模型
     const defaultModel = models.value.find((m) => m.is_default)

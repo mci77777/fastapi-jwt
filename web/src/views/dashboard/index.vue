@@ -17,6 +17,7 @@ import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
 import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
 import QuickAccessCard from '@/components/dashboard/QuickAccessCard.vue'
 import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
+import ModelMappingCard from '@/components/dashboard/ModelMappingCard.vue'
 import HeroIcon from '@/components/common/HeroIcon.vue'
 
 // Dashboard API
@@ -478,6 +479,14 @@ function handleQuickAccessClick(path) {
   console.log('[Dashboard] 快速访问卡片点击，路径:', path)
 }
 
+/**
+ * 处理模型映射变化
+ */
+function handleMappingChange(mappings) {
+  console.log('[Dashboard] 模型映射已更新，共', mappings.length, '条映射')
+  // 映射变化后，ModelSwitcher 会自动刷新选项（通过 watch）
+}
+
 // 生命周期钩子
 onMounted(() => {
   nextTick(() => {
@@ -557,6 +566,11 @@ onBeforeUnmount(() => {
         :refresh-interval="60"
         @metrics-update="handleMetricsUpdate"
       />
+    </div>
+
+    <!-- 模型映射管理卡片 -->
+    <div class="dashboard-mapping">
+      <ModelMappingCard @mapping-change="handleMappingChange" />
     </div>
 
     <!-- 主内容区域：Grid 两列布局 -->
@@ -662,6 +676,11 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(2, 1fr);
   gap: var(--spacing-lg); /* 从 20px 减少到 16px */
   margin: var(--spacing-md) 0; /* 从 16px 减少到 12px */
+}
+
+/* ========== 模型映射管理区域 ========== */
+.dashboard-mapping {
+  margin: var(--spacing-md) 0;
 }
 
 /* ========== 主内容区域（60% + 40% 网格） ========== */
