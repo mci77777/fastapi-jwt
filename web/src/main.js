@@ -8,13 +8,16 @@ import { setupRouter } from '@/router'
 import { setupStore } from '@/store'
 import App from './App.vue'
 import { setupDirectives } from './directives'
-import { useResize } from '@/utils'
+import { useResize, initializeAuth } from '@/utils'
 import i18n from '~/i18n'
 
 async function setupApp() {
   const app = createApp(App)
 
   setupStore(app)
+
+  // 初始化认证状态（恢复登录信息）
+  await initializeAuth()
 
   await setupRouter(app)
   setupDirectives(app)

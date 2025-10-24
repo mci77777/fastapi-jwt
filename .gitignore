@@ -57,6 +57,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# 敏感日志文件（包含 JWT/token）
+docs/log.txt
+ws_debug.log
+*_debug.log
+debug_*.log
+
 # ============ 系统文件 ============
 .DS_Store
 ._.DS_Store

@@ -91,6 +91,7 @@ class JWTTestService:
         return response
 
     async def run_load_test(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """启动 JWT 压测（异步后台执行，立即返回 run_id）"""
         run_id = uuid4().hex
         batch_size = int(payload.get("batch_size", 1))
         concurrency = max(1, min(int(payload.get("concurrency", 1)), batch_size))
@@ -98,11 +99,6 @@ class JWTTestService:
         username = payload.get("username") or "load-test"
         token = self._generate_token(username)
         started_at = _utc_now()
-        success_count = 0
-        failure_count = 0
-        errors: list[str] = []
-        stop_event = asyncio.Event()
-        queue: asyncio.Queue[int | None] = asyncio.Queue()
 
         # 初始化活动运行状态
         summary = JwtRunSummary(
@@ -122,6 +118,27 @@ class JWTTestService:
             errors=[],
         )
         self._active_runs[run_id] = summary
+
+        # 在后台执行压测任务
+        asyncio.create_task(self._execute_load_test(run_id, payload, token, stop_on_error))
+
+        # 立即返回 run_id 和初始状态
+        return {
+            "summary": summary.to_dict(),
+            "tests": [],
+            "is_running": True,
+            "jwt_token": token,
+        }
+
+    async def _execute_load_test(self, run_id: str, payload: dict[str, Any], token: str, stop_on_error: bool) -> None:
+        """后台执行压测任务"""
+        batch_size = int(payload.get("batch_size", 1))
+        concurrency = max(1, min(int(payload.get("concurrency", 1)), batch_size))
+        success_count = 0
+        failure_count = 0
+        errors: list[str] = []
+        stop_event = asyncio.Event()
+        queue: asyncio.Queue[int | None] = asyncio.Queue()
 
         for idx in range(batch_size):
             queue.put_nowait(idx)
@@ -150,7 +167,7 @@ class JWTTestService:
                             # 在请求间添加小延迟以避免速率限制
                             if idx > 0:
                                 await asyncio.sleep(0.1)
-                            await self._ai_service.test_prompt(
+                            result = await self._ai_service.test_prompt(
                                 prompt_id=payload["prompt_id"],
                                 endpoint_id=payload["endpoint_id"],
                                 message=message,
@@ -161,6 +178,8 @@ class JWTTestService:
                             if run_id in self._active_runs:
                                 self._active_runs[run_id].success_count = success_count
                                 self._active_runs[run_id].completed_count = success_count + failure_count
+                            # 保存测试结果（包含 raw 数据）
+                            await self._save_test_result(run_id, idx, result, None)
                             break
                         except RuntimeError as exc:
                             error_msg = str(exc)
@@ -178,6 +197,8 @@ class JWTTestService:
                                 self._active_runs[run_id].failure_count = failure_count
                                 self._active_runs[run_id].completed_count = success_count + failure_count
                                 self._active_runs[run_id].errors = errors[:20]
+                            # 保存失败结果
+                            await self._save_test_result(run_id, idx, None, error_msg)
                             if stop_on_error:
                                 stop_event.set()
                             break
@@ -197,23 +218,29 @@ class JWTTestService:
         elif failure_count and not success_count:
             status = "failed"
 
-        summary.success_count = success_count
-        summary.failure_count = failure_count
-        summary.completed_count = success_count + failure_count
-        summary.status = status
-        summary.finished_at = finished_at
-        summary.errors = errors[:20]
+        # 更新最终状态
+        if run_id in self._active_runs:
+            summary = self._active_runs[run_id]
+            summary.success_count = success_count
+            summary.failure_count = failure_count
+            summary.completed_count = success_count + failure_count
+            summary.status = status
+            summary.finished_at = finished_at
+            summary.errors = errors[:20]
 
-        # 从活动运行中移除
-        self._active_runs.pop(run_id, None)
+            # 从活动运行中移除
+            self._active_runs.pop(run_id, None)
 
-        await self._append_run(summary)
-        tests = await self._ai_service.list_prompt_tests_by_run(run_id, limit=batch_size)
-        return {
-            "jwt_token": token,
-            "summary": summary.to_dict(),
-            "tests": tests,
-        }
+            # 保存到持久化存储
+            await self._append_run(summary)
+
+    async def _save_test_result(
+        self, run_id: str, index: int, result: dict[str, Any] | None, error: str | None
+    ) -> None:
+        """保存单个测试结果（包含 raw 数据）"""
+        # 这里可以扩展为保存到数据库或文件
+        # 当前实现依赖 AIConfigService 的 test_prompt 方法自动保存
+        pass
 
     async def get_run(self, run_id: str) -> dict[str, Any]:
         # 优先检查活动运行

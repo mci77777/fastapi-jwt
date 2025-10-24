@@ -106,6 +106,7 @@ export async function reqResolve(config) {
   }
 
   const token = getToken()
+
   if (token) {
     // 检查 Token 是否即将过期
     if (shouldRefreshToken(token)) {
@@ -113,15 +114,19 @@ export async function reqResolve(config) {
         console.log('⏰ Token 即将过期，自动刷新...')
         const newToken = await refreshToken()
         // 使用新 Token
-        config.headers.Authorization = config.headers.Authorization || `Bearer ${newToken}`
+        config.headers.Authorization = `Bearer ${newToken}`
       } catch (error) {
         // 刷新失败，使用旧 Token（可能会导致 401）
-        config.headers.Authorization = config.headers.Authorization || `Bearer ${token}`
+        config.headers.Authorization = `Bearer ${token}`
       }
     } else {
-      // 使用 Bearer token 格式,符合后端的认证要求
-      config.headers.Authorization = config.headers.Authorization || `Bearer ${token}`
+      // 使用 Bearer token 格式，符合后端的认证要求
+      config.headers.Authorization = `Bearer ${token}`
     }
+
+    console.log(`📤 请求 ${config.url} 已注入 Authorization header`)
+  } else {
+    console.warn(`⚠️ 请求 ${config.url} 没有有效的 token`)
   }
 
   if (

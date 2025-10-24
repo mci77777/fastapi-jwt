@@ -53,15 +53,17 @@
 </template>
 
 <script setup>
-import { lStorage, setToken } from '@/utils'
+import { lStorage, setToken, setUserInfo } from '@/utils'
 import bgImg from '@/assets/images/login_bg.webp'
 import api from '@/api'
 import { addDynamicRoutes } from '@/router'
+import { useUserStore } from '@/store'
 import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
 const { query } = useRoute()
 const { t } = useI18n({ useScope: 'global' })
+const userStore = useUserStore()
 
 const loginInfo = ref({
   username: '',
@@ -90,8 +92,23 @@ async function handleLogin() {
     $message.loading(t('views.login.message_verifying'))
     const res = await api.login({ username, password: password.toString() })
     $message.success(t('views.login.message_login_success'))
+
+    // 1. 保存 token（包括过期时间）
     setToken(res.data.access_token)
+
+    // 2. 获取用户信息
+    const userInfoRes = await api.getUserInfo()
+    if (userInfoRes && userInfoRes.data) {
+      // 3. 保存用户信息到 localStorage
+      setUserInfo(userInfoRes.data)
+      // 4. 更新 Pinia store
+      userStore.setUserInfo(userInfoRes.data)
+    }
+
+    // 5. 加载动态路由
     await addDynamicRoutes()
+
+    // 6. 跳转到目标页面
     if (query.redirect) {
       const path = query.redirect
       Reflect.deleteProperty(query, 'redirect')

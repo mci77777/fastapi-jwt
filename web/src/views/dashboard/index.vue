@@ -18,6 +18,7 @@ import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
 import QuickAccessCard from '@/components/dashboard/QuickAccessCard.vue'
 import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
 import ModelMappingCard from '@/components/dashboard/ModelMappingCard.vue'
+import EndpointConnectivityCard from '@/components/dashboard/EndpointConnectivityCard.vue'
 import HeroIcon from '@/components/common/HeroIcon.vue'
 
 // Dashboard API
@@ -588,6 +589,11 @@ onBeforeUnmount(() => {
     <!-- 模型映射管理卡片 -->
     <div class="dashboard-mapping">
       <ModelMappingCard @mapping-change="handleMappingChange" />
+    </div>
+
+    <!-- API 端点连通性卡片 -->
+    <div class="dashboard-connectivity">
+      <EndpointConnectivityCard />
     </div>
 
     <!-- 主内容区域：Grid 两列布局 -->

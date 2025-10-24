@@ -1,3 +1,0 @@
-[WARNING] 2025-10-14T12:37:39.718827
-[DEBUG] JWT availability: total=0, success=0[WARNING] 2025-10-14T12:37:39.718827
-[DEBUG] Metric: name=auth_requests, type=counter, samples=0
