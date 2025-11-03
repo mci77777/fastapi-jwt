@@ -42,6 +42,26 @@ rate_limit_blocks_total = Counter(
     "rate_limit_blocks_total", "Total number of rate limit blocks", ["reason", "user_type"]
 )
 
+# 7. Supabase 保活请求总数（按状态分类）
+supabase_keepalive_requests_total = Counter(
+    "supabase_keepalive_requests_total",
+    "Total number of Supabase keepalive requests",
+    ["status"],  # success, failure
+)
+
+# 8. Supabase 保活最后成功时间戳（Gauge类型）
+supabase_keepalive_last_success_timestamp = Gauge(
+    "supabase_keepalive_last_success_timestamp", "Timestamp of last successful Supabase keepalive ping"
+)
+
+# 9. AI 对话延迟直方图（按模型、用户类型、状态分类）
+ai_conversation_latency_seconds = Histogram(
+    "ai_conversation_latency_seconds",
+    "AI conversation end-to-end latency in seconds",
+    ["model", "user_type", "status"],
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0),
+)
+
 
 @dataclass
 class RateLimitMetrics:

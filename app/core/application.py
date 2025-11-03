@@ -22,6 +22,7 @@ from app.services.log_collector import LogCollector
 from app.services.metrics_collector import MetricsCollector
 from app.services.model_mapping_service import ModelMappingService
 from app.services.monitor_service import EndpointMonitor
+from app.services.supabase_keepalive import SupabaseKeepaliveService
 from app.services.sync_service import SyncService
 from app.settings.config import get_settings
 
@@ -50,6 +51,10 @@ async def lifespan(app: FastAPI):
     app.state.message_broker = MessageEventBroker()
     app.state.ai_service = AIService(db_manager=sqlite_manager)
 
+    # Supabase 保活服务（防止免费层 7 天无活动后暂停）
+    app.state.supabase_keepalive = SupabaseKeepaliveService(settings)
+    await app.state.supabase_keepalive.start()
+
     try:
         yield
     finally:
@@ -57,6 +62,10 @@ async def lifespan(app: FastAPI):
         monitor = getattr(app.state, "endpoint_monitor", None)
         if monitor is not None:
             await monitor.stop()
+
+        keepalive = getattr(app.state, "supabase_keepalive", None)
+        if keepalive is not None:
+            await keepalive.stop()
 
         log_collector = getattr(app.state, "log_collector", None)
         if log_collector is not None:

@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     supabase_jwt_secret: Optional[str] = Field(None, env="SUPABASE_JWT_SECRET")
     supabase_chat_table: str = Field("chat_messages", env="SUPABASE_CHAT_TABLE")
 
+    # Supabase 保活配置（防止免费层 7 天无活动后暂停）
+    supabase_keepalive_enabled: bool = Field(True, env="SUPABASE_KEEPALIVE_ENABLED")
+    supabase_keepalive_interval_minutes: int = Field(10, env="SUPABASE_KEEPALIVE_INTERVAL_MINUTES")
+
     jwks_cache_ttl_seconds: int = Field(900, env="JWKS_CACHE_TTL_SECONDS")
     allowed_issuers: List[AnyHttpUrl] = Field(default_factory=list, env="JWT_ALLOWED_ISSUERS")
     required_audience: Optional[str] = Field(None, env="JWT_AUDIENCE")
