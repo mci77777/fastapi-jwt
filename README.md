@@ -156,6 +156,27 @@ pnpm dev
 - [FRP 故障排除](./docs/FRP_TROUBLESHOOTING.md)
 - [FRP 降级报告](./docs/FRP_DOWNGRADE_REPORT.md)
 
+### 运维脚本
+
+项目提供了丰富的运维脚本，已按功能重组（2025-11-03）：
+
+```bash
+# 快速验证
+python scripts/verification/verify_supabase_config.py  # Supabase 配置验证
+python scripts/verification/verify_jwks_cache.py       # JWKS 缓存验证
+
+# 端到端测试
+python scripts/monitoring/smoke_test.py                # 冒烟测试
+
+# JWT 测试
+python scripts/testing/jwt/test_complete.py            # JWT 完整测试
+
+# API 测试
+python scripts/testing/api/test_api.py                 # API 测试
+```
+
+**详细说明**：参见 [scripts/README.md](./scripts/README.md)
+
 ### 使用指南
 
 #### 访问地址
@@ -222,65 +243,92 @@ pnpm dev
 ### 目录说明
 
 ```
-├── app                   // 应用程序目录
-│   ├── api               // API接口目录
-│   │   └── v1            // 版本1的API接口
-│   │       ├── apis      // API相关接口
-│   │       ├── base      // 基础信息接口
-│   │       ├── menus     // 菜单相关接口
-│   │       ├── roles     // 角色相关接口
-│   │       └── users     // 用户相关接口
-│   ├── controllers       // 控制器目录
-│   ├── core              // 核心功能模块
-│   ├── log               // 日志目录
-│   ├── models            // 数据模型目录
-│   ├── schemas           // 数据模式/结构定义
-│   ├── settings          // 配置设置目录
-│   └── utils             // 工具类目录
-├── deploy                // 部署相关目录
-│   └── sample-picture    // 示例图片目录
-└── web                   // 前端网页目录
-    ├── build             // 构建脚本和配置目录
-    │   ├── config        // 构建配置
-    │   ├── plugin        // 构建插件
-    │   └── script        // 构建脚本
-    ├── public            // 公共资源目录
-    │   └── resource      // 公共资源文件
-    ├── settings          // 前端项目配置
-    └── src               // 源代码目录
-        ├── api           // API接口定义
-        ├── assets        // 静态资源目录
-        │   ├── images    // 图片资源
-        │   ├── js        // JavaScript文件
-        │   └── svg       // SVG矢量图文件
-        ├── components    // 组件目录
-        │   ├── common    // 通用组件
-        │   ├── icon      // 图标组件
-        │   ├── page      // 页面组件
-        │   ├── query-bar // 查询栏组件
-        │   └── table     // 表格组件
-        ├── composables   // 可组合式功能块
-        ├── directives    // 指令目录
-        ├── layout        // 布局目录
-        │   └── components // 布局组件
-        ├── router        // 路由目录
-        │   ├── guard     // 路由守卫
-        │   └── routes    // 路由定义
-        ├── store         // 状态管理(pinia)
-        │   └── modules   // 状态模块
-        ├── styles        // 样式文件目录
-        ├── utils         // 工具类目录
-        │   ├── auth      // 认证相关工具
-        │   ├── common    // 通用工具
-        │   ├── http      // 封装axios
-        │   └── storage   // 封装localStorage和sessionStorage
-        └── views         // 视图/页面目录
-            ├── error-page // 错误页面
-            ├── login      // 登录页面
-            ├── profile    // 个人资料页面
-            ├── system     // 系统管理页面
-            └── workbench  // 工作台页面
+vue-fastapi-admin/
+├── app/                      # 后端应用程序目录
+│   ├── api/                  # API 接口目录
+│   │   └── v1/               # API v1 版本
+│   │       ├── ai_conversation.py    # AI 对话接口
+│   │       ├── base.py               # 基础认证接口
+│   │       ├── dashboard.py          # Dashboard 接口
+│   │       ├── llm_models.py         # LLM 模型管理
+│   │       └── messages.py           # 消息与 SSE 接口
+│   ├── auth/                 # 认证模块
+│   │   ├── dependencies.py   # 认证依赖注入
+│   │   ├── jwt_verifier.py   # JWT 验证器
+│   │   └── provider.py       # 用户提供者
+│   ├── core/                 # 核心功能模块
+│   │   ├── application.py    # 应用工厂
+│   │   ├── exceptions.py     # 异常处理
+│   │   ├── metrics.py        # Prometheus 指标
+│   │   ├── policy_gate.py    # 策略网关中间件
+│   │   ├── rate_limiter.py   # 限流中间件
+│   │   └── sse_guard.py      # SSE 连接保护
+│   ├── db/                   # 数据库模块
+│   │   └── sqlite_manager.py # SQLite 管理器
+│   ├── models/               # 数据模型
+│   ├── schemas/              # Pydantic 数据模式
+│   ├── services/             # 业务服务层
+│   │   ├── ai_config.py      # AI 配置服务
+│   │   ├── model_mapping.py  # 模型映射服务
+│   │   └── supabase_keepalive.py  # Supabase 保活服务
+│   ├── settings/             # 配置管理
+│   │   └── config.py         # 应用配置
+│   └── utils/                # 工具类
+│
+├── web/                      # 前端应用目录
+│   ├── src/
+│   │   ├── api/              # API 接口定义
+│   │   ├── components/       # Vue 组件
+│   │   ├── router/           # Vue Router 路由
+│   │   ├── store/            # Pinia 状态管理
+│   │   ├── utils/            # 工具函数
+│   │   └── views/            # 页面视图
+│   │       ├── ai/           # AI 相关页面
+│   │       ├── dashboard/    # Dashboard 页面
+│   │       └── login/        # 登录页面
+│   ├── build/                # 构建配置
+│   └── public/               # 静态资源
+│
+├── scripts/                  # 运维脚本（已重组）
+│   ├── testing/              # 测试脚本
+│   │   ├── jwt/              # JWT 测试（5 个）
+│   │   ├── api/              # API 测试（2 个）
+│   │   ├── supabase/         # Supabase 测试（1 个）
+│   │   └── frontend/         # 前端测试（5 个）
+│   ├── deployment/           # 部署脚本（6 个 + 5 SQL）
+│   │   └── sql/              # SQL 脚本
+│   ├── verification/         # 验证脚本（8 个）
+│   ├── monitoring/           # 监控脚本（2 个）
+│   ├── utils/                # 工具脚本（4 个）
+│   └── docs/                 # 脚本文档（3 个）
+│
+├── tests/                    # 后端测试套件
+│   ├── test_jwt_auth.py      # JWT 认证测试
+│   ├── test_jwt_hardening.py # JWT 安全强化测试
+│   └── test_api_contracts.py # API 契约测试
+│
+├── docs/                     # 项目文档
+│   ├── PROJECT_OVERVIEW.md   # 项目概览
+│   ├── JWT_HARDENING_GUIDE.md # JWT 安全指南
+│   ├── GW_AUTH_README.md     # 网关认证文档
+│   └── SCRIPTS_INDEX.md      # 脚本索引
+│
+├── .vscode/                  # VSCode 配置
+│   └── settings.json         # 编辑器设置
+├── pyrightconfig.json        # Pyright 类型检查配置
+├── pyproject.toml            # Python 项目配置
+├── requirements.txt          # Python 依赖
+├── run.py                    # 后端启动脚本
+├── start-dev.ps1             # 一键启动开发环境
+└── README.md                 # 本文件
 ```
+
+**目录说明**：
+- **app/**: 后端核心代码，采用分层架构（API → Service → Model）
+- **web/**: 前端 Vue3 应用，使用 Composition API + Pinia
+- **scripts/**: 运维脚本，已按功能重组（2025-11-03 重组，减少 35% 冗余）
+- **tests/**: 后端测试套件，使用 pytest
+- **docs/**: 项目文档，包含架构、安全、运维指南
 
 ### 进群交流
 进群的条件是给项目一个star，小小的star是作者维护下去的动力。
