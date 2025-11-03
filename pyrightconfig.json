@@ -1,0 +1,50 @@
+{
+  "include": [
+    "app",
+    "tests",
+    "scripts"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "web"
+  ],
+  "venvPath": "C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python",
+  "venv": "Python312",
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Windows",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": false,
+  "reportUnusedImport": "warning",
+  "reportUnusedVariable": "warning",
+  "reportDuplicateImport": "warning",
+  "stubPath": "typings",
+  "executionEnvironments": [
+    {
+      "root": "app",
+      "pythonVersion": "3.12",
+      "pythonPlatform": "Windows",
+      "extraPaths": [
+        "."
+      ]
+    },
+    {
+      "root": "tests",
+      "pythonVersion": "3.12",
+      "pythonPlatform": "Windows",
+      "extraPaths": [
+        "."
+      ]
+    },
+    {
+      "root": "scripts",
+      "pythonVersion": "3.12",
+      "pythonPlatform": "Windows",
+      "extraPaths": [
+        "."
+      ]
+    }
+  ]
+}
