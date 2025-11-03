@@ -1,11 +1,9 @@
 """测试 AI 对话日志记录功能。"""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
-from httpx import AsyncClient
 
 from app.db.sqlite_manager import SQLiteManager
 from app.services.ai_service import AIMessageInput, AIService, MessageEventBroker
@@ -264,4 +262,3 @@ async def test_ai_service_logs_error(ai_service, sqlite_manager, mock_supabase_p
         assert logs[0]["error_message"] is not None
         assert "API error" in logs[0]["error_message"]
         assert logs[0]["response_payload"] is None
-

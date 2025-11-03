@@ -1,4 +1,5 @@
 """Phase 1 验证脚本：测试数据库表、服务层和数据写入。"""
+
 import asyncio
 import sys
 from pathlib import Path
@@ -6,11 +7,12 @@ from pathlib import Path
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import aiosqlite
-
 # 设置 UTF-8 输出
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+import aiosqlite
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 
 async def verify_tables():
@@ -26,9 +28,7 @@ async def verify_tables():
 
     async with aiosqlite.connect(db_path) as conn:
         # 检查 dashboard_stats 表
-        cursor = await conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='dashboard_stats'"
-        )
+        cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='dashboard_stats'")
         result = await cursor.fetchone()
         if result:
             print("✅ dashboard_stats 表已创建")
@@ -37,9 +37,7 @@ async def verify_tables():
             return False
 
         # 检查 user_activity_stats 表
-        cursor = await conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='user_activity_stats'"
-        )
+        cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_activity_stats'")
         result = await cursor.fetchone()
         if result:
             print("✅ user_activity_stats 表已创建")
@@ -48,9 +46,7 @@ async def verify_tables():
             return False
 
         # 检查 ai_request_stats 表
-        cursor = await conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_request_stats'"
-        )
+        cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_request_stats'")
         result = await cursor.fetchone()
         if result:
             print("✅ ai_request_stats 表已创建")
@@ -131,9 +127,7 @@ async def verify_data_write():
 
         # 验证数据写入
         conn.row_factory = aiosqlite.Row
-        cursor = await conn.execute(
-            "SELECT * FROM user_activity_stats WHERE user_id = ?", ["test-user-123"]
-        )
+        cursor = await conn.execute("SELECT * FROM user_activity_stats WHERE user_id = ?", ["test-user-123"])
         result = await cursor.fetchone()
         if result:
             row_dict = {k: result[k] for k in result.keys()}
@@ -160,9 +154,7 @@ async def verify_data_write():
         await conn.commit()
 
         # 验证数据写入
-        cursor = await conn.execute(
-            "SELECT * FROM ai_request_stats WHERE user_id = ?", ["test-user-123"]
-        )
+        cursor = await conn.execute("SELECT * FROM ai_request_stats WHERE user_id = ?", ["test-user-123"])
         result = await cursor.fetchone()
         if result:
             row_dict = {k: result[k] for k in result.keys()}
@@ -202,4 +194,3 @@ async def main():
 if __name__ == "__main__":
     success = asyncio.run(main())
     sys.exit(0 if success else 1)
-

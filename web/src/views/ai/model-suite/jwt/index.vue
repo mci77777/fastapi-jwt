@@ -97,14 +97,15 @@ const { models, prompts, latestRun, latestRunSummary, latestRunLoading } = store
 // 表单配置（从 localStorage 加载）
 const singleForm = reactive(loadFormConfig(STORAGE_KEYS.SINGLE_FORM, DEFAULT_SINGLE_FORM))
 const loadForm = reactive(loadFormConfig(STORAGE_KEYS.LOAD_FORM, DEFAULT_LOAD_FORM))
-const multiUserForm = reactive(loadFormConfig(STORAGE_KEYS.MULTI_USER_FORM, DEFAULT_MULTI_USER_FORM))
+const multiUserForm = reactive(
+  loadFormConfig(STORAGE_KEYS.MULTI_USER_FORM, DEFAULT_MULTI_USER_FORM)
+)
 
 // 状态管理
 const singleResult = ref(null)
 const singleError = ref(null)
 const pollingTimer = ref(null)
 const isPolling = ref(false)
-const showSingleRaw = ref(false)
 const expandedTestRows = ref(new Set())
 const singleLoading = ref(false)
 const loadTestLoading = ref(false)
@@ -535,7 +536,11 @@ onBeforeUnmount(() => {
           </NGridItem>
           <NGridItem :span="12">
             <NFormItem label="模型接口" path="endpoint_id">
-              <NSelect v-model:value="singleForm.endpoint_id" :options="endpointOptions" filterable />
+              <NSelect
+                v-model:value="singleForm.endpoint_id"
+                :options="endpointOptions"
+                filterable
+              />
             </NFormItem>
           </NGridItem>
           <NGridItem :span="12">
@@ -573,12 +578,8 @@ onBeforeUnmount(() => {
 
         <NSpace justify="space-between">
           <NSpace>
-            <NTag v-if="singleResult" type="success" size="small">
-              ✅ 上次执行成功
-            </NTag>
-            <NTag v-else-if="singleError" type="error" size="small">
-              ❌ 上次执行失败
-            </NTag>
+            <NTag v-if="singleResult" type="success" size="small"> ✅ 上次执行成功 </NTag>
+            <NTag v-else-if="singleError" type="error" size="small"> ❌ 上次执行失败 </NTag>
           </NSpace>
           <NSpace>
             <NButton
@@ -692,12 +693,8 @@ onBeforeUnmount(() => {
 
         <NSpace justify="space-between">
           <NSpace>
-            <NTag v-if="isPolling" type="info" size="small">
-              🔄 压测进行中...
-            </NTag>
-            <NTag v-else-if="loadSummary.id" type="success" size="small">
-              ✅ 压测已完成
-            </NTag>
+            <NTag v-if="isPolling" type="info" size="small"> 🔄 压测进行中... </NTag>
+            <NTag v-else-if="loadSummary.id" type="success" size="small"> ✅ 压测已完成 </NTag>
           </NSpace>
           <NSpace>
             <NButton
@@ -731,8 +728,8 @@ onBeforeUnmount(() => {
             :show-indicator="true"
           />
           <div class="mt-2 text-sm text-gray-500">
-            进度: {{ loadSummary.completed_count || 0 }} / {{ loadSummary.batch_size || 0 }}
-            (成功: {{ loadSummary.success_count || 0 }}, 失败: {{ loadSummary.failure_count || 0 }})
+            进度: {{ loadSummary.completed_count || 0 }} / {{ loadSummary.batch_size || 0 }} (成功:
+            {{ loadSummary.success_count || 0 }}, 失败: {{ loadSummary.failure_count || 0 }})
           </div>
         </div>
 
@@ -762,10 +759,7 @@ onBeforeUnmount(() => {
           <NGridItem>
             <NStatistic label="状态" :value="loadSummary.status || '--'">
               <template #suffix>
-                <NTag
-                  :type="loadSummary.status === 'completed' ? 'success' : 'info'"
-                  size="small"
-                >
+                <NTag :type="loadSummary.status === 'completed' ? 'success' : 'info'" size="small">
                   {{ loadSummary.status === 'completed' ? '已完成' : '进行中' }}
                 </NTag>
               </template>
@@ -788,19 +782,22 @@ onBeforeUnmount(() => {
         <NCollapseItem title="💡 功能说明" name="info">
           <div class="text-sm text-gray-600">
             <p class="mb-2">
-              <strong>测试目的</strong>：模拟多个并发用户同时执行 AI 对话测试，用于压力测试和性能评估。
+              <strong>测试目的</strong>：模拟多个并发用户同时执行 AI
+              对话测试，用于压力测试和性能评估。
             </p>
-            <p class="mb-2">
-              <strong>工作原理</strong>：
-            </p>
-            <ul class="list-disc list-inside mb-2 ml-2">
+            <p class="mb-2"><strong>工作原理</strong>：</p>
+            <ul class="mb-2 ml-2 list-disc list-inside">
               <li>使用 <code>admin/123456</code> 账号获取一个 JWT Token</li>
-              <li>生成 N 个虚拟用户（如 <code>test-user-1</code>, <code>test-user-2</code>, ...）</li>
+              <li>
+                生成 N 个虚拟用户（如 <code>test-user-1</code>, <code>test-user-2</code>, ...）
+              </li>
               <li>所有虚拟用户共享同一个 JWT Token</li>
               <li>并发执行 N 个 AI 对话请求（模拟多用户场景）</li>
             </ul>
             <p class="mb-2">
-              ⚠️ <strong>注意</strong>：由于后端仅支持 <code>admin/123456</code> 账号，虚拟用户名仅用于标识不同的并发请求，实际都使用 admin 的 JWT Token。
+              ⚠️ <strong>注意</strong>：由于后端仅支持
+              <code>admin/123456</code> 账号，虚拟用户名仅用于标识不同的并发请求，实际都使用 admin
+              的 JWT Token。
             </p>
             <p>
               <strong>适用场景</strong>：测试 AI 接口在高并发下的性能表现、响应时间分布、错误率等。
@@ -886,9 +883,7 @@ onBeforeUnmount(() => {
 
         <NSpace justify="space-between">
           <NSpace>
-            <NTag v-if="multiUserSummary" type="success" size="small">
-              ✅ 上次测试完成
-            </NTag>
+            <NTag v-if="multiUserSummary" type="success" size="small"> ✅ 上次测试完成 </NTag>
           </NSpace>
           <NSpace>
             <NButton
@@ -917,7 +912,11 @@ onBeforeUnmount(() => {
             <NStatistic label="成功数" :value="multiUserSummary.success_tests">
               <template #suffix>
                 <NTag type="success" size="small">
-                  {{ ((multiUserSummary.success_tests / multiUserSummary.total_users) * 100).toFixed(1) }}%
+                  {{
+                    ((multiUserSummary.success_tests / multiUserSummary.total_users) * 100).toFixed(
+                      1
+                    )
+                  }}%
                 </NTag>
               </template>
             </NStatistic>
@@ -926,7 +925,11 @@ onBeforeUnmount(() => {
             <NStatistic label="失败数" :value="multiUserSummary.failed_tests">
               <template #suffix>
                 <NTag v-if="multiUserSummary.failed_tests > 0" type="error" size="small">
-                  {{ ((multiUserSummary.failed_tests / multiUserSummary.total_users) * 100).toFixed(1) }}%
+                  {{
+                    ((multiUserSummary.failed_tests / multiUserSummary.total_users) * 100).toFixed(
+                      1
+                    )
+                  }}%
                 </NTag>
               </template>
             </NStatistic>
@@ -958,7 +961,7 @@ onBeforeUnmount(() => {
         <NSpace vertical size="large">
           <!-- JWT Token 信息 -->
           <div>
-            <div class="text-sm font-semibold mb-2">🔐 JWT Token</div>
+            <div class="mb-2 text-sm font-semibold">🔐 JWT Token</div>
             <NCode :code="jwtToken || '无'" language="text" />
             <NButton size="small" class="mt-2" @click="copyToClipboard(jwtToken)">
               复制 Token
@@ -967,7 +970,7 @@ onBeforeUnmount(() => {
 
           <!-- 关键指标 -->
           <div v-if="singleResult?.result">
-            <div class="text-sm font-semibold mb-2">⏱️ 性能指标</div>
+            <div class="mb-2 text-sm font-semibold">⏱️ 性能指标</div>
             <NGrid :cols="3" :x-gap="12">
               <NGridItem>
                 <NStatistic
@@ -993,7 +996,7 @@ onBeforeUnmount(() => {
 
           <!-- AI 回复 -->
           <div v-if="singleResult?.result?.response">
-            <div class="text-sm font-semibold mb-2">💬 AI 回复</div>
+            <div class="mb-2 text-sm font-semibold">💬 AI 回复</div>
             <NCard size="small">
               <pre class="whitespace-pre-wrap">{{ singleResult.result.response }}</pre>
             </NCard>
@@ -1056,7 +1059,7 @@ onBeforeUnmount(() => {
 
           <!-- 时间信息 -->
           <div>
-            <div class="text-sm font-semibold mb-2">⏰ 时间信息</div>
+            <div class="mb-2 text-sm font-semibold">⏰ 时间信息</div>
             <NSpace>
               <span>开始时间: {{ loadSummary.started_at || '--' }}</span>
               <span>结束时间: {{ loadSummary.finished_at || '--' }}</span>
@@ -1105,7 +1108,9 @@ onBeforeUnmount(() => {
                 </td>
                 <td>
                   <NTag
-                    :type="item.jwt_valid ? 'success' : item.jwt_valid === false ? 'error' : 'default'"
+                    :type="
+                      item.jwt_valid ? 'success' : item.jwt_valid === false ? 'error' : 'default'
+                    "
                     size="small"
                     :bordered="false"
                   >
@@ -1123,26 +1128,30 @@ onBeforeUnmount(() => {
               <!-- 展开的 Raw 数据行 -->
               <tr v-if="expandedTestRows.has(index)" class="expanded-row">
                 <td colspan="7">
-                  <div class="p-4 bg-gray-50 dark:bg-gray-800">
+                  <div class="bg-gray-50 p-4 dark:bg-gray-800">
                     <!-- Token 使用统计 -->
-                    <div v-if="item.usage" class="mb-3 p-3 bg-blue-50 rounded">
-                      <div class="text-sm font-semibold mb-2">📊 Token 使用统计</div>
+                    <div v-if="item.usage" class="mb-3 rounded bg-blue-50 p-3">
+                      <div class="mb-2 text-sm font-semibold">📊 Token 使用统计</div>
                       <div class="grid grid-cols-4 gap-2 text-xs">
                         <div>
                           <span class="text-gray-600">Prompt:</span>
-                          <span class="font-mono ml-1">{{ item.usage.prompt_tokens || 0 }}</span>
+                          <span class="ml-1 font-mono">{{ item.usage.prompt_tokens || 0 }}</span>
                         </div>
                         <div>
                           <span class="text-gray-600">Completion:</span>
-                          <span class="font-mono ml-1">{{ item.usage.completion_tokens || 0 }}</span>
+                          <span class="ml-1 font-mono">{{
+                            item.usage.completion_tokens || 0
+                          }}</span>
                         </div>
                         <div>
                           <span class="text-gray-600">Total:</span>
-                          <span class="font-mono ml-1">{{ item.usage.total_tokens || 0 }}</span>
+                          <span class="ml-1 font-mono">{{ item.usage.total_tokens || 0 }}</span>
                         </div>
                         <div>
                           <span class="text-gray-600">⏱️ 延迟:</span>
-                          <span class="font-mono ml-1">{{ item.latency_ms?.toFixed?.(0) || '--' }} ms</span>
+                          <span class="ml-1 font-mono"
+                            >{{ item.latency_ms?.toFixed?.(0) || '--' }} ms</span
+                          >
                         </div>
                       </div>
                     </div>
@@ -1172,9 +1181,7 @@ onBeforeUnmount(() => {
 
       <NTabPane name="export" tab="📥 导出数据">
         <NSpace vertical>
-          <div class="text-sm text-gray-600">
-            导出完整的压测数据，包括所有请求和响应详情。
-          </div>
+          <div class="text-sm text-gray-600">导出完整的压测数据，包括所有请求和响应详情。</div>
           <NSpace>
             <NButton @click="exportJSON(latestRun, `load-test-${loadSummary.id}.json`)">
               导出完整数据
@@ -1208,7 +1215,12 @@ onBeforeUnmount(() => {
               <NStatistic label="成功数" :value="multiUserSummary?.success_tests || 0">
                 <template #suffix>
                   <NTag type="success" size="small">
-                    {{ ((multiUserSummary?.success_tests / multiUserSummary?.total_users) * 100).toFixed(1) }}%
+                    {{
+                      (
+                        (multiUserSummary?.success_tests / multiUserSummary?.total_users) *
+                        100
+                      ).toFixed(1)
+                    }}%
                   </NTag>
                 </template>
               </NStatistic>
@@ -1217,7 +1229,12 @@ onBeforeUnmount(() => {
               <NStatistic label="失败数" :value="multiUserSummary?.failed_tests || 0">
                 <template #suffix>
                   <NTag v-if="multiUserSummary?.failed_tests > 0" type="error" size="small">
-                    {{ ((multiUserSummary?.failed_tests / multiUserSummary?.total_users) * 100).toFixed(1) }}%
+                    {{
+                      (
+                        (multiUserSummary?.failed_tests / multiUserSummary?.total_users) *
+                        100
+                      ).toFixed(1)
+                    }}%
                   </NTag>
                 </template>
               </NStatistic>
@@ -1233,7 +1250,7 @@ onBeforeUnmount(() => {
 
           <!-- 时间信息 -->
           <div>
-            <div class="text-sm font-semibold mb-2">⏰ 时间信息</div>
+            <div class="mb-2 text-sm font-semibold">⏰ 时间信息</div>
             <NSpace>
               <span>总耗时: {{ multiUserSummary?.total_time_ms || '--' }} ms</span>
               <span>平均耗时: {{ multiUserSummary?.avg_time_ms?.toFixed?.(0) || '--' }} ms</span>
@@ -1243,9 +1260,10 @@ onBeforeUnmount(() => {
       </NTabPane>
 
       <NTabPane name="details" tab="📋 用户详情">
-        <div class="mb-4 p-3 bg-blue-50 rounded">
+        <div class="mb-4 rounded bg-blue-50 p-3">
           <div class="text-sm text-gray-600">
-            💡 <strong>说明</strong>：所有虚拟用户共享同一个 JWT Token（admin 账号），用于模拟并发请求场景。
+            💡 <strong>说明</strong>：所有虚拟用户共享同一个 JWT Token（admin
+            账号），用于模拟并发请求场景。
           </div>
         </div>
         <NTable :single-line="false" size="small" striped>
@@ -1294,7 +1312,14 @@ onBeforeUnmount(() => {
             导出多用户测试的完整数据，包括所有用户的 JWT 获取和 AI 对话测试结果。
           </div>
           <NSpace>
-            <NButton @click="exportJSON({ summary: multiUserSummary, results: multiUserResults }, 'multi-user-test-results.json')">
+            <NButton
+              @click="
+                exportJSON(
+                  { summary: multiUserSummary, results: multiUserResults },
+                  'multi-user-test-results.json'
+                )
+              "
+            >
               导出完整数据
             </NButton>
             <NButton @click="exportJSON(multiUserSummary, 'multi-user-test-summary.json')">

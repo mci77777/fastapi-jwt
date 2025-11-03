@@ -1,4 +1,3 @@
-import os
 import socket
 import subprocess
 import sys
@@ -48,21 +47,16 @@ if __name__ == "__main__":
                 sock.setsockopt(socket.SOL_SOCKET, -5, 0)
             except (AttributeError, OSError):
                 pass
-        
+
         sock.bind(("0.0.0.0", 9999))
-        
+
         # 使用预绑定的 socket 启动 uvicorn
         import asyncio
-        config = uvicorn.Config(
-            "app:app",
-            host="0.0.0.0",
-            port=9999,
-            reload=True,
-            log_config=LOGGING_CONFIG
-        )
+
+        config = uvicorn.Config("app:app", host="0.0.0.0", port=9999, reload=True, log_config=LOGGING_CONFIG)
         server = uvicorn.Server(config)
         asyncio.run(server.serve(sockets=[sock]))
-        
+
     except PermissionError as e:
         print(f"\n❌ 权限错误: {e}")
         print("\n端口 9999 被系统安全策略阻止。")

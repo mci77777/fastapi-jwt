@@ -18,7 +18,7 @@ from typing import Optional
 import httpx
 
 # 添加项目根目录到 Python 路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.settings.config import get_settings
 
@@ -28,11 +28,11 @@ class JWTModelTest:
         self.settings = get_settings()
         self.base_url = "http://localhost:9999/api/v1"
         self.supabase_url = f"https://{self.settings.supabase_project_id}.supabase.co"
-        
+
         # 从环境变量读取测试用户信息
         self.test_email = os.getenv("TEST_USER_EMAIL", "test@example.com")
         self.test_password = os.getenv("TEST_USER_PASSWORD", "TestPassword123!")
-        
+
         self.access_token: Optional[str] = None
 
     async def step_1_register_user(self) -> bool:
@@ -44,14 +44,8 @@ class JWTModelTest:
             try:
                 response = await client.post(
                     f"{self.supabase_url}/auth/v1/signup",
-                    headers={
-                        "apikey": self.settings.supabase_service_role_key,
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "email": self.test_email,
-                        "password": self.test_password
-                    }
+                    headers={"apikey": self.settings.supabase_service_role_key, "Content-Type": "application/json"},
+                    json={"email": self.test_email, "password": self.test_password},
                 )
 
                 if response.status_code in [200, 400]:  # 400 可能是用户已存在
@@ -73,14 +67,8 @@ class JWTModelTest:
             try:
                 response = await client.post(
                     f"{self.supabase_url}/auth/v1/token?grant_type=password",
-                    headers={
-                        "apikey": self.settings.supabase_service_role_key,
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "email": self.test_email,
-                        "password": self.test_password
-                    }
+                    headers={"apikey": self.settings.supabase_service_role_key, "Content-Type": "application/json"},
+                    json={"email": self.test_email, "password": self.test_password},
                 )
 
                 if response.status_code == 200:
@@ -108,14 +96,8 @@ class JWTModelTest:
             try:
                 response = await client.get(
                     f"{self.base_url}/llm/models",
-                    headers={
-                        "Authorization": f"Bearer {self.access_token}",
-                        "Content-Type": "application/json"
-                    },
-                    params={
-                        "page": 1,
-                        "page_size": 10
-                    }
+                    headers={"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"},
+                    params={"page": 1, "page_size": 10},
                 )
 
                 if response.status_code == 200:
@@ -123,11 +105,11 @@ class JWTModelTest:
                     models = data.get("data", [])
                     total = data.get("total", 0)
                     print(f"   ✅ 模型列表获取成功，共 {total} 个模型")
-                    
+
                     # 显示前 3 个模型
                     for i, model in enumerate(models[:3], 1):
                         print(f"   📦 模型 {i}: {model.get('name')} ({model.get('model')})")
-                    
+
                     return True
                 else:
                     print(f"   ❌ 模型列表获取失败: {response.status_code} - {response.text}")
@@ -145,21 +127,18 @@ class JWTModelTest:
             try:
                 response = await client.get(
                     f"{self.base_url}/llm/model-groups",
-                    headers={
-                        "Authorization": f"Bearer {self.access_token}",
-                        "Content-Type": "application/json"
-                    }
+                    headers={"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"},
                 )
 
                 if response.status_code == 200:
                     data = response.json()
                     mappings = data.get("data", [])
                     print(f"   ✅ 模型映射获取成功，共 {len(mappings)} 条映射")
-                    
+
                     # 显示前 3 条映射
                     for i, mapping in enumerate(mappings[:3], 1):
                         print(f"   🔗 映射 {i}: {mapping.get('name')} → {mapping.get('default_model')}")
-                    
+
                     return True
                 else:
                     print(f"   ❌ 模型映射获取失败: {response.status_code} - {response.text}")
@@ -177,19 +156,16 @@ class JWTModelTest:
             try:
                 response = await client.post(
                     f"{self.base_url}/llm/models/check-all",
-                    headers={
-                        "Authorization": f"Bearer {self.access_token}",
-                        "Content-Type": "application/json"
-                    }
+                    headers={"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"},
                 )
 
                 if response.status_code == 200:
                     data = response.json()
                     results = data.get("data", [])
-                    
+
                     available_count = sum(1 for r in results if r.get("status") == "available")
                     unavailable_count = sum(1 for r in results if r.get("status") == "unavailable")
-                    
+
                     print(f"   ✅ 模型诊断完成：{available_count} 个可用，{unavailable_count} 个不可用")
                     return True
                 else:
@@ -248,4 +224,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

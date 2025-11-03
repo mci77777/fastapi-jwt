@@ -148,7 +148,10 @@ async function loadMetrics() {
         p99: Math.round(calculatePercentile(histogram.allBuckets, 0.99) * 1000),
         successRate: calculateSuccessRate(histogram),
         totalRequests: histogram.totalCount,
-        avgLatency: histogram.totalCount > 0 ? Math.round((histogram.totalSum / histogram.totalCount) * 1000) : 0,
+        avgLatency:
+          histogram.totalCount > 0
+            ? Math.round((histogram.totalSum / histogram.totalCount) * 1000)
+            : 0,
       }
 
       // Group by model
@@ -183,7 +186,6 @@ function parseHistogram(metrics, baseName) {
         const labels = parseLabelString(labelMatch[1])
         const le = parseFloat(labels.le)
         const model = labels.model || 'unknown'
-        const status = labels.status || 'unknown'
 
         if (!isNaN(le)) {
           // Aggregate all buckets
@@ -344,4 +346,3 @@ onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
-

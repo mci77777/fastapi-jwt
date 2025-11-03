@@ -1,4 +1,5 @@
 """生成测试 JWT token。"""
+
 import sys
 from pathlib import Path
 
@@ -40,4 +41,3 @@ async def generate_token():
 if __name__ == "__main__":
     token = asyncio.run(generate_token())
     sys.exit(0 if token else 1)
-

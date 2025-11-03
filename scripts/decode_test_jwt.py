@@ -1,4 +1,5 @@
 """解码测试 JWT token。"""
+
 import subprocess
 import sys
 from pathlib import Path
@@ -22,4 +23,3 @@ decoded = jwt.decode(token, options={"verify_signature": False})
 print("JWT Payload:")
 for key, value in decoded.items():
     print(f"  {key}: {value}")
-

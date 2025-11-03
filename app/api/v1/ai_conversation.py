@@ -108,7 +108,7 @@ async def get_conversation_health(
         error_rate = (error_requests / total_requests * 100) if total_requests > 0 else 0
         avg_latency_ms = (total_latency_sum / total_requests * 1000) if total_requests > 0 else 0
 
-    except Exception as exc:
+    except Exception:
         # 如果指标收集失败，返回默认值
         error_rate = 0
         avg_latency_ms = 0
@@ -122,7 +122,7 @@ async def get_conversation_health(
     try:
         endpoints = await db.fetchall(
             """
-            SELECT COUNT(*) as total, 
+            SELECT COUNT(*) as total,
                    SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active
             FROM ai_endpoints
         """
@@ -165,4 +165,3 @@ async def get_conversation_health(
     }
 
     return JSONResponse(content=health_status)
-

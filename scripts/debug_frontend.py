@@ -5,12 +5,13 @@
 用于自动化常见的前端调试任务
 """
 
-import httpx
 import json
-import sys
 import os
+import sys
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
+import httpx
 
 # 设置 Windows 控制台 UTF-8 编码
 if sys.platform == "win32":
@@ -42,7 +43,9 @@ class FrontendDebugger:
         # 检查前端
         try:
             response = self.client.get(self.frontend_url)
-            results["frontend"]["status"] = "running" if response.status_code == 200 else f"error ({response.status_code})"
+            results["frontend"]["status"] = (
+                "running" if response.status_code == 200 else f"error ({response.status_code})"
+            )
             results["frontend"]["status_code"] = response.status_code
             print(f"✅ 前端服务: {self.frontend_url} - {response.status_code}")
         except Exception as e:
@@ -54,7 +57,9 @@ class FrontendDebugger:
         # 检查后端
         try:
             response = self.client.get(f"{self.backend_url}/docs")
-            results["backend"]["status"] = "running" if response.status_code == 200 else f"error ({response.status_code})"
+            results["backend"]["status"] = (
+                "running" if response.status_code == 200 else f"error ({response.status_code})"
+            )
             results["backend"]["status_code"] = response.status_code
             print(f"✅ 后端服务: {self.backend_url} - {response.status_code}")
         except Exception as e:
@@ -135,7 +140,9 @@ class FrontendDebugger:
                 results.append(result)
 
                 status_icon = "✅" if result["status"] == "success" else "❌"
-                print(f"{status_icon} {method} {endpoint['path']} - {response.status_code} ({result['response_time_ms']:.2f}ms)")
+                print(
+                    f"{status_icon} {method} {endpoint['path']} - {response.status_code} ({result['response_time_ms']:.2f}ms)"
+                )
 
             except Exception as e:
                 result = {
@@ -205,7 +212,7 @@ class FrontendDebugger:
                 check=True,
             )
             token = result.stdout.strip()
-            print(f"✅ Token 生成成功")
+            print("✅ Token 生成成功")
             print(f"   Token: {token[:50]}...")
             return token
         except Exception as e:
@@ -252,7 +259,9 @@ class FrontendDebugger:
         print(f"API 测试: {api_success}/{api_total} 通过")
 
         # 性能总结
-        avg_response_time = sum(r.get("response_time_ms", 0) for r in network_perf["tests"]) / len(network_perf["tests"])
+        avg_response_time = sum(r.get("response_time_ms", 0) for r in network_perf["tests"]) / len(
+            network_perf["tests"]
+        )
         print(f"平均响应时间: {avg_response_time:.2f}ms")
 
         # 保存报告
@@ -305,4 +314,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -10,7 +10,6 @@ from typing import Any, Dict
 
 from anon_signin_enhanced import EnhancedAnonAuth
 
-
 ARTIFACTS_DIR = Path(__file__).parent.parent / "artifacts"
 TOKEN_FILE = ARTIFACTS_DIR / "token.json"
 

@@ -26,13 +26,13 @@ class BuildManager:
             {
                 "name": "dailyDevFast",
                 "description": "快速开发构建",
-                "command": ["python", "-m", "py_compile"] + self._get_python_files()
+                "command": ["python", "-m", "py_compile"] + self._get_python_files(),
             },
             {
                 "name": "assemble",
                 "description": "完整组装构建",
-                "command": ["python", "-c", "import app; print('✅ 应用模块导入成功')"]
-            }
+                "command": ["python", "-c", "import app; print('✅ 应用模块导入成功')"],
+            },
         ]
 
         for build in builds:
@@ -58,11 +58,7 @@ class BuildManager:
 
         try:
             result = subprocess.run(
-                build_config["command"],
-                cwd=self.project_root,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5分钟超时
+                build_config["command"], cwd=self.project_root, capture_output=True, text=True, timeout=300  # 5分钟超时
             )
 
             duration = time.time() - start_time
@@ -78,7 +74,7 @@ class BuildManager:
                 "stdout": result.stdout[:500] if result.stdout else "",
                 "stderr": result.stderr[:500] if result.stderr else "",
                 "timestamp": datetime.now().isoformat(),
-                "artifacts": self._detect_artifacts(build_config["name"])
+                "artifacts": self._detect_artifacts(build_config["name"]),
             }
 
             if success:
@@ -102,7 +98,7 @@ class BuildManager:
                 "stdout": "",
                 "stderr": "Build timeout after 300 seconds",
                 "timestamp": datetime.now().isoformat(),
-                "artifacts": []
+                "artifacts": [],
             }
 
         except Exception as e:
@@ -118,7 +114,7 @@ class BuildManager:
                 "stdout": "",
                 "stderr": str(e),
                 "timestamp": datetime.now().isoformat(),
-                "artifacts": []
+                "artifacts": [],
             }
 
     def _detect_artifacts(self, build_name: str) -> List[str]:
@@ -151,10 +147,10 @@ class BuildManager:
                 "failed_builds": len(self.build_results) - successful_builds,
                 "total_duration_seconds": round(total_duration, 2),
                 "build_timestamp": datetime.now().isoformat(),
-                "project_root": str(self.project_root)
+                "project_root": str(self.project_root),
             },
             "builds": self.build_results,
-            "overall_status": "PASS" if successful_builds == len(self.build_results) else "FAIL"
+            "overall_status": "PASS" if successful_builds == len(self.build_results) else "FAIL",
         }
 
 
@@ -181,7 +177,7 @@ class NewmanTester:
         possible_paths = [
             self.project_root / "docs" / "jwt改" / "GymBro_API_Tests.postman_collection.json",
             self.project_root / "tests" / "postman" / "collection.json",
-            self.project_root / "postman" / "collection.json"
+            self.project_root / "postman" / "collection.json",
         ]
 
         for path in possible_paths:
@@ -203,7 +199,7 @@ class NewmanTester:
                 cwd=self.project_root,
                 capture_output=True,
                 text=True,
-                timeout=180  # 3分钟超时
+                timeout=180,  # 3分钟超时
             )
 
             duration = time.time() - start_time
@@ -224,10 +220,10 @@ class NewmanTester:
                     "failed_tests": 0,
                     "duration_seconds": round(duration, 2),
                     "status": "FAIL",
-                    "error": result.stderr or "Newman execution failed"
+                    "error": result.stderr or "Newman execution failed",
                 },
                 "test_results": [],
-                "newman_available": True
+                "newman_available": True,
             }
 
         except FileNotFoundError:
@@ -243,10 +239,10 @@ class NewmanTester:
                     "failed_tests": 0,
                     "duration_seconds": round(duration, 2),
                     "status": "TIMEOUT",
-                    "error": "Newman tests timed out after 180 seconds"
+                    "error": "Newman tests timed out after 180 seconds",
                 },
                 "test_results": [],
-                "newman_available": True
+                "newman_available": True,
             }
 
     def _parse_newman_result(self, newman_data: Dict, duration: float) -> Dict:
@@ -264,10 +260,10 @@ class NewmanTester:
                 "passed_tests": passed_tests,
                 "failed_tests": failed_tests,
                 "duration_seconds": round(duration, 2),
-                "status": "PASS" if failed_tests == 0 else "FAIL"
+                "status": "PASS" if failed_tests == 0 else "FAIL",
             },
             "test_results": self._extract_test_details(run_data),
-            "newman_available": True
+            "newman_available": True,
         }
 
     def _extract_test_details(self, run_data: Dict) -> List[Dict]:
@@ -283,13 +279,15 @@ class NewmanTester:
             passed_assertions = sum(1 for a in assertions if not a.get("error"))
             total_assertions = len(assertions)
 
-            test_results.append({
-                "name": test_name,
-                "status": "PASS" if passed_assertions == total_assertions else "FAIL",
-                "assertions_passed": passed_assertions,
-                "assertions_total": total_assertions,
-                "response_time_ms": execution.get("response", {}).get("responseTime", 0)
-            })
+            test_results.append(
+                {
+                    "name": test_name,
+                    "status": "PASS" if passed_assertions == total_assertions else "FAIL",
+                    "assertions_passed": passed_assertions,
+                    "assertions_total": total_assertions,
+                    "response_time_ms": execution.get("response", {}).get("responseTime", 0),
+                }
+            )
 
         return test_results
 
@@ -298,11 +296,41 @@ class NewmanTester:
         print("   🎭 创建模拟Newman测试结果")
 
         mock_tests = [
-            {"name": "Health Check", "status": "PASS", "assertions_passed": 2, "assertions_total": 2, "response_time_ms": 45},
-            {"name": "JWT Authentication", "status": "PASS", "assertions_passed": 3, "assertions_total": 3, "response_time_ms": 120},
-            {"name": "Rate Limiting", "status": "PASS", "assertions_passed": 4, "assertions_total": 4, "response_time_ms": 89},
-            {"name": "Message Creation", "status": "PASS", "assertions_passed": 5, "assertions_total": 5, "response_time_ms": 234},
-            {"name": "SSE Events", "status": "PASS", "assertions_passed": 3, "assertions_total": 3, "response_time_ms": 156}
+            {
+                "name": "Health Check",
+                "status": "PASS",
+                "assertions_passed": 2,
+                "assertions_total": 2,
+                "response_time_ms": 45,
+            },
+            {
+                "name": "JWT Authentication",
+                "status": "PASS",
+                "assertions_passed": 3,
+                "assertions_total": 3,
+                "response_time_ms": 120,
+            },
+            {
+                "name": "Rate Limiting",
+                "status": "PASS",
+                "assertions_passed": 4,
+                "assertions_total": 4,
+                "response_time_ms": 89,
+            },
+            {
+                "name": "Message Creation",
+                "status": "PASS",
+                "assertions_passed": 5,
+                "assertions_total": 5,
+                "response_time_ms": 234,
+            },
+            {
+                "name": "SSE Events",
+                "status": "PASS",
+                "assertions_passed": 3,
+                "assertions_total": 3,
+                "response_time_ms": 156,
+            },
         ]
 
         return {
@@ -311,11 +339,11 @@ class NewmanTester:
                 "passed_tests": len(mock_tests),
                 "failed_tests": 0,
                 "duration_seconds": 2.5,
-                "status": "PASS"
+                "status": "PASS",
             },
             "test_results": mock_tests,
             "newman_available": False,
-            "note": "模拟测试结果 - Newman未安装或Postman集合未找到"
+            "note": "模拟测试结果 - Newman未安装或Postman集合未找到",
         }
 
 
@@ -338,18 +366,19 @@ def main():
         "k5_ci_report": {
             "timestamp": datetime.now().isoformat(),
             "project_root": project_root,
-            "overall_status": "PASS" if (
-                build_report["overall_status"] == "PASS" and
-                newman_report["test_summary"]["status"] == "PASS"
-            ) else "FAIL"
+            "overall_status": (
+                "PASS"
+                if (build_report["overall_status"] == "PASS" and newman_report["test_summary"]["status"] == "PASS")
+                else "FAIL"
+            ),
         },
         "build_results": build_report,
-        "newman_results": newman_report
+        "newman_results": newman_report,
     }
 
     # 保存报告
     report_file = "docs/jwt改造/K5_ci_report.json"
-    with open(report_file, 'w', encoding='utf-8') as f:
+    with open(report_file, "w", encoding="utf-8") as f:
         json.dump(final_report, f, ensure_ascii=False, indent=2)
 
     print(f"\n📄 CI报告已保存到: {report_file}")
@@ -359,11 +388,13 @@ def main():
     print(f"   整体状态: {final_report['k5_ci_report']['overall_status']}")
     print(f"   构建状态: {build_report['overall_status']}")
     print(f"   测试状态: {newman_report['test_summary']['status']}")
-    print(f"   成功构建: {build_report['build_summary']['successful_builds']}/{build_report['build_summary']['total_builds']}")
+    print(
+        f"   成功构建: {build_report['build_summary']['successful_builds']}/{build_report['build_summary']['total_builds']}"
+    )
     print(f"   通过测试: {newman_report['test_summary']['passed_tests']}/{newman_report['test_summary']['total_tests']}")
 
     # 返回退出码
-    return 0 if final_report['k5_ci_report']['overall_status'] == "PASS" else 1
+    return 0 if final_report["k5_ci_report"]["overall_status"] == "PASS" else 1
 
 
 if __name__ == "__main__":

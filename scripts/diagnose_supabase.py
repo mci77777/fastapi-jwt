@@ -8,12 +8,11 @@ import asyncio
 import json
 import os
 import sys
-from typing import Optional
 
 import httpx
 
 # 添加项目根目录到 Python 路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.settings.config import get_settings
 
@@ -40,9 +39,8 @@ async def diagnose_supabase():
     supabase_url = f"https://{settings.supabase_project_id}.supabase.co"
 
     async with httpx.AsyncClient(timeout=15.0, proxy=PROXY_URL) as client:
-
         # 测试1: 基础连通性
-        print(f"\n🌐 测试1: 基础连通性")
+        print("\n🌐 测试1: 基础连通性")
         print(f"   目标: {supabase_url}")
 
         try:
@@ -60,7 +58,7 @@ async def diagnose_supabase():
             return False
 
         # 测试2: JWKS 端点详细检查
-        print(f"\n🔑 测试2: JWKS 端点详细检查")
+        print("\n🔑 测试2: JWKS 端点详细检查")
         jwks_url = str(settings.supabase_jwks_url)
         print(f"   URL: {jwks_url}")
 
@@ -72,12 +70,12 @@ async def diagnose_supabase():
             if response.status_code == 200:
                 try:
                     jwks_data = response.json()
-                    keys_count = len(jwks_data.get('keys', []))
+                    keys_count = len(jwks_data.get("keys", []))
                     print(f"   ✅ JWKS 可访问，包含 {keys_count} 个密钥")
 
                     # 显示第一个密钥的信息
                     if keys_count > 0:
-                        first_key = jwks_data['keys'][0]
+                        first_key = jwks_data["keys"][0]
                         print(f"   🔐 第一个密钥: kty={first_key.get('kty')}, use={first_key.get('use')}")
 
                 except json.JSONDecodeError:
@@ -98,7 +96,7 @@ async def diagnose_supabase():
             print(f"   ❌ JWKS 请求失败: {e}")
 
         # 测试3: 认证端点检查
-        print(f"\n🔐 测试3: 认证端点检查")
+        print("\n🔐 测试3: 认证端点检查")
         auth_url = f"{supabase_url}/auth/v1"
         print(f"   URL: {auth_url}")
 
@@ -115,7 +113,7 @@ async def diagnose_supabase():
             print(f"   ❌ 认证端点请求失败: {e}")
 
         # 测试4: REST API 端点检查
-        print(f"\n📊 测试4: REST API 端点检查")
+        print("\n📊 测试4: REST API 端点检查")
         rest_url = f"{supabase_url}/rest/v1/"
         print(f"   URL: {rest_url}")
 
@@ -124,8 +122,8 @@ async def diagnose_supabase():
                 rest_url,
                 headers={
                     "apikey": settings.supabase_service_role_key,
-                    "Authorization": f"Bearer {settings.supabase_service_role_key}"
-                }
+                    "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                },
             )
             print(f"   状态码: {response.status_code}")
 
@@ -135,8 +133,8 @@ async def diagnose_supabase():
                 # 尝试获取 OpenAPI 规范
                 try:
                     api_spec = response.json()
-                    if 'paths' in api_spec:
-                        paths_count = len(api_spec['paths'])
+                    if "paths" in api_spec:
+                        paths_count = len(api_spec["paths"])
                         print(f"   📋 API 规范包含 {paths_count} 个路径")
                 except:
                     print("   📋 REST API 响应格式未知")
@@ -153,7 +151,7 @@ async def diagnose_supabase():
             print(f"   ❌ REST API 请求失败: {e}")
 
         # 测试5: 特定表检查
-        print(f"\n📋 测试5: 数据库表检查")
+        print("\n📋 测试5: 数据库表检查")
         table_url = f"{supabase_url}/rest/v1/{settings.supabase_chat_table}"
         print(f"   表名: {settings.supabase_chat_table}")
         print(f"   URL: {table_url}")
@@ -164,9 +162,9 @@ async def diagnose_supabase():
                 headers={
                     "apikey": settings.supabase_service_role_key,
                     "Authorization": f"Bearer {settings.supabase_service_role_key}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                params={"limit": "1"}
+                params={"limit": "1"},
             )
             print(f"   状态码: {response.status_code}")
 
@@ -185,7 +183,7 @@ async def diagnose_supabase():
         except Exception as e:
             print(f"   ❌ 表检查请求失败: {e}")
 
-    print(f"\n" + "=" * 50)
+    print("\n" + "=" * 50)
     print("🎯 诊断建议:")
     print("1. 如果 JWKS 端点返回 404，请检查 Project ID 是否正确")
     print("2. 如果认证失败，请检查 Service Role Key 是否有效")
@@ -197,7 +195,7 @@ async def diagnose_supabase():
 
 async def test_manual_jwt():
     """手动测试 JWT 创建（如果可能）"""
-    print(f"\n🧪 手动 JWT 测试")
+    print("\n🧪 手动 JWT 测试")
     print("=" * 30)
 
     settings = get_settings()
@@ -208,20 +206,13 @@ async def test_manual_jwt():
     test_password = "TestPassword123!"
 
     async with httpx.AsyncClient(timeout=15.0, proxy=PROXY_URL) as client:
-
         # 尝试注册
         print("👤 尝试注册测试用户...")
         try:
             response = await client.post(
                 f"{supabase_url}/auth/v1/signup",
-                headers={
-                    "apikey": settings.supabase_service_role_key,
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "email": test_email,
-                    "password": test_password
-                }
+                headers={"apikey": settings.supabase_service_role_key, "Content-Type": "application/json"},
+                json={"email": test_email, "password": test_password},
             )
 
             print(f"   注册状态码: {response.status_code}")
@@ -238,14 +229,8 @@ async def test_manual_jwt():
         try:
             response = await client.post(
                 f"{supabase_url}/auth/v1/token?grant_type=password",
-                headers={
-                    "apikey": settings.supabase_service_role_key,
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "email": test_email,
-                    "password": test_password
-                }
+                headers={"apikey": settings.supabase_service_role_key, "Content-Type": "application/json"},
+                json={"email": test_email, "password": test_password},
             )
 
             print(f"   登录状态码: {response.status_code}")
@@ -274,10 +259,10 @@ async def main():
     jwt_token = await test_manual_jwt()
 
     if jwt_token:
-        print(f"\n🎉 JWT 令牌获取成功！可以进行 API 测试")
+        print("\n🎉 JWT 令牌获取成功！可以进行 API 测试")
         return 0
     else:
-        print(f"\n⚠️  JWT 令牌获取失败，请检查 Supabase 配置")
+        print("\n⚠️  JWT 令牌获取失败，请检查 Supabase 配置")
         return 1
 
 

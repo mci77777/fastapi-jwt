@@ -6,28 +6,35 @@ JWT 变体/攻击面快速校验
 运行：python e2e/anon_jwt_sse/scripts/jwt_mutation_tests.py
 输出：状态码与响应体（应为 401/403 + 统一错误体）
 """
-import json
+
 import base64
-import time
-import httpx
+import json
 import os
+import time
+
+import httpx
 
 API = os.environ.get("API_BASE", "http://localhost:9999")
 token_path = os.path.join(os.path.dirname(__file__), "..", "artifacts", "token.json")
 TOK = json.load(open(token_path))["access_token"]
 
+
 def b64url(d: dict) -> bytes:
-    return base64.urlsafe_b64encode(json.dumps(d, separators=(',',':')).encode()).rstrip(b"=")
+    return base64.urlsafe_b64encode(json.dumps(d, separators=(",", ":")).encode()).rstrip(b"=")
 
 
 def call(token: str):
-    r = httpx.post(f"{API}/api/v1/messages",
-                   headers={"Authorization": f"Bearer {token}"},
-                   json={"messages":[{"role":"user","content":"ping"}]}, timeout=20)
+    r = httpx.post(
+        f"{API}/api/v1/messages",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"messages": [{"role": "user", "content": "ping"}]},
+        timeout=20,
+    )
     try:
         return r.status_code, r.json()
     except Exception:
         return r.status_code, {"raw": r.text[:500]}
+
 
 # 拆原 token
 h, p, s = TOK.split(".")

@@ -1,4 +1,5 @@
 """创建测试 JWT token（使用 Supabase JWT Secret）。"""
+
 import os
 import sys
 from datetime import datetime, timedelta, timezone
@@ -32,4 +33,3 @@ payload = {
 # 生成 token
 token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 print(token)
-

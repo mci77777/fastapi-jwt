@@ -5,17 +5,20 @@
 
 运行：python e2e/anon_jwt_sse/scripts/validate_anon_integration.py
 """
+
 import asyncio
 import json
 import os
 import pathlib
 import sys
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Any, Dict
 
 import aiohttp
+
 try:
     import psycopg
+
     HAS_PSYCOPG = True
 except ImportError:
     HAS_PSYCOPG = False
@@ -25,6 +28,7 @@ from dotenv import load_dotenv
 
 # 加载环境变量
 load_dotenv()
+
 
 class AnonIntegrationValidator:
     """匿名用户集成验证器"""
@@ -40,12 +44,7 @@ class AnonIntegrationValidator:
         self.validation_results = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "tests": [],
-            "summary": {
-                "total": 0,
-                "passed": 0,
-                "failed": 0,
-                "errors": []
-            }
+            "summary": {"total": 0, "passed": 0, "failed": 0, "errors": []},
         }
 
     def add_test_result(self, test_name: str, passed: bool, details: Dict[str, Any]):
@@ -54,7 +53,7 @@ class AnonIntegrationValidator:
             "test_name": test_name,
             "passed": passed,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "details": details
+            "details": details,
         }
 
         self.validation_results["tests"].append(result)
@@ -87,47 +86,40 @@ class AnonIntegrationValidator:
             f"{self.api_base}/health",
             f"{self.api_base}/",
             f"{self.api_base}/docs",
-            f"{self.api_base}/api/v1/"
+            f"{self.api_base}/api/v1/",
         ]
 
         for endpoint in health_endpoints:
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        endpoint,
-                        timeout=aiohttp.ClientTimeout(total=10)
-                    ) as response:
+                    async with session.get(endpoint, timeout=aiohttp.ClientTimeout(total=10)) as response:
                         if response.status in [200, 404]:  # 404也表示服务在运行
                             data = await response.text()
-                            self.add_test_result("API健康检查", True, {
-                                "endpoint": endpoint,
-                                "status_code": response.status,
-                                "response": data[:200] + "..." if len(data) > 200 else data
-                            })
+                            self.add_test_result(
+                                "API健康检查",
+                                True,
+                                {
+                                    "endpoint": endpoint,
+                                    "status_code": response.status,
+                                    "response": data[:200] + "..." if len(data) > 200 else data,
+                                },
+                            )
                             return True
             except Exception:
                 continue
 
         # 所有端点都失败
-        self.add_test_result("API健康检查", False, {
-            "error": "所有健康检查端点都无法访问",
-            "tested_endpoints": health_endpoints
-        })
+        self.add_test_result("API健康检查", False, {"error": "所有健康检查端点都无法访问", "tested_endpoints": health_endpoints})
         return False
 
     async def test_database_tables(self) -> bool:
         """测试数据库表是否正确创建"""
         if not HAS_PSYCOPG:
-            self.add_test_result("数据库表检查", False, {
-                "error": "psycopg未安装，跳过数据库测试",
-                "skipped": True
-            })
+            self.add_test_result("数据库表检查", False, {"error": "psycopg未安装，跳过数据库测试", "skipped": True})
             return True  # 跳过但不算失败
 
         if not self.db_conn:
-            self.add_test_result("数据库表检查", False, {
-                "error": "DB_CONN环境变量未设置"
-            })
+            self.add_test_result("数据库表检查", False, {"error": "DB_CONN环境变量未设置"})
             return False
 
         try:
@@ -139,72 +131,76 @@ class AnonIntegrationValidator:
                         "anon_rate_limits",
                         "anon_sessions",
                         "anon_messages",
-                        "public_content"
+                        "public_content",
                     ]
 
                     table_status = {}
                     for table in required_tables:
-                        await cur.execute("""
+                        await cur.execute(
+                            """
                             SELECT EXISTS (
                                 SELECT FROM information_schema.tables
                                 WHERE table_schema = 'public'
                                 AND table_name = %s
                             )
-                        """, (table,))
+                        """,
+                            (table,),
+                        )
                         exists = (await cur.fetchone())[0]
                         table_status[table] = exists
 
                     all_exist = all(table_status.values())
-                    self.add_test_result("数据库表检查", all_exist, {
-                        "tables": table_status,
-                        "missing_tables": [t for t, exists in table_status.items() if not exists]
-                    })
+                    self.add_test_result(
+                        "数据库表检查",
+                        all_exist,
+                        {
+                            "tables": table_status,
+                            "missing_tables": [t for t, exists in table_status.items() if not exists],
+                        },
+                    )
 
                     return all_exist
 
         except Exception as e:
-            self.add_test_result("数据库表检查", False, {
-                "error": str(e)
-            })
+            self.add_test_result("数据库表检查", False, {"error": str(e)})
             return False
 
     async def test_rls_policies(self) -> bool:
         """测试RLS策略是否正确设置"""
         if not HAS_PSYCOPG:
-            self.add_test_result("RLS策略检查", False, {
-                "error": "psycopg未安装，跳过RLS策略测试",
-                "skipped": True
-            })
+            self.add_test_result("RLS策略检查", False, {"error": "psycopg未安装，跳过RLS策略测试", "skipped": True})
             return True  # 跳过但不算失败
 
         if not self.db_conn:
-            self.add_test_result("RLS策略检查", False, {
-                "error": "DB_CONN环境变量未设置"
-            })
+            self.add_test_result("RLS策略检查", False, {"error": "DB_CONN环境变量未设置"})
             return False
 
         try:
             async with await psycopg.AsyncConnection.connect(self.db_conn) as conn:
                 async with conn.cursor() as cur:
                     # 检查RLS是否启用
-                    await cur.execute("""
+                    await cur.execute(
+                        """
                         SELECT schemaname, tablename, rowsecurity
                         FROM pg_tables
                         WHERE schemaname = 'public'
                         AND tablename IN ('user_anon', 'anon_sessions', 'anon_messages', 'public_content')
-                    """)
+                    """
+                    )
 
                     rls_status = {}
                     async for row in cur:
                         rls_status[row[1]] = row[2]  # tablename -> rowsecurity
 
                     # 检查策略数量
-                    await cur.execute("""
+                    await cur.execute(
+                        """
                         SELECT schemaname, tablename, COUNT(*) as policy_count
                         FROM pg_policies
                         WHERE schemaname = 'public'
                         GROUP BY schemaname, tablename
-                    """)
+                    """
+                    )
 
                     policy_counts = {}
                     async for row in cur:
@@ -214,19 +210,21 @@ class AnonIntegrationValidator:
                     has_policies = len(policy_counts) > 0
 
                     success = all_rls_enabled and has_policies
-                    self.add_test_result("RLS策略检查", success, {
-                        "rls_enabled": rls_status,
-                        "policy_counts": policy_counts,
-                        "all_rls_enabled": all_rls_enabled,
-                        "has_policies": has_policies
-                    })
+                    self.add_test_result(
+                        "RLS策略检查",
+                        success,
+                        {
+                            "rls_enabled": rls_status,
+                            "policy_counts": policy_counts,
+                            "all_rls_enabled": all_rls_enabled,
+                            "has_policies": has_policies,
+                        },
+                    )
 
                     return success
 
         except Exception as e:
-            self.add_test_result("RLS策略检查", False, {
-                "error": str(e)
-            })
+            self.add_test_result("RLS策略检查", False, {"error": str(e)})
             return False
 
     async def test_jwt_validation_without_token(self) -> bool:
@@ -236,30 +234,31 @@ class AnonIntegrationValidator:
                 async with session.post(
                     f"{self.api_base}/api/v1/messages",
                     json={"messages": [{"role": "user", "content": "test"}]},
-                    timeout=aiohttp.ClientTimeout(total=10)
+                    timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
-
                     # 应该返回401未授权
                     expected_status = 401
                     success = response.status == expected_status
 
                     response_data = await response.json()
 
-                    self.add_test_result("无token JWT验证", success, {
-                        "expected_status": expected_status,
-                        "actual_status": response.status,
-                        "response": response_data,
-                        "has_unified_error_format": all(
-                            key in response_data for key in ["status", "code", "message"]
-                        )
-                    })
+                    self.add_test_result(
+                        "无token JWT验证",
+                        success,
+                        {
+                            "expected_status": expected_status,
+                            "actual_status": response.status,
+                            "response": response_data,
+                            "has_unified_error_format": all(
+                                key in response_data for key in ["status", "code", "message"]
+                            ),
+                        },
+                    )
 
                     return success
 
         except Exception as e:
-            self.add_test_result("无token JWT验证", False, {
-                "error": str(e)
-            })
+            self.add_test_result("无token JWT验证", False, {"error": str(e)})
             return False
 
     async def test_invalid_token_validation(self) -> bool:
@@ -267,7 +266,7 @@ class AnonIntegrationValidator:
         invalid_tokens = [
             "invalid.token.here",
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalid.signature",
-            "Bearer invalid-token"
+            "Bearer invalid-token",
         ]
 
         results = {}
@@ -282,9 +281,8 @@ class AnonIntegrationValidator:
                         f"{self.api_base}/api/v1/messages",
                         headers=headers,
                         json={"messages": [{"role": "user", "content": "test"}]},
-                        timeout=aiohttp.ClientTimeout(total=10)
+                        timeout=aiohttp.ClientTimeout(total=10),
                     ) as response:
-
                         # 应该返回401
                         success = response.status == 401
                         response_data = await response.json()
@@ -293,18 +291,14 @@ class AnonIntegrationValidator:
                             "token": token[:20] + "...",
                             "status_code": response.status,
                             "response": response_data,
-                            "success": success
+                            "success": success,
                         }
 
                         if not success:
                             all_passed = False
 
             except Exception as e:
-                results[f"invalid_token_{i+1}"] = {
-                    "token": token[:20] + "...",
-                    "error": str(e),
-                    "success": False
-                }
+                results[f"invalid_token_{i+1}"] = {"token": token[:20] + "...", "error": str(e), "success": False}
                 all_passed = False
 
         self.add_test_result("无效token验证", all_passed, results)
@@ -335,42 +329,41 @@ class AnonIntegrationValidator:
             # 如果没有429但有一致的401，说明限流可能在认证层之前，这也是合理的
             success = has_rate_limit or has_consistent_auth_rejection
 
-            self.add_test_result("限流机制测试", success, {
-                "total_requests": len(tasks),
-                "status_codes": status_codes,
-                "has_429": has_rate_limit,
-                "has_consistent_auth_rejection": has_consistent_auth_rejection,
-                "explanation": "限流可能在认证层生效" if has_consistent_auth_rejection else "未检测到限流",
-                "responses": responses[:3]  # 只保存前3个响应
-            })
+            self.add_test_result(
+                "限流机制测试",
+                success,
+                {
+                    "total_requests": len(tasks),
+                    "status_codes": status_codes,
+                    "has_429": has_rate_limit,
+                    "has_consistent_auth_rejection": has_consistent_auth_rejection,
+                    "explanation": "限流可能在认证层生效" if has_consistent_auth_rejection else "未检测到限流",
+                    "responses": responses[:3],  # 只保存前3个响应
+                },
+            )
 
             return success
 
         except Exception as e:
-            self.add_test_result("限流机制测试", False, {
-                "error": str(e)
-            })
+            self.add_test_result("限流机制测试", False, {"error": str(e)})
             return False
 
     async def _make_api_request(self, trace_id: str) -> Dict[str, Any]:
         """发送API请求"""
         try:
-            headers = {
-                "Content-Type": "application/json",
-                "X-Trace-Id": trace_id
-            }
+            headers = {"Content-Type": "application/json", "X-Trace-Id": trace_id}
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.api_base}/api/v1/messages",
                     headers=headers,
                     json={"messages": [{"role": "user", "content": "test"}]},
-                    timeout=aiohttp.ClientTimeout(total=5)
+                    timeout=aiohttp.ClientTimeout(total=5),
                 ) as response:
                     return {
                         "status_code": response.status,
                         "headers": dict(response.headers),
-                        "response": await response.text()
+                        "response": await response.text(),
                     }
         except Exception as e:
             return {"error": str(e)}
@@ -387,7 +380,7 @@ class AnonIntegrationValidator:
             self.test_rls_policies(),
             self.test_jwt_validation_without_token(),
             self.test_invalid_token_validation(),
-            self.test_rate_limiting()
+            self.test_rate_limiting(),
         ]
 
         results = await asyncio.gather(*tests, return_exceptions=True)
@@ -395,13 +388,11 @@ class AnonIntegrationValidator:
         # 处理异常
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                self.add_test_result(f"测试{i+1}", False, {
-                    "error": str(result)
-                })
+                self.add_test_result(f"测试{i+1}", False, {"error": str(result)})
 
         # 保存结果
         result_file = self.artifacts_dir / "anon_integration_validation.json"
-        with open(result_file, 'w', encoding='utf-8') as f:
+        with open(result_file, "w", encoding="utf-8") as f:
             json.dump(self.validation_results, f, indent=2, ensure_ascii=False)
 
         # 打印总结
@@ -422,6 +413,7 @@ class AnonIntegrationValidator:
 
         return summary["failed"] == 0
 
+
 async def main():
     """主函数"""
     try:
@@ -438,6 +430,7 @@ async def main():
     except Exception as e:
         print(f"\n💥 验证过程异常: {e}")
         return 1
+
 
 if __name__ == "__main__":
     exit_code = asyncio.run(main())

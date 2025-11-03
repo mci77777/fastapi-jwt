@@ -1,4 +1,5 @@
 """测试 Supabase User API 响应。"""
+
 import asyncio
 import os
 import sys
@@ -52,4 +53,3 @@ async def test_user_api():
 
 if __name__ == "__main__":
     asyncio.run(test_user_api())
-

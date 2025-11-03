@@ -20,7 +20,6 @@
 """
 import argparse
 import json
-import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -29,8 +28,9 @@ from pathlib import Path
 # 设置 UTF-8 输出（Windows 兼容）
 if sys.platform == "win32":
     import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
@@ -87,7 +87,7 @@ def get_test_token() -> str:
             else:
                 raise ValueError(f"Unexpected response format: {data}")
 
-            print(f"✅ Token 获取成功")
+            print("✅ Token 获取成功")
             print(f"   Token 长度: {len(token)}")
             print(f"   Token 预览: {token[:50]}...")
             return token
@@ -166,7 +166,7 @@ def verify_token(token: str) -> bool:
     print_section("3. 验证 Token 签名")
 
     settings = get_settings()
-    print(f"📋 JWT 配置:")
+    print("📋 JWT 配置:")
     print(f"  JWKS URL: {settings.supabase_jwks_url}")
     print(f"  允许的算法: {settings.jwt_allowed_algorithms}")
     print(f"  允许的 issuer: {settings.allowed_issuers}")
@@ -176,13 +176,13 @@ def verify_token(token: str) -> bool:
     verifier = get_jwt_verifier()
     try:
         user = verifier.verify_token(token)
-        print(f"\n✅ JWT 验证成功！")
+        print("\n✅ JWT 验证成功！")
         print(f"  用户 ID: {user.uid[:20]}...")
         print(f"  用户类型: {user.user_type}")
         print(f"  Claims 数量: {len(user.claims)}")
 
         # 显示部分 claims（脱敏）
-        print(f"\n📋 用户 Claims（部分）:")
+        print("\n📋 用户 Claims（部分）:")
         for key in ["role", "email", "aud", "iss", "exp", "iat"]:
             if key in user.claims:
                 val = user.claims[key]
@@ -230,7 +230,7 @@ def test_token_expiry() -> None:
     }
 
     token = jwt.encode(payload, settings.supabase_jwt_secret, algorithm="HS256")
-    print(f"✅ Token 创建成功，将在 5 秒后过期")
+    print("✅ Token 创建成功，将在 5 秒后过期")
 
     # 立即验证（应该成功）
     print("\n⏱️  立即验证（应该成功）...")
@@ -286,10 +286,10 @@ def main():
     print_section("测试总结")
     if success:
         print("✅ 所有测试通过")
-        print(f"\n💡 提示:")
+        print("\n💡 提示:")
         print(f"  - 前端访问: {FRONTEND_URL}")
         print(f"  - 后端 API: {BASE_URL}")
-        print(f"  - 使用 --test-expiry 测试 token 失效")
+        print("  - 使用 --test-expiry 测试 token 失效")
         return 0
     else:
         print("❌ 测试失败")
@@ -298,4 +298,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

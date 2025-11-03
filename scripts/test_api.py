@@ -1,6 +1,8 @@
 """测试 AI 配置 API"""
-import requests
+
 import json
+
+import requests
 
 BASE_URL = "http://localhost:9999/api/v1"
 
@@ -8,10 +10,7 @@ BASE_URL = "http://localhost:9999/api/v1"
 print("=" * 50)
 print("1. 登录获取token")
 print("=" * 50)
-login_response = requests.post(
-    f"{BASE_URL}/base/access_token",
-    json={"username": "admin", "password": "123456"}
-)
+login_response = requests.post(f"{BASE_URL}/base/access_token", json={"username": "admin", "password": "123456"})
 print(f"Status: {login_response.status_code}")
 print(f"Response: {json.dumps(login_response.json(), indent=2, ensure_ascii=False)}")
 
@@ -61,8 +60,8 @@ create_model_response = requests.post(
         "description": "测试用模型",
         "timeout": 60,
         "is_active": True,
-        "is_default": False
-    }
+        "is_default": False,
+    },
 )
 print(f"Status: {create_model_response.status_code}")
 print(f"Response: {json.dumps(create_model_response.json(), indent=2, ensure_ascii=False)}")
@@ -79,8 +78,8 @@ create_prompt_response = requests.post(
         "version": "v1.0",
         "system_prompt": "你是一个测试助手",
         "description": "测试用Prompt",
-        "is_active": False
-    }
+        "is_active": False,
+    },
 )
 print(f"Status: {create_prompt_response.status_code}")
 print(f"Response: {json.dumps(create_prompt_response.json(), indent=2, ensure_ascii=False)}")
@@ -88,4 +87,3 @@ print(f"Response: {json.dumps(create_prompt_response.json(), indent=2, ensure_as
 print("\n" + "=" * 50)
 print("测试完成!")
 print("=" * 50)
-

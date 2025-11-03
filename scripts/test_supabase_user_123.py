@@ -1,4 +1,5 @@
 """测试 Supabase 中是否有 test-user-123 用户。"""
+
 import asyncio
 import os
 import sys
@@ -53,4 +54,3 @@ async def test_user_123():
 
 if __name__ == "__main__":
     asyncio.run(test_user_123())
-

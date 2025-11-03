@@ -15,13 +15,12 @@ import json
 import os
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
 from dotenv import load_dotenv
-
 
 ARTIFACTS_DIR = Path(__file__).resolve().parents[1] / "artifacts"
 DEFAULT_OUTPUT = ARTIFACTS_DIR / "anon_e2e_trace.json"
@@ -349,10 +348,14 @@ async def async_main() -> int:
     service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or ""
     anon_key = os.getenv("SUPABASE_ANON_KEY") or ""
 
-    missing = [name for name, value in [
-        ("SUPABASE_URL", supabase_url),
-        ("SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY", service_key or anon_key),
-    ] if not value]
+    missing = [
+        name
+        for name, value in [
+            ("SUPABASE_URL", supabase_url),
+            ("SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY", service_key or anon_key),
+        ]
+        if not value
+    ]
 
     if missing:
         print("ERROR: 缺少必要的 Supabase 配置：", ", ".join(missing))
@@ -376,4 +379,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -11,8 +11,6 @@
 使用方法：
     python scripts/test_monitoring_pipeline.py
 """
-import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -20,8 +18,9 @@ from pathlib import Path
 # 设置 UTF-8 输出（Windows 兼容）
 if sys.platform == "win32":
     import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
@@ -76,7 +75,7 @@ def test_backend_health() -> bool:
             response.raise_for_status()
             data = response.json()
 
-            print(f"✅ 后端服务健康")
+            print("✅ 后端服务健康")
             print(f"   状态: {data.get('status', 'unknown')}")
             print(f"   时间: {data.get('timestamp', 'unknown')}")
             return True
@@ -99,7 +98,7 @@ def test_token_api_connectivity() -> bool:
             response.raise_for_status()
             data = response.json()
 
-            print(f"✅ Token API 连通正常")
+            print("✅ Token API 连通正常")
             print(f"   响应码: {response.status_code}")
             print(f"   Token 长度: {len(data.get('data', {}).get('access_token', ''))}")
             return True
@@ -124,13 +123,13 @@ def test_jwt_connectivity(token: str) -> bool:
             response.raise_for_status()
             data = response.json()
 
-            print(f"✅ JWT 验证成功")
+            print("✅ JWT 验证成功")
             print(f"   响应码: {response.status_code}")
 
             # 获取 JWT 可用性指标
             if "data" in data and "jwt_availability" in data["data"]:
                 jwt_stats = data["data"]["jwt_availability"]
-                print(f"\n📊 JWT 连通性指标:")
+                print("\n📊 JWT 连通性指标:")
                 print(f"   成功率: {jwt_stats.get('success_rate', 0)}%")
                 print(f"   总请求数: {jwt_stats.get('total_requests', 0)}")
                 print(f"   成功请求数: {jwt_stats.get('successful_requests', 0)}")
@@ -156,7 +155,7 @@ def test_ai_request_connectivity(token: str) -> bool:
             response.raise_for_status()
             data = response.json()
 
-            print(f"✅ AI 请求连通正常")
+            print("✅ AI 请求连通正常")
             print(f"   响应码: {response.status_code}")
 
             # 显示模型列表
@@ -164,7 +163,7 @@ def test_ai_request_connectivity(token: str) -> bool:
                 models = data["data"]["items"]
                 print(f"   可用模型数: {len(models)}")
                 if models:
-                    print(f"\n📋 模型列表:")
+                    print("\n📋 模型列表:")
                     for model in models[:3]:  # 只显示前 3 个
                         print(f"   - {model.get('model_name', 'unknown')}")
                         print(f"     提供商: {model.get('provider', 'unknown')}")
@@ -190,7 +189,7 @@ def test_api_connectivity(token: str) -> bool:
             response.raise_for_status()
             data = response.json()
 
-            print(f"✅ API 连通性查询成功")
+            print("✅ API 连通性查询成功")
 
             # 显示连通性指标
             if "data" in data:
@@ -198,7 +197,7 @@ def test_api_connectivity(token: str) -> bool:
             else:
                 api_stats = data
 
-            print(f"\n📊 API 连通性指标:")
+            print("\n📊 API 连通性指标:")
             print(f"   监控运行中: {'✅ 是' if api_stats.get('is_running') else '❌ 否'}")
             print(f"   健康端点数: {api_stats.get('healthy_endpoints', 0)}")
             print(f"   总端点数: {api_stats.get('total_endpoints', 0)}")
@@ -226,7 +225,7 @@ def test_dashboard_stats(token: str) -> bool:
             response.raise_for_status()
             data = response.json()
 
-            print(f"✅ Dashboard 数据获取成功")
+            print("✅ Dashboard 数据获取成功")
 
             # 显示统计数据
             if "data" in data:
@@ -234,7 +233,7 @@ def test_dashboard_stats(token: str) -> bool:
             else:
                 stats = data
 
-            print(f"\n📊 Dashboard 统计数据:")
+            print("\n📊 Dashboard 统计数据:")
             print(f"   日活用户数: {stats.get('daily_active_users', 0)}")
 
             ai_requests = stats.get("ai_requests", {})
@@ -297,13 +296,12 @@ def main():
         print(f"  {status}  {name}")
 
     if passed == total:
-        print(f"\n🎉 所有监控管线测试通过！")
+        print("\n🎉 所有监控管线测试通过！")
         return 0
     else:
-        print(f"\n⚠️  部分测试失败，请检查日志")
+        print("\n⚠️  部分测试失败，请检查日志")
         return 1
 
 
 if __name__ == "__main__":
     sys.exit(main())
-

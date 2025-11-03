@@ -1,6 +1,6 @@
 """Phase 2 API 测试脚本。"""
+
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -73,9 +73,7 @@ async def test_rest_apis(token: str) -> bool:
         # 测试 2: GET /stats/daily-active-users
         print("\n2. 测试 GET /stats/daily-active-users")
         try:
-            response = await client.get(
-                f"{BASE_URL}/stats/daily-active-users?time_window=24h", headers=headers
-            )
+            response = await client.get(f"{BASE_URL}/stats/daily-active-users?time_window=24h", headers=headers)
             if response.status_code == 200:
                 data = response.json()
                 print(f"✅ 状态码: {response.status_code}")
@@ -90,9 +88,7 @@ async def test_rest_apis(token: str) -> bool:
         # 测试 3: GET /stats/ai-requests
         print("\n3. 测试 GET /stats/ai-requests")
         try:
-            response = await client.get(
-                f"{BASE_URL}/stats/ai-requests?time_window=24h", headers=headers
-            )
+            response = await client.get(f"{BASE_URL}/stats/ai-requests?time_window=24h", headers=headers)
             if response.status_code == 200:
                 data = response.json()
                 print(f"✅ 状态码: {response.status_code}")
@@ -137,9 +133,7 @@ async def test_rest_apis(token: str) -> bool:
         # 测试 6: GET /logs/recent
         print("\n6. 测试 GET /logs/recent")
         try:
-            response = await client.get(
-                f"{BASE_URL}/logs/recent?level=WARNING&limit=10", headers=headers
-            )
+            response = await client.get(f"{BASE_URL}/logs/recent?level=WARNING&limit=10", headers=headers)
             if response.status_code == 200:
                 data = response.json()
                 print(f"✅ 状态码: {response.status_code}")
@@ -195,4 +189,3 @@ async def main():
 if __name__ == "__main__":
     success = asyncio.run(main())
     sys.exit(0 if success else 1)
-

@@ -19,15 +19,9 @@
 
       <!-- 统计摘要 -->
       <n-space v-if="endpoints.length > 0" align="center">
-        <n-tag :bordered="false" type="success">
-          在线: {{ onlineCount }}
-        </n-tag>
-        <n-tag :bordered="false" type="error">
-          离线: {{ offlineCount }}
-        </n-tag>
-        <n-tag :bordered="false" type="warning">
-          未检测: {{ unknownCount }}
-        </n-tag>
+        <n-tag :bordered="false" type="success"> 在线: {{ onlineCount }} </n-tag>
+        <n-tag :bordered="false" type="error"> 离线: {{ offlineCount }} </n-tag>
+        <n-tag :bordered="false" type="warning"> 未检测: {{ unknownCount }} </n-tag>
       </n-space>
 
       <!-- 端点列表 -->
@@ -46,7 +40,11 @@
 <script setup>
 import { ref, computed, h, onMounted } from 'vue'
 import { NButton, NTag, useMessage } from 'naive-ui'
-import { fetchModels, checkEndpointConnectivity, checkAllEndpointsConnectivity } from '@/api/aiModelSuite'
+import {
+  fetchModels,
+  checkEndpointConnectivity,
+  checkAllEndpointsConnectivity,
+} from '@/api/aiModelSuite'
 import HeroIcon from '@/components/common/HeroIcon.vue'
 
 defineOptions({ name: 'EndpointConnectivityCard' })
@@ -59,7 +57,9 @@ const endpoints = ref([])
 // 统计数据（后端返回 online/offline/unknown，前端统一映射）
 const onlineCount = computed(() => endpoints.value.filter((e) => e.status === 'online').length)
 const offlineCount = computed(() => endpoints.value.filter((e) => e.status === 'offline').length)
-const unknownCount = computed(() => endpoints.value.filter((e) => !e.status || e.status === 'unknown').length)
+const unknownCount = computed(
+  () => endpoints.value.filter((e) => !e.status || e.status === 'unknown').length
+)
 
 // 表格列定义
 const columns = [
@@ -87,7 +87,11 @@ const columns = [
         checking: { type: 'info', text: '检测中' },
       }
       const status = statusMap[row.status] || statusMap.unknown
-      return h(NTag, { type: status.type, size: 'small', bordered: false }, { default: () => status.text })
+      return h(
+        NTag,
+        { type: status.type, size: 'small', bordered: false },
+        { default: () => status.text }
+      )
     },
   },
   {

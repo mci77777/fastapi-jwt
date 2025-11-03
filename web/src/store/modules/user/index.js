@@ -51,7 +51,7 @@ export const useUserStore = defineStore('user', {
     async logout() {
       const { resetTags } = useTagsStore()
       const { resetPermission } = usePermissionStore()
-      removeToken()  // 这会同时清除 token 和用户信息
+      removeToken() // 这会同时清除 token 和用户信息
       resetTags()
       resetPermission()
       resetRouter()

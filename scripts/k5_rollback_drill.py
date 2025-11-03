@@ -4,15 +4,16 @@
 import json
 import os
 import time
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
-from dataclasses import dataclass
 
 
 @dataclass
 class DeploymentStage:
     """部署阶段数据类。"""
+
     name: str
     description: str
     traffic_percentage: int
@@ -37,7 +38,7 @@ class RollbackDrillManager:
                 traffic_percentage=5,
                 duration_minutes=10,
                 health_checks=["health_endpoint", "error_rate", "latency"],
-                rollback_triggers=["error_rate > 5%", "latency > 2000ms", "health_check_fail"]
+                rollback_triggers=["error_rate > 5%", "latency > 2000ms", "health_check_fail"],
             ),
             DeploymentStage(
                 name="blue_green_25",
@@ -45,7 +46,7 @@ class RollbackDrillManager:
                 traffic_percentage=25,
                 duration_minutes=15,
                 health_checks=["health_endpoint", "error_rate", "latency", "memory_usage"],
-                rollback_triggers=["error_rate > 3%", "latency > 1500ms", "memory > 80%"]
+                rollback_triggers=["error_rate > 3%", "latency > 1500ms", "memory > 80%"],
             ),
             DeploymentStage(
                 name="blue_green_50",
@@ -53,16 +54,23 @@ class RollbackDrillManager:
                 traffic_percentage=50,
                 duration_minutes=20,
                 health_checks=["health_endpoint", "error_rate", "latency", "memory_usage", "cpu_usage"],
-                rollback_triggers=["error_rate > 2%", "latency > 1200ms", "cpu > 70%"]
+                rollback_triggers=["error_rate > 2%", "latency > 1200ms", "cpu > 70%"],
             ),
             DeploymentStage(
                 name="full_deployment",
                 description="完整发布 - 100%流量",
                 traffic_percentage=100,
                 duration_minutes=30,
-                health_checks=["health_endpoint", "error_rate", "latency", "memory_usage", "cpu_usage", "business_metrics"],
-                rollback_triggers=["error_rate > 1%", "latency > 1000ms", "business_impact"]
-            )
+                health_checks=[
+                    "health_endpoint",
+                    "error_rate",
+                    "latency",
+                    "memory_usage",
+                    "cpu_usage",
+                    "business_metrics",
+                ],
+                rollback_triggers=["error_rate > 1%", "latency > 1000ms", "business_impact"],
+            ),
         ]
 
     def run_rollback_drill(self) -> Dict:
@@ -74,11 +82,11 @@ class RollbackDrillManager:
                 "start_time": self.drill_start_time.isoformat(),
                 "drill_type": "灰度发布与回滚演练",
                 "total_stages": len(self.deployment_stages),
-                "project_root": str(self.project_root)
+                "project_root": str(self.project_root),
             },
             "stages": [],
             "rollback_scenarios": [],
-            "lessons_learned": []
+            "lessons_learned": [],
         }
 
         # 执行各个部署阶段
@@ -127,7 +135,7 @@ class RollbackDrillManager:
             "health_checks": health_results,
             "metrics": metrics,
             "status": "SUCCESS" if stage_success else "FAILED",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
     def _simulate_health_check(self, check_name: str, traffic_percentage: int) -> Dict:
@@ -143,7 +151,7 @@ class RollbackDrillManager:
             "latency": {"threshold": 1500, "metric": "response_time_ms"},
             "memory_usage": {"threshold": 80, "metric": "memory_percent"},
             "cpu_usage": {"threshold": 70, "metric": "cpu_percent"},
-            "business_metrics": {"threshold": 0.98, "metric": "conversion_rate"}
+            "business_metrics": {"threshold": 0.98, "metric": "conversion_rate"},
         }
 
         config = check_configs.get(check_name, {"threshold": 0.95, "metric": "generic"})
@@ -165,7 +173,7 @@ class RollbackDrillManager:
             "value": round(value, 3),
             "threshold": config["threshold"],
             "status": status,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
     def _simulate_stage_metrics(self, stage: DeploymentStage) -> Dict:
@@ -181,7 +189,7 @@ class RollbackDrillManager:
             "p95_latency_ms": round(random.uniform(800, 1500), 2),
             "active_connections": random.randint(50, 200),
             "memory_usage_mb": random.randint(300, 600),
-            "cpu_usage_percent": round(random.uniform(20, 60), 2)
+            "cpu_usage_percent": round(random.uniform(20, 60), 2),
         }
 
     def _simulate_rollback_scenario(self, stage: DeploymentStage, trigger: str) -> Dict:
@@ -196,7 +204,7 @@ class RollbackDrillManager:
             {"step": "drain_connections", "description": "排空新版本连接", "duration_seconds": 30},
             {"step": "switch_traffic", "description": "切换流量到旧版本", "duration_seconds": 10},
             {"step": "verify_rollback", "description": "验证回滚成功", "duration_seconds": 60},
-            {"step": "cleanup_resources", "description": "清理新版本资源", "duration_seconds": 20}
+            {"step": "cleanup_resources", "description": "清理新版本资源", "duration_seconds": 20},
         ]
 
         step_results = []
@@ -205,13 +213,15 @@ class RollbackDrillManager:
             time.sleep(0.1)  # 模拟执行时间
             step_duration = time.time() - step_start
 
-            step_results.append({
-                "step": step["step"],
-                "description": step["description"],
-                "duration_seconds": round(step_duration, 2),
-                "status": "SUCCESS",
-                "timestamp": datetime.now().isoformat()
-            })
+            step_results.append(
+                {
+                    "step": step["step"],
+                    "description": step["description"],
+                    "duration_seconds": round(step_duration, 2),
+                    "status": "SUCCESS",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
             print(f"     ✅ {step['description']} ({step_duration:.2f}s)")
 
         total_rollback_time = time.time() - rollback_start
@@ -227,8 +237,8 @@ class RollbackDrillManager:
                 "affected_users_percent": stage.traffic_percentage,
                 "downtime_seconds": round(total_rollback_time, 2),
                 "data_loss": False,
-                "service_degradation": "MINIMAL"
-            }
+                "service_degradation": "MINIMAL",
+            },
         }
 
     def _generate_lessons_learned(self) -> List[str]:
@@ -241,7 +251,7 @@ class RollbackDrillManager:
             "监控告警及时触发了回滚决策",
             "需要优化连接排空时间以减少影响",
             "建议增加业务指标监控维度",
-            "回滚后验证步骤需要更全面的检查"
+            "回滚后验证步骤需要更全面的检查",
         ]
 
     def generate_rollback_playbook(self) -> Dict:
@@ -250,18 +260,18 @@ class RollbackDrillManager:
             "rollback_playbook": {
                 "title": "GymBro API v2.0 回滚操作手册",
                 "version": "1.0",
-                "last_updated": datetime.now().isoformat()
+                "last_updated": datetime.now().isoformat(),
             },
             "emergency_contacts": [
                 {"role": "Primary Oncall", "contact": "+86-138-0000-0001", "slack": "@primary.oncall"},
                 {"role": "Secondary Oncall", "contact": "+86-138-0000-0002", "slack": "@secondary.oncall"},
-                {"role": "Tech Lead", "contact": "+86-138-0000-0003", "slack": "@tech.lead"}
+                {"role": "Tech Lead", "contact": "+86-138-0000-0003", "slack": "@tech.lead"},
             ],
             "rollback_triggers": [
                 {"trigger": "error_rate > 5%", "severity": "P0", "auto_rollback": True},
                 {"trigger": "p95_latency > 5000ms", "severity": "P0", "auto_rollback": True},
                 {"trigger": "health_check_failure", "severity": "P1", "auto_rollback": False},
-                {"trigger": "business_metric_drop > 20%", "severity": "P1", "auto_rollback": False}
+                {"trigger": "business_metric_drop > 20%", "severity": "P1", "auto_rollback": False},
             ],
             "rollback_procedures": [
                 {
@@ -271,8 +281,8 @@ class RollbackDrillManager:
                         "自动执行流量切换到稳定版本",
                         "发送告警通知值班人员",
                         "值班人员确认回滚状态",
-                        "执行事后分析和修复"
-                    ]
+                        "执行事后分析和修复",
+                    ],
                 },
                 {
                     "scenario": "手动回滚",
@@ -281,9 +291,9 @@ class RollbackDrillManager:
                         "执行 kubectl rollout undo deployment/gymbro-api",
                         "监控服务恢复状态",
                         "验证关键功能正常",
-                        "通知相关团队回滚完成"
-                    ]
-                }
+                        "通知相关团队回滚完成",
+                    ],
+                },
             ],
             "verification_checklist": [
                 "健康检查端点返回200",
@@ -291,8 +301,8 @@ class RollbackDrillManager:
                 "P95延迟低于1000ms",
                 "关键业务功能可用",
                 "数据库连接正常",
-                "外部依赖服务正常"
-            ]
+                "外部依赖服务正常",
+            ],
         }
 
 
@@ -313,12 +323,12 @@ def main():
 
     # 保存演练报告
     drill_report_file = "docs/jwt改造/K5_rollback_drill_report.json"
-    with open(drill_report_file, 'w', encoding='utf-8') as f:
+    with open(drill_report_file, "w", encoding="utf-8") as f:
         json.dump(drill_report, f, ensure_ascii=False, indent=2)
 
     # 保存回滚手册
     playbook_file = "docs/jwt改造/K5_rollback_playbook.json"
-    with open(playbook_file, 'w', encoding='utf-8') as f:
+    with open(playbook_file, "w", encoding="utf-8") as f:
         json.dump(rollback_playbook, f, ensure_ascii=False, indent=2)
 
     print(f"\n📄 回滚演练报告已保存到: {drill_report_file}")
@@ -330,14 +340,14 @@ def main():
     print(f"   回滚场景: {len(drill_report['rollback_scenarios'])}")
     print(f"   总耗时: {drill_report['drill_summary']['total_duration_minutes']}分钟")
 
-    successful_stages = sum(1 for stage in drill_report['stages'] if stage['status'] == 'SUCCESS')
+    successful_stages = sum(1 for stage in drill_report["stages"] if stage["status"] == "SUCCESS")
     print(f"   成功阶段: {successful_stages}/{len(drill_report['stages'])}")
 
-    successful_rollbacks = sum(1 for rb in drill_report['rollback_scenarios'] if rb['rollback_status'] == 'SUCCESS')
+    successful_rollbacks = sum(1 for rb in drill_report["rollback_scenarios"] if rb["rollback_status"] == "SUCCESS")
     print(f"   成功回滚: {successful_rollbacks}/{len(drill_report['rollback_scenarios'])}")
 
     print("\n💡 关键经验:")
-    for lesson in drill_report['lessons_learned'][:3]:
+    for lesson in drill_report["lessons_learned"][:3]:
         print(f"   - {lesson}")
 
     print("\n✅ K5回滚演练完成!")

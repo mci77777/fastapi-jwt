@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -286,4 +284,3 @@ class TestE2EFlow:
         )
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-

@@ -13,9 +13,7 @@ Phase 4 UI 优化可视化验证脚本
     python scripts/visual_verification_phase4.py
 """
 
-import json
 import sys
-import time
 from pathlib import Path
 
 import requests
@@ -286,4 +284,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

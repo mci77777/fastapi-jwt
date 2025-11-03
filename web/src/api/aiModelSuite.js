@@ -30,8 +30,7 @@ export const fetchPromptTests = (promptId, params = {}) =>
 export const simulateDialog = (data = {}) =>
   request.post('/llm/tests/dialog', data, { timeout: 30000 }) // 30秒超时
 
-export const runLoadTest = (data = {}) =>
-  request.post('/llm/tests/load', data, { timeout: 60000 }) // 60秒超时（压测可能较慢）
+export const runLoadTest = (data = {}) => request.post('/llm/tests/load', data, { timeout: 60000 }) // 60秒超时（压测可能较慢）
 
 export const fetchLoadRun = (runId) => request.get(`/llm/tests/runs/${runId}`)
 

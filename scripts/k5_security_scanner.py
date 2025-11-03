@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """K5 三类安全扫描器 - 检测非法导入、明文密钥、环境变量泄露。"""
 
+import json
 import os
 import re
-import json
-from pathlib import Path
-from typing import Dict, List, Tuple
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List
 
 
 @dataclass
 class SecurityIssue:
     """安全问题数据类。"""
+
     file_path: str
     line_number: int
     issue_type: str
@@ -29,12 +30,19 @@ class SecurityScanner:
 
         # 排除目录
         self.exclude_dirs = {
-            'tools', '.github', '__pycache__', '.git', 'node_modules',
-            '.venv', 'venv', '.pytest_cache', '.mypy_cache'
+            "tools",
+            ".github",
+            "__pycache__",
+            ".git",
+            "node_modules",
+            ".venv",
+            "venv",
+            ".pytest_cache",
+            ".mypy_cache",
         }
 
         # 扫描文件类型
-        self.scan_extensions = {'.py', '.js', '.ts', '.jsx', '.tsx', '.json', '.yaml', '.yml'}
+        self.scan_extensions = {".py", ".js", ".ts", ".jsx", ".tsx", ".json", ".yaml", ".yml"}
 
     def scan_all(self) -> Dict:
         """执行所有扫描。"""
@@ -56,7 +64,7 @@ class SecurityScanner:
         """获取需要扫描的文件列表。"""
         files = []
 
-        for file_path in self.project_root.rglob('*'):
+        for file_path in self.project_root.rglob("*"):
             # 跳过目录
             if file_path.is_dir():
                 continue
@@ -77,21 +85,21 @@ class SecurityScanner:
 
         # Firebase相关的非法导入模式
         firebase_patterns = [
-            r'from\s+firebase\s+import',
-            r'import\s+firebase',
-            r'from\s+firebase[.\w]*\s+import',
+            r"from\s+firebase\s+import",
+            r"import\s+firebase",
+            r"from\s+firebase[.\w]*\s+import",
             r'require\([\'"]firebase[\'\"]\)',
             r'import\s+.*\s+from\s+[\'"]firebase[\'"]',
-            r'firebase\.initializeApp',
-            r'firebase\.auth\(\)',
-            r'firebase\.firestore\(\)',
-            r'getAuth\s*\(',
-            r'getFirestore\s*\(',
+            r"firebase\.initializeApp",
+            r"firebase\.auth\(\)",
+            r"firebase\.firestore\(\)",
+            r"getAuth\s*\(",
+            r"getFirestore\s*\(",
         ]
 
         for file_path in files:
             try:
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     lines = f.readlines()
 
                 for line_num, line in enumerate(lines, 1):
@@ -99,14 +107,16 @@ class SecurityScanner:
 
                     for pattern in firebase_patterns:
                         if re.search(pattern, line_clean, re.IGNORECASE):
-                            self.issues.append(SecurityIssue(
-                                file_path=str(file_path.relative_to(self.project_root)),
-                                line_number=line_num,
-                                issue_type="ILLEGAL_FIREBASE_IMPORT",
-                                severity="HIGH",
-                                description=f"检测到非法Firebase导入: {pattern}",
-                                code_snippet=line_clean[:100]
-                            ))
+                            self.issues.append(
+                                SecurityIssue(
+                                    file_path=str(file_path.relative_to(self.project_root)),
+                                    line_number=line_num,
+                                    issue_type="ILLEGAL_FIREBASE_IMPORT",
+                                    severity="HIGH",
+                                    description=f"检测到非法Firebase导入: {pattern}",
+                                    code_snippet=line_clean[:100],
+                                )
+                            )
 
             except Exception as e:
                 print(f"⚠️  扫描文件失败 {file_path}: {e}")
@@ -117,8 +127,8 @@ class SecurityScanner:
 
         # Bearer令牌模式
         bearer_patterns = [
-            r'Bearer\s+[A-Za-z0-9+/=]{20,}',  # 标准Bearer格式
-            r'bearer\s+[A-Za-z0-9+/=]{20,}',  # 小写bearer
+            r"Bearer\s+[A-Za-z0-9+/=]{20,}",  # 标准Bearer格式
+            r"bearer\s+[A-Za-z0-9+/=]{20,}",  # 小写bearer
             r'[\'"]Bearer\s+[A-Za-z0-9+/=]{20,}[\'"]',  # 引号包围
             r'Authorization[\'"]?\s*:\s*[\'"]?Bearer\s+[A-Za-z0-9+/=]{20,}',  # Authorization头
             r'token[\'"]?\s*:\s*[\'"]?[A-Za-z0-9+/=]{40,}[\'"]?',  # token字段
@@ -127,14 +137,14 @@ class SecurityScanner:
 
         for file_path in files:
             try:
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     lines = f.readlines()
 
                 for line_num, line in enumerate(lines, 1):
                     line_clean = line.strip()
 
                     # 跳过注释行
-                    if line_clean.startswith('#') or line_clean.startswith('//'):
+                    if line_clean.startswith("#") or line_clean.startswith("//"):
                         continue
 
                     for pattern in bearer_patterns:
@@ -144,14 +154,16 @@ class SecurityScanner:
                             if self._is_example_token(match.group()):
                                 continue
 
-                            self.issues.append(SecurityIssue(
-                                file_path=str(file_path.relative_to(self.project_root)),
-                                line_number=line_num,
-                                issue_type="PLAINTEXT_BEARER_TOKEN",
-                                severity="CRITICAL",
-                                description="检测到明文Bearer令牌",
-                                code_snippet=line_clean[:100]
-                            ))
+                            self.issues.append(
+                                SecurityIssue(
+                                    file_path=str(file_path.relative_to(self.project_root)),
+                                    line_number=line_num,
+                                    issue_type="PLAINTEXT_BEARER_TOKEN",
+                                    severity="CRITICAL",
+                                    description="检测到明文Bearer令牌",
+                                    code_snippet=line_clean[:100],
+                                )
+                            )
 
             except Exception as e:
                 print(f"⚠️  扫描文件失败 {file_path}: {e}")
@@ -164,11 +176,11 @@ class SecurityScanner:
         env_patterns = [
             r'System\.getenv\s*\(\s*[\'"][A-Z_]+[\'"]',  # Java System.getenv
             r'os\.getenv\s*\(\s*[\'"][A-Z_]+[\'"]',  # Python os.getenv
-            r'process\.env\.[A-Z_]+',  # Node.js process.env
+            r"process\.env\.[A-Z_]+",  # Node.js process.env
             r'ENV\[[\'"][A-Z_]+[\'"]',  # Ruby ENV
-            r'\$ENV\{[A-Z_]+\}',  # Perl $ENV
-            r'ENV_[A-Z_]+\s*=',  # 环境变量赋值
-            r'SECRET_[A-Z_]+\s*=',  # SECRET前缀
+            r"\$ENV\{[A-Z_]+\}",  # Perl $ENV
+            r"ENV_[A-Z_]+\s*=",  # 环境变量赋值
+            r"SECRET_[A-Z_]+\s*=",  # SECRET前缀
             r'[\'"][A-Z_]*SECRET[A-Z_]*[\'"]',  # 包含SECRET的字符串
             r'[\'"][A-Z_]*PASSWORD[A-Z_]*[\'"]',  # 包含PASSWORD的字符串
             r'[\'"][A-Z_]*TOKEN[A-Z_]*[\'"]',  # 包含TOKEN的字符串
@@ -177,14 +189,14 @@ class SecurityScanner:
 
         for file_path in files:
             try:
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     lines = f.readlines()
 
                 for line_num, line in enumerate(lines, 1):
                     line_clean = line.strip()
 
                     # 跳过注释行
-                    if line_clean.startswith('#') or line_clean.startswith('//'):
+                    if line_clean.startswith("#") or line_clean.startswith("//"):
                         continue
 
                     for pattern in env_patterns:
@@ -194,14 +206,16 @@ class SecurityScanner:
                             if self._is_config_example(line_clean, match.group()):
                                 continue
 
-                            self.issues.append(SecurityIssue(
-                                file_path=str(file_path.relative_to(self.project_root)),
-                                line_number=line_num,
-                                issue_type="ENVIRONMENT_VARIABLE_LEAK",
-                                severity="MEDIUM",
-                                description=f"检测到环境变量使用: {match.group()}",
-                                code_snippet=line_clean[:100]
-                            ))
+                            self.issues.append(
+                                SecurityIssue(
+                                    file_path=str(file_path.relative_to(self.project_root)),
+                                    line_number=line_num,
+                                    issue_type="ENVIRONMENT_VARIABLE_LEAK",
+                                    severity="MEDIUM",
+                                    description=f"检测到环境变量使用: {match.group()}",
+                                    code_snippet=line_clean[:100],
+                                )
+                            )
 
             except Exception as e:
                 print(f"⚠️  扫描文件失败 {file_path}: {e}")
@@ -209,9 +223,20 @@ class SecurityScanner:
     def _is_example_token(self, token: str) -> bool:
         """判断是否为示例令牌。"""
         example_indicators = [
-            'example', 'test', 'demo', 'sample', 'placeholder',
-            'your-token', 'your-key', 'xxx', 'yyy', 'zzz',
-            'abcd', '1234', 'token-here', 'key-here'
+            "example",
+            "test",
+            "demo",
+            "sample",
+            "placeholder",
+            "your-token",
+            "your-key",
+            "xxx",
+            "yyy",
+            "zzz",
+            "abcd",
+            "1234",
+            "token-here",
+            "key-here",
         ]
 
         token_lower = token.lower()
@@ -221,8 +246,16 @@ class SecurityScanner:
         """判断是否为配置示例。"""
         line_lower = line.lower()
         example_indicators = [
-            'example', '.example', 'sample', 'template', 'placeholder',
-            'your-', 'replace', 'change', 'modify', 'set-this'
+            "example",
+            ".example",
+            "sample",
+            "template",
+            "placeholder",
+            "your-",
+            "replace",
+            "change",
+            "modify",
+            "set-this",
         ]
 
         return any(indicator in line_lower for indicator in example_indicators)
@@ -244,7 +277,7 @@ class SecurityScanner:
                 "total_issues": len(self.issues),
                 "scan_timestamp": "2025-09-29T13:50:00Z",
                 "project_root": str(self.project_root),
-                "excluded_dirs": list(self.exclude_dirs)
+                "excluded_dirs": list(self.exclude_dirs),
             },
             "issue_counts_by_type": issue_counts,
             "severity_counts": severity_counts,
@@ -255,12 +288,12 @@ class SecurityScanner:
                     "issue_type": issue.issue_type,
                     "severity": issue.severity,
                     "description": issue.description,
-                    "code_snippet": issue.code_snippet
+                    "code_snippet": issue.code_snippet,
                 }
                 for issue in self.issues
             ],
             "scan_status": "PASS" if len(self.issues) == 0 else "FAIL",
-            "recommendations": self._get_recommendations()
+            "recommendations": self._get_recommendations(),
         }
 
         return report
@@ -299,7 +332,7 @@ def main():
 
     # 保存报告
     report_file = "docs/jwt改造/K5_security_scan_report.json"
-    with open(report_file, 'w', encoding='utf-8') as f:
+    with open(report_file, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
 
     print(f"📄 安全扫描报告已保存到: {report_file}")
@@ -309,22 +342,22 @@ def main():
     print(f"   总问题数: {report['scan_summary']['total_issues']}")
     print(f"   扫描状态: {report['scan_status']}")
 
-    if report['issue_counts_by_type']:
+    if report["issue_counts_by_type"]:
         print("   问题分类:")
-        for issue_type, count in report['issue_counts_by_type'].items():
+        for issue_type, count in report["issue_counts_by_type"].items():
             print(f"     {issue_type}: {count}")
 
-    if report['severity_counts']:
+    if report["severity_counts"]:
         print("   严重程度:")
-        for severity, count in report['severity_counts'].items():
+        for severity, count in report["severity_counts"].items():
             print(f"     {severity}: {count}")
 
     print("\n💡 修复建议:")
-    for recommendation in report['recommendations']:
+    for recommendation in report["recommendations"]:
         print(f"   - {recommendation}")
 
     # 返回退出码
-    return 0 if report['scan_status'] == 'PASS' else 1
+    return 0 if report["scan_status"] == "PASS" else 1
 
 
 if __name__ == "__main__":

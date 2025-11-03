@@ -1,14 +1,13 @@
 """测试菜单API"""
-import requests
+
 import json
+
+import requests
 
 BASE_URL = "http://localhost:9999/api/v1"
 
 # 1. 登录
-login_response = requests.post(
-    f"{BASE_URL}/base/access_token",
-    json={"username": "admin", "password": "123456"}
-)
+login_response = requests.post(f"{BASE_URL}/base/access_token", json={"username": "admin", "password": "123456"})
 
 if login_response.status_code != 200:
     print("登录失败!")
@@ -27,4 +26,3 @@ print(json.dumps(menu_response.json(), indent=2, ensure_ascii=False))
 api_response = requests.get(f"{BASE_URL}/base/userapi", headers=headers)
 print("\nAPI权限响应:")
 print(json.dumps(api_response.json(), indent=2, ensure_ascii=False))
-

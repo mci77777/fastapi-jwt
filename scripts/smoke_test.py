@@ -5,7 +5,6 @@ GymBro API 完整冒烟测试
 """
 
 import asyncio
-import json
 import os
 import random
 import string
@@ -16,7 +15,7 @@ from typing import Optional
 import httpx
 
 # 添加项目根目录到 Python 路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.settings.config import get_settings
 
@@ -33,7 +32,7 @@ class SmokeTest:
 
     def _generate_test_email(self) -> str:
         """生成随机测试邮箱"""
-        random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        random_suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
         return f"test_{random_suffix}@example.com"
 
     async def step_1_register_user(self) -> bool:
@@ -45,14 +44,8 @@ class SmokeTest:
             try:
                 response = await client.post(
                     f"{self.supabase_url}/auth/v1/signup",
-                    headers={
-                        "apikey": self.settings.supabase_service_role_key,
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "email": self.test_email,
-                        "password": self.test_password
-                    }
+                    headers={"apikey": self.settings.supabase_service_role_key, "Content-Type": "application/json"},
+                    json={"email": self.test_email, "password": self.test_password},
                 )
 
                 if response.status_code in [200, 400]:  # 400可能是用户已存在
@@ -74,14 +67,8 @@ class SmokeTest:
             try:
                 response = await client.post(
                     f"{self.supabase_url}/auth/v1/token?grant_type=password",
-                    headers={
-                        "apikey": self.settings.supabase_service_role_key,
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "email": self.test_email,
-                        "password": self.test_password
-                    }
+                    headers={"apikey": self.settings.supabase_service_role_key, "Content-Type": "application/json"},
+                    json={"email": self.test_email, "password": self.test_password},
                 )
 
                 if response.status_code == 200:
@@ -110,21 +97,15 @@ class SmokeTest:
             try:
                 response = await client.post(
                     f"{self.base_url}/api/v1/messages",
-                    headers={
-                        "Authorization": f"Bearer {self.access_token}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "text": "你好，帮我用一句话总结 Supabase JWT 验证流程",
-                        "conversation_id": "smoke-test-001"
-                    }
+                    headers={"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"},
+                    json={"text": "你好，帮我用一句话总结 Supabase JWT 验证流程", "conversation_id": "smoke-test-001"},
                 )
 
                 if response.status_code == 202:
                     data = response.json()
                     self.message_id = data.get("message_id")
                     trace_id = response.headers.get("x-trace-id")
-                    print(f"   ✅ 认证成功，消息已创建")
+                    print("   ✅ 认证成功，消息已创建")
                     print(f"   📝 Message ID: {self.message_id}")
                     print(f"   🔍 Trace ID: {trace_id}")
                     return True
@@ -147,11 +128,8 @@ class SmokeTest:
             try:
                 response = await client.post(
                     f"{self.base_url}/api/v1/messages",
-                    headers={
-                        "Authorization": f"Bearer {bad_token}",
-                        "Content-Type": "application/json"
-                    },
-                    json={"text": "test"}
+                    headers={"Authorization": f"Bearer {bad_token}", "Content-Type": "application/json"},
+                    json={"text": "test"},
                 )
 
                 if response.status_code == 401:
@@ -182,13 +160,9 @@ class SmokeTest:
                 async with client.stream(
                     "GET",
                     f"{self.base_url}/api/v1/messages/{self.message_id}/events",
-                    headers={
-                        "Authorization": f"Bearer {self.access_token}",
-                        "Accept": "text/event-stream"
-                    },
-                    timeout=10.0
+                    headers={"Authorization": f"Bearer {self.access_token}", "Accept": "text/event-stream"},
+                    timeout=10.0,
                 ) as response:
-
                     if response.status_code == 200:
                         print("   ✅ SSE连接建立成功")
 
@@ -222,13 +196,9 @@ class SmokeTest:
                     headers={
                         "apikey": self.settings.supabase_service_role_key,
                         "Authorization": f"Bearer {self.settings.supabase_service_role_key}",
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
                     },
-                    params={
-                        "select": "id,role,content,created_at",
-                        "order": "created_at.desc",
-                        "limit": "5"
-                    }
+                    params={"select": "id,role,content,created_at", "order": "created_at.desc", "limit": "5"},
                 )
 
                 if response.status_code == 200:
@@ -258,7 +228,7 @@ class SmokeTest:
             self.step_3_test_api_auth,
             self.step_4_test_invalid_jwt,
             self.step_5_test_sse_stream,
-            self.step_6_verify_database
+            self.step_6_verify_database,
         ]
 
         results = []
@@ -268,7 +238,7 @@ class SmokeTest:
             results.append(result)
 
             if not result:
-                print(f"   ⚠️  测试失败，但继续执行后续测试...")
+                print("   ⚠️  测试失败，但继续执行后续测试...")
 
             time.sleep(1)  # 短暂延迟
 
@@ -278,10 +248,7 @@ class SmokeTest:
         passed = sum(results)
         total = len(results)
 
-        test_names = [
-            "用户注册", "JWT获取", "API认证", "无效JWT拒绝",
-            "SSE事件流", "数据库持久化"
-        ]
+        test_names = ["用户注册", "JWT获取", "API认证", "无效JWT拒绝", "SSE事件流", "数据库持久化"]
 
         for i, (name, result) in enumerate(zip(test_names, results)):
             status = "✅ 通过" if result else "❌ 失败"

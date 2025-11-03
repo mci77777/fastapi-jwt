@@ -13,12 +13,10 @@
 5. API 端点测试 (TestAPIEndpoints)
 6. 错误类测试 (TestJWTErrorClass)
 """
-import json
+
 import time
-from typing import Any, Dict
 from unittest.mock import Mock, patch
 
-import jwt
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -26,7 +24,6 @@ from fastapi.testclient import TestClient
 from app import app
 from app.auth.jwt_verifier import AuthenticatedUser, JWTError, JWTVerifier
 from app.auth.provider import InMemoryProvider, UserDetails
-
 
 # ============================================================================
 # 第一部分：基础验证测试
@@ -435,9 +432,7 @@ class TestJWTHardeningIntegration:
 
         for case in test_cases:
             with patch("app.auth.jwt_verifier.get_settings", return_value=mock_hardened_settings):
-                response = client.post(
-                    "/api/v1/messages", json={"text": "Hello AI"}, headers=case["headers"]
-                )
+                response = client.post("/api/v1/messages", json={"text": "Hello AI"}, headers=case["headers"])
 
                 assert response.status_code == 401
                 data = response.json()
@@ -651,9 +646,7 @@ class TestAPIEndpoints:
     @pytest.fixture
     def mock_auth_user(self):
         """模拟认证用户。"""
-        return AuthenticatedUser(
-            uid="test-user-123", claims={"sub": "test-user-123", "email": "test@example.com"}
-        )
+        return AuthenticatedUser(uid="test-user-123", claims={"sub": "test-user-123", "email": "test@example.com"})
 
     def test_create_message_unauthorized(self, client):
         """测试未授权访问消息创建端点。"""
@@ -735,4 +728,3 @@ class TestJWTErrorClass:
 
 if __name__ == "__main__":
     pytest.main([__file__])
-
