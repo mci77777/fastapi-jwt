@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "e2e": "python scripts/run_e2e_enhanced.py",
+    "e2e:anon": "python scripts/run_e2e_enhanced.py",
     "e2e:quick": "python scripts/run_e2e_enhanced.py --quick",
     "e2e:edge": "python scripts/run_e2e_enhanced.py --auth-method edge",
     "e2e:native": "python scripts/run_e2e_enhanced.py --auth-method native",

@@ -45,6 +45,7 @@ storage/ai_router/**
 
 # JWT 测试数据
 **/jwt_test_*.json
+e2e/anon_jwt_sse/artifacts/token.json
 
 # ============ 前端 ============
 node_modules/

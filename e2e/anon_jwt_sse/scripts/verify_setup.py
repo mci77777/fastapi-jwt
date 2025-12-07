@@ -233,6 +233,8 @@ class SetupVerifier:
                     [sys.executable, str(self.base_dir / "scripts" / "generate_test_token.py")],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="ignore",
                     timeout=10,
                 )
                 if result.returncode == 0:

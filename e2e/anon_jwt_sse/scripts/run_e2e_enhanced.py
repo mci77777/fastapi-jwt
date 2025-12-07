@@ -316,10 +316,19 @@ def load_env() -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="匿名 JWT E2E 测试")
+
+    # 优先使用 API_BASE_URL，其次向后兼容 API_BASE（不重复追加 /api/v1）
+    raw_api_base = os.getenv("API_BASE_URL") or os.getenv("API_BASE")
+    if raw_api_base:
+        base = raw_api_base.rstrip("/")
+        default_api_base = base if base.endswith("/api/v1") else f"{base}/api/v1"
+    else:
+        default_api_base = "http://localhost:9999/api/v1"
+
     parser.add_argument(
         "--api-base-url",
-        default=os.getenv("API_BASE_URL", "http://localhost:9999/api/v1"),
-        help="后端 API 基础地址，默认为 http://localhost:9999/api/v1",
+        default=default_api_base,
+        help="后端 API 基础地址，优先来自 API_BASE_URL，其次 API_BASE，默认为 http://localhost:9999/api/v1",
     )
     parser.add_argument(
         "--supabase-url",

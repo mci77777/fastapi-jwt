@@ -47,7 +47,16 @@ class EnhancedAnonAuth:
             trace_id = f"edge-anon-{uuid.uuid4().hex[:8]}"
 
         edge_url = f"{self.supabase_url}/functions/v1/get-anon-token"
-        headers = {"Content-Type": "application/json", "X-Trace-Id": trace_id, "User-Agent": "E2E-Enhanced-Client/1.0"}
+        headers: Dict[str, str] = {
+            "Content-Type": "application/json",
+            "X-Trace-Id": trace_id,
+            "User-Agent": "E2E-Enhanced-Client/1.0",
+        }
+
+        # Supabase Edge Functions 通常需要携带 anon key 作为鉴权头
+        if self.anon_key:
+            headers["Authorization"] = f"Bearer {self.anon_key}"
+            headers["apikey"] = self.anon_key
 
         print("🔑 通过Edge Function获取匿名JWT...")
         print(f"📍 URL: {edge_url}")
@@ -93,7 +102,14 @@ class EnhancedAnonAuth:
             trace_id = f"native-anon-{uuid.uuid4().hex[:8]}"
 
         auth_url = f"{self.supabase_url}/auth/v1/signup"
-        headers = {"apikey": self.anon_key, "Content-Type": "application/json", "X-Trace-Id": trace_id}
+        headers: Dict[str, str] = {
+            "apikey": self.anon_key,
+            "Content-Type": "application/json",
+            "X-Trace-Id": trace_id,
+        }
+
+        # 对部分 Supabase 部署，附加 Authorization 有助于通过网关/代理校验
+        headers["Authorization"] = f"Bearer {self.anon_key}"
 
         print("🔑 通过原生匿名登录获取JWT...")
         print(f"📍 URL: {auth_url}")

@@ -125,6 +125,23 @@ CREATE TABLE IF NOT EXISTS ai_request_stats (
 
 CREATE INDEX IF NOT EXISTS idx_ai_request_date ON ai_request_stats(request_date);
 CREATE INDEX IF NOT EXISTS idx_ai_request_endpoint ON ai_request_stats(endpoint_id);
+
+CREATE TABLE IF NOT EXISTS conversation_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    request_payload TEXT,
+    response_payload TEXT,
+    model_used TEXT,
+    latency_ms REAL,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_logs_created ON conversation_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversation_logs_user ON conversation_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_logs_status ON conversation_logs(status);
 """
 
 
@@ -212,6 +229,85 @@ class SQLiteManager:
             cursor = await self._conn.execute(query, tuple(params))
             rows = await cursor.fetchall()
             await cursor.close()
+        return [dict(row) for row in rows]
+
+    async def log_conversation(
+        self,
+        user_id: str,
+        message_id: str,
+        request_payload: Optional[str],
+        response_payload: Optional[str],
+        model_used: Optional[str],
+        latency_ms: float,
+        status: str,
+        error_message: Optional[str],
+    ) -> None:
+        """记录 AI 对话日志（循环缓冲区，最多保留 100 条）。
+
+        Args:
+            user_id: 用户 ID
+            message_id: 消息 ID
+            request_payload: 请求 payload（JSON 字符串）
+            response_payload: 响应 payload（JSON 字符串）
+            model_used: 使用的模型
+            latency_ms: 延迟（毫秒）
+            status: 状态（success/error）
+            error_message: 错误信息
+        """
+        if self._conn is None:
+            raise RuntimeError("SQLiteManager has not been initialised.")
+
+        async with self._lock:
+            # 插入新记录
+            await self._conn.execute(
+                """
+                INSERT INTO conversation_logs
+                (user_id, message_id, request_payload, response_payload, model_used, latency_ms, status, error_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, message_id, request_payload, response_payload, model_used, latency_ms, status, error_message),
+            )
+
+            # 维护循环缓冲区：删除超过 100 条的旧记录
+            await self._conn.execute(
+                """
+                DELETE FROM conversation_logs
+                WHERE id NOT IN (
+                    SELECT id FROM conversation_logs
+                    ORDER BY created_at DESC
+                    LIMIT 100
+                )
+                """
+            )
+
+            await self._conn.commit()
+
+    async def get_conversation_logs(self, limit: int = 100) -> list[dict[str, Any]]:
+        """获取最近的对话日志。
+
+        Args:
+            limit: 返回记录数量上限（默认 100）
+
+        Returns:
+            日志记录列表
+        """
+        if self._conn is None:
+            raise RuntimeError("SQLiteManager has not been initialised.")
+
+        async with self._lock:
+            cursor = await self._conn.execute(
+                """
+                SELECT id, user_id, message_id, request_payload, response_payload,
+                       model_used, latency_ms, status, error_message, created_at
+                FROM conversation_logs
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+
         return [dict(row) for row in rows]
 
     async def _ensure_columns(self, table: str, ddl_map: dict[str, str]) -> None:

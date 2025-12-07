@@ -11,6 +11,12 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      SUPABASE_JWKS_URL: ${{ secrets.SUPABASE_JWKS_URL }}
+      SUPABASE_ISSUER: ${{ secrets.SUPABASE_ISSUER }}
+      SUPABASE_AUDIENCE: ${{ secrets.SUPABASE_AUDIENCE }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
       API_BASE: ${{ secrets.API_BASE }}
       DB_CONN: ${{ secrets.DB_CONN_READONLY }}
     steps:
@@ -21,7 +27,9 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: |
-          pip install -r e2e/anon_jwt_sse/requirements.txt
+          python -m pip install -r e2e/anon_jwt_sse/requirements.txt
+          # 部分环境下 pip 新解析器可能出现 resolution-too-deep，降级到 legacy-resolver 以保证可安装性
+          python -m pip install -r requirements.txt || python -m pip install --use-deprecated=legacy-resolver -r requirements.txt
           pnpm -C e2e/anon_jwt_sse install
       - name: Verify env
         run: python e2e/anon_jwt_sse/scripts/verify_setup.py

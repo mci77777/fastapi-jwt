@@ -156,7 +156,30 @@ Write-Host "[Step 4/5] Starting backend..." -ForegroundColor Cyan
 Write-Host "  URL: http://localhost:$BACKEND_PORT" -ForegroundColor White
 Write-Host "  API Docs: http://localhost:$BACKEND_PORT/docs" -ForegroundColor White
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot'; Write-Host 'Starting backend server...' -ForegroundColor Cyan; python run.py"
+# Build backend startup command
+$backendCommand = "Write-Host 'Starting backend server...' -ForegroundColor Cyan; python run.py"
+Write-Host "[Backend] Command: $backendCommand" -ForegroundColor DarkGray
+
+try {
+    # Start backend in new PowerShell window with proper working directory
+    $backendProcess = Start-Process powershell `
+        -ArgumentList "-NoExit -Command `"$backendCommand`"" `
+        -WorkingDirectory $PSScriptRoot `
+        -PassThru `
+        -ErrorAction Stop
+
+    Write-Host "[Backend] Process started (PID: $($backendProcess.Id))" -ForegroundColor Green
+} catch {
+    Write-Host ""
+    Write-Host "[Backend] Failed to start process!" -ForegroundColor Red
+    Write-Host "  Error: $_" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Troubleshooting:" -ForegroundColor Yellow
+    Write-Host "  1. Ensure Python is installed and in PATH" -ForegroundColor Yellow
+    Write-Host "  2. Try running manually: python run.py" -ForegroundColor Yellow
+    Write-Host "  3. Check if run.py exists in: $PSScriptRoot" -ForegroundColor Yellow
+    exit 1
+}
 
 # Wait for backend to be ready (check port instead of HTTP)
 if (-not (Wait-PortListening -Port $BACKEND_PORT -Name "Backend" -MaxRetries 30)) {
@@ -176,7 +199,40 @@ Write-Host ""
 Write-Host "[Step 5/5] Starting frontend..." -ForegroundColor Cyan
 Write-Host "  URL: http://localhost:$FRONTEND_PORT" -ForegroundColor White
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\web'; Write-Host 'Starting frontend server...' -ForegroundColor Cyan; pnpm dev"
+# Build frontend startup command
+$frontendCommand = "Write-Host 'Starting frontend server...' -ForegroundColor Cyan; pnpm dev"
+$frontendWorkDir = Join-Path $PSScriptRoot "web"
+Write-Host "[Frontend] Command: $frontendCommand" -ForegroundColor DarkGray
+Write-Host "[Frontend] Working Directory: $frontendWorkDir" -ForegroundColor DarkGray
+
+# Verify frontend directory exists
+if (-not (Test-Path $frontendWorkDir)) {
+    Write-Host ""
+    Write-Host "[Frontend] Directory not found: $frontendWorkDir" -ForegroundColor Red
+    Write-Host "  Please ensure the 'web' directory exists in the project root" -ForegroundColor Yellow
+    exit 1
+}
+
+try {
+    # Start frontend in new PowerShell window with proper working directory
+    $frontendProcess = Start-Process powershell `
+        -ArgumentList "-NoExit -Command `"$frontendCommand`"" `
+        -WorkingDirectory $frontendWorkDir `
+        -PassThru `
+        -ErrorAction Stop
+
+    Write-Host "[Frontend] Process started (PID: $($frontendProcess.Id))" -ForegroundColor Green
+} catch {
+    Write-Host ""
+    Write-Host "[Frontend] Failed to start process!" -ForegroundColor Red
+    Write-Host "  Error: $_" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Troubleshooting:" -ForegroundColor Yellow
+    Write-Host "  1. Ensure pnpm is installed: npm install -g pnpm" -ForegroundColor Yellow
+    Write-Host "  2. Install dependencies: cd web && pnpm install" -ForegroundColor Yellow
+    Write-Host "  3. Try running manually: cd web && pnpm dev" -ForegroundColor Yellow
+    exit 1
+}
 
 # Wait for frontend to be ready (check port instead of HTTP)
 if (-not (Wait-PortListening -Port $FRONTEND_PORT -Name "Frontend" -MaxRetries 30)) {
