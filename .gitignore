@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv-e2e/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
