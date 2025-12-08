@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 import jwt
 from fastapi import HTTPException, status
+from jwt.algorithms import get_default_algorithms
 
 from app.core.middleware import get_current_trace_id
 from app.settings.config import get_settings
@@ -187,7 +188,7 @@ class JWTVerifier:
                 # 回退到静态 JWK（kty=oct）
                 try:
                     key_dict = self._cache.get_key(kid)
-                    algorithm_cls = jwt.algorithms.get_default_algorithms()[algorithm]
+                    algorithm_cls = get_default_algorithms()[algorithm]
                     public_key = algorithm_cls.from_jwk(json.dumps(key_dict))
                 except Exception as exc:  # pragma: no cover - 依赖外部配置
                     self._log_verification_failure(
@@ -212,7 +213,7 @@ class JWTVerifier:
                 raise self._create_unauthorized_error("jwks_key_not_found", "Signing key not found") from exc
 
             try:
-                algorithm_cls = jwt.algorithms.get_default_algorithms()[algorithm]
+                algorithm_cls = get_default_algorithms()[algorithm]
                 public_key = algorithm_cls.from_jwk(json.dumps(key_dict))
             except KeyError as exc:
                 self._log_verification_failure(

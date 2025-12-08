@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -14,7 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 def create_error_response(
-    status_code: int, code: str, message: str, trace_id: str = None, headers: Dict[str, str] = None
+    status_code: int,
+    code: str,
+    message: str,
+    trace_id: Optional[str] = None,
+    headers: Optional[Dict[str, str]] = None,
+    hint: Optional[str] = None,
 ) -> JSONResponse:
     """创建统一格式的错误响应。"""
     from app.core.middleware import get_current_trace_id
@@ -22,7 +27,14 @@ def create_error_response(
     if trace_id is None:
         trace_id = get_current_trace_id()
 
-    payload = {"status": status_code, "code": code, "message": message, "trace_id": trace_id}
+    payload: Dict[str, Any] = {
+        "status": status_code,
+        "code": code,
+        "message": message,
+        "trace_id": trace_id,
+    }
+    if hint is not None:
+        payload["hint"] = hint
 
     return JSONResponse(status_code=status_code, content=payload, headers=headers or {})
 

@@ -313,6 +313,8 @@ class SQLiteManager:
     async def _ensure_columns(self, table: str, ddl_map: dict[str, str]) -> None:
         if not ddl_map:
             return
+        if self._conn is None:
+            raise RuntimeError("SQLiteManager has not been initialised.")
         cursor = await self._conn.execute(f"PRAGMA table_info({table})")
         rows = await cursor.fetchall()
         await cursor.close()

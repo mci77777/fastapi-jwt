@@ -15,7 +15,7 @@ import httpx
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.settings.config import get_settings
+from app.settings.config import get_settings  # noqa: E402
 
 
 def log_info(message: str):
@@ -141,7 +141,7 @@ class SupabaseConfigValidator:
         """运行所有验证测试"""
         log_info("开始 Supabase 配置验证...")
 
-        results = {
+        results: Dict[str, Any] = {
             "env_vars": self.validate_env_vars(),
             "jwks_endpoint": await self.test_jwks_endpoint(),
             "supabase_api": await self.test_supabase_api(),

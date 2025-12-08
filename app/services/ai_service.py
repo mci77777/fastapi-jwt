@@ -10,8 +10,8 @@ from time import perf_counter
 from typing import Any, AsyncIterator, Dict, Optional
 from uuid import uuid4
 
-import anyio
 import httpx
+from anyio import to_thread
 
 from app.auth import AuthenticatedUser, ProviderError, UserDetails, get_auth_provider
 from app.auth.provider import AuthProvider
@@ -98,7 +98,7 @@ class AIService:
         model_used: Optional[str] = None
 
         try:
-            user_details = await anyio.to_thread.run_sync(
+            user_details = await to_thread.run_sync(
                 self._provider.get_user_details,
                 user.uid,
             )
@@ -151,7 +151,7 @@ class AIService:
                 "ai_reply": reply_text,
                 "metadata": message.metadata,
             }
-            await anyio.to_thread.run_sync(self._provider.sync_chat_record, record)
+            await to_thread.run_sync(self._provider.sync_chat_record, record)
 
             await broker.publish(
                 message_id,
@@ -203,7 +203,8 @@ class AIService:
         message: AIMessageInput,
         user_details: UserDetails,
     ) -> str:
-        base_url = (self._settings.ai_api_base_url or "https://api.openai.com/v1").rstrip("/")
+        raw_base_url = self._settings.ai_api_base_url or "https://api.openai.com/v1"
+        base_url = str(raw_base_url).rstrip("/")
         endpoint = f"{base_url}/chat/completions"
         payload = {
             "model": self._settings.ai_model or "gpt-4o-mini",

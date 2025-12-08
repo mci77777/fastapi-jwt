@@ -180,6 +180,7 @@ class ModelMappingService:
     async def _write_prompt_mapping(self, prompt_id: int, mapping: dict[str, Any]) -> None:
         prompt = await self._ai_service.get_prompt(prompt_id)
         tools = prompt.get("tools_json")
+        container: dict[str, Any]
         if isinstance(tools, dict):
             container = dict(tools)
         elif isinstance(tools, list):

@@ -2,7 +2,7 @@
 """GW-Auth 网关改造验证脚本。"""
 import asyncio
 import sys
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import httpx
 
@@ -14,7 +14,7 @@ class GWAuthVerifier:
         self.base_url = base_url
         self.results: List[Dict] = []
 
-    def add_result(self, test_name: str, passed: bool, details: Dict = None):
+    def add_result(self, test_name: str, passed: bool, details: Optional[Dict] = None):
         """添加测试结果。"""
         self.results.append({"test": test_name, "passed": passed, "details": details or {}})
         status = "✅" if passed else "❌"
@@ -179,7 +179,7 @@ class GWAuthVerifier:
         await self.test_whitelist_no_rate_limit()
 
         # 测试4: 配置快照
-        self.test_config_snapshot()
+        await self.test_config_snapshot()
 
         # 打印摘要
         return self.print_summary()

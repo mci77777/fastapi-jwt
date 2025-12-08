@@ -25,6 +25,10 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
+import jwt
+from dotenv import load_dotenv
+
 # 设置 UTF-8 输出（Windows 兼容）
 if sys.platform == "win32":
     import io
@@ -36,14 +40,10 @@ if sys.platform == "win32":
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-import httpx
-import jwt
-from dotenv import load_dotenv
-
 load_dotenv()
 
-from app.auth.jwt_verifier import get_jwt_verifier
-from app.settings.config import get_settings
+from app.auth.jwt_verifier import get_jwt_verifier  # noqa: E402
+from app.settings.config import get_settings  # noqa: E402
 
 # 配置
 BASE_URL = "http://localhost:9999/api/v1"
@@ -189,8 +189,13 @@ def verify_token(token: str) -> bool:
                 if key == "email" and isinstance(val, str) and "@" in val:
                     val = val[:3] + "***@" + val.split("@")[1]
                 elif key in ["exp", "iat"]:
-                    dt = datetime.fromtimestamp(val, tz=timezone.utc)
-                    val = f"{val} ({dt.isoformat()})"
+                    try:
+                        ts = float(val)
+                    except (TypeError, ValueError):
+                        print(f"  {key}: {val} (invalid timestamp)")
+                        continue
+                    dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+                    val = f"{ts} ({dt.isoformat()})"
                 print(f"  {key}: {val}")
 
         return True

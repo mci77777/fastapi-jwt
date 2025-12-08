@@ -9,15 +9,17 @@ import json
 import os
 import sys
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 
 # 设置 Windows 控制台 UTF-8 编码
 if sys.platform == "win32":
     os.system("chcp 65001 > nul")
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
 
 
 class FrontendDebugger:
@@ -34,7 +36,7 @@ class FrontendDebugger:
         print("检查服务状态")
         print("=" * 60)
 
-        results = {
+        results: Dict[str, Dict[str, Any]] = {
             "frontend": {"url": self.frontend_url, "status": "unknown"},
             "backend": {"url": self.backend_url, "status": "unknown"},
             "backend_health": {"url": f"{self.backend_url}/api/v1/healthz", "status": "unknown"},
@@ -82,7 +84,7 @@ class FrontendDebugger:
 
         return results
 
-    def test_api_endpoints(self, token: str = None) -> List[Dict[str, Any]]:
+    def test_api_endpoints(self, token: Optional[str] = None) -> List[Dict[str, Any]]:
         """测试常用 API 端点"""
         print("\n" + "=" * 60)
         print("测试 API 端点")
@@ -134,7 +136,7 @@ class FrontendDebugger:
 
                 try:
                     result["data"] = response.json()
-                except:
+                except Exception:
                     result["data"] = response.text[:200]
 
                 results.append(result)
@@ -196,7 +198,7 @@ class FrontendDebugger:
 
         return {"tests": results, "timestamp": datetime.now().isoformat()}
 
-    def generate_test_token(self) -> str:
+    def generate_test_token(self) -> Optional[str]:
         """生成测试 JWT token"""
         print("\n" + "=" * 60)
         print("生成测试 JWT token")
@@ -219,7 +221,7 @@ class FrontendDebugger:
             print(f"❌ Token 生成失败: {e}")
             return None
 
-    def run_full_diagnostic(self, token: str = None):
+    def run_full_diagnostic(self, token: Optional[str] = None):
         """运行完整诊断"""
         print("\n" + "=" * 60)
         print("前端调试诊断报告")

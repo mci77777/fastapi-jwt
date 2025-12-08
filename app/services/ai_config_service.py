@@ -204,13 +204,14 @@ class AIConfigService:
             f"SELECT COUNT(1) AS count FROM ai_endpoints {where}",
             params,
         )
+        total_count = int(total_row["count"]) if total_row and "count" in total_row else 0
         query = (
             "SELECT * FROM ai_endpoints "
             f"{where} ORDER BY is_default DESC, updated_at DESC, id DESC "
             "LIMIT ? OFFSET ?"
         )
         rows = await self._db.fetchall(query, params + [page_size, (page - 1) * page_size])
-        return [self._format_endpoint_row(row) for row in rows], int(total_row.get("count", 0))
+        return [self._format_endpoint_row(row) for row in rows], total_count
 
     async def get_endpoint(self, endpoint_id: int) -> dict[str, Any]:
         row = await self._db.fetchone("SELECT * FROM ai_endpoints WHERE id = ?", [endpoint_id])
@@ -260,6 +261,8 @@ class AIConfigService:
             ],
         )
         row = await self._db.fetchone("SELECT * FROM ai_endpoints WHERE id = last_insert_rowid()")
+        if row is None:
+            raise RuntimeError("Failed to load endpoint after insert")
         endpoint = self._format_endpoint_row(row)
         if auto_sync:
             try:
@@ -414,6 +417,8 @@ class AIConfigService:
         if not self._supabase_available():
             raise RuntimeError("supabase_not_configured")
         key = self._settings.supabase_service_role_key
+        if not key:
+            raise RuntimeError("supabase_not_configured")
         return {
             "apikey": key,
             "Authorization": f"Bearer {key}",
@@ -757,11 +762,12 @@ class AIConfigService:
         last_synced = await self._db.fetchone(
             "SELECT MAX(last_synced_at) AS ts FROM ai_endpoints WHERE last_synced_at IS NOT NULL",
         )
+        last_synced_at = last_synced.get("ts") if last_synced else None
         return {
             "status": status_value,
             "detail": detail,
             "latency_ms": latency_ms,
-            "last_synced_at": last_synced.get("ts") if last_synced else None,
+            "last_synced_at": last_synced_at,
         }
 
     # --------------------------------------------------------------------- #
@@ -802,11 +808,12 @@ class AIConfigService:
             params.append(1 if only_active else 0)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         total_row = await self._db.fetchone(f"SELECT COUNT(1) AS count FROM ai_prompts {where}", params)
+        total_count = int(total_row["count"]) if total_row and "count" in total_row else 0
         rows = await self._db.fetchall(
             f"SELECT * FROM ai_prompts {where} ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?",
             params + [page_size, (page - 1) * page_size],
         )
-        return [self._format_prompt_row(row) for row in rows], int(total_row.get("count", 0))
+        return [self._format_prompt_row(row) for row in rows], total_count
 
     async def get_prompt(self, prompt_id: int) -> dict[str, Any]:
         row = await self._db.fetchone("SELECT * FROM ai_prompts WHERE id = ?", [prompt_id])
@@ -838,6 +845,8 @@ class AIConfigService:
             ],
         )
         row = await self._db.fetchone("SELECT * FROM ai_prompts WHERE id = last_insert_rowid()")
+        if row is None:
+            raise RuntimeError("Failed to load prompt after insert")
         prompt = self._format_prompt_row(row)
         if auto_sync:
             try:

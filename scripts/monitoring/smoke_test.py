@@ -17,14 +17,19 @@ import httpx
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.settings.config import get_settings
+from app.settings.config import get_settings  # noqa: E402
 
 
 class SmokeTest:
     def __init__(self):
         self.settings = get_settings()
         self.base_url = "http://localhost:9999"
-        self.supabase_url = f"https://{self.settings.supabase_project_id}.supabase.co"
+        project_id = self.settings.supabase_project_id
+        key = self.settings.supabase_service_role_key
+        if not project_id or not key:
+            raise RuntimeError("Supabase project id and service role key must be configured for smoke tests")
+        self.supabase_url = f"https://{project_id}.supabase.co"
+        self.service_role_key: str = key
         self.test_email = self._generate_test_email()
         self.test_password = "TestPassword123!"
         self.access_token: Optional[str] = None
@@ -44,7 +49,7 @@ class SmokeTest:
             try:
                 response = await client.post(
                     f"{self.supabase_url}/auth/v1/signup",
-                    headers={"apikey": self.settings.supabase_service_role_key, "Content-Type": "application/json"},
+                    headers={"apikey": self.service_role_key, "Content-Type": "application/json"},
                     json={"email": self.test_email, "password": self.test_password},
                 )
 
@@ -67,7 +72,7 @@ class SmokeTest:
             try:
                 response = await client.post(
                     f"{self.supabase_url}/auth/v1/token?grant_type=password",
-                    headers={"apikey": self.settings.supabase_service_role_key, "Content-Type": "application/json"},
+                    headers={"apikey": self.service_role_key, "Content-Type": "application/json"},
                     json={"email": self.test_email, "password": self.test_password},
                 )
 
@@ -194,8 +199,8 @@ class SmokeTest:
                 response = await client.get(
                     f"{self.supabase_url}/rest/v1/{self.settings.supabase_chat_table}",
                     headers={
-                        "apikey": self.settings.supabase_service_role_key,
-                        "Authorization": f"Bearer {self.settings.supabase_service_role_key}",
+                        "apikey": self.service_role_key,
+                        "Authorization": f"Bearer {self.service_role_key}",
                         "Content-Type": "application/json",
                     },
                     params={"select": "id,role,content,created_at", "order": "created_at.desc", "limit": "5"},

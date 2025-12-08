@@ -7,7 +7,7 @@ import json
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
@@ -62,7 +62,7 @@ async def stream_message_events(
     message_id: str,
     request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> StreamingResponse:
+) -> Response:
     broker: MessageEventBroker = request.app.state.message_broker
     queue = broker.get_channel(message_id)
     if queue is None:

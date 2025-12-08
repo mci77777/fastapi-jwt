@@ -373,8 +373,13 @@ async def get_dashboard_config(
     """
     # 从 app.state 获取配置（如果不存在则使用默认值）
     if not hasattr(request.app.state, "dashboard_config"):
+        # 显式传入默认值，避免 Pylance 对 pydantic v2 __init__ 签名的误判
         request.app.state.dashboard_config = {
-            "config": DashboardConfig().dict(),
+            "config": DashboardConfig(
+                websocket_push_interval=10,
+                http_poll_interval=30,
+                log_retention_size=100,
+            ).dict(),
             "updated_at": None,
         }
 

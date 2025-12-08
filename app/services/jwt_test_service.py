@@ -287,7 +287,10 @@ class JWTTestService:
                 "providers": ["test"],
             },
         }
-        return jwt.encode(payload, self._settings.supabase_jwt_secret, algorithm="HS256")
+        secret = self._settings.supabase_jwt_secret
+        if not secret:
+            raise RuntimeError("SUPABASE_JWT_SECRET is not configured")
+        return jwt.encode(payload, secret, algorithm="HS256")
 
     def _decorate_message(self, message: str, *, run_id: str | None, index: int) -> str:
         base = message or ""
