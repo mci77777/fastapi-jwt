@@ -117,46 +117,66 @@ class SupabaseKeepaliveService:
             "Authorization": f"Bearer {self._settings.supabase_service_role_key}",
         }
 
-        try:
-            async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
-                # 使用 HEAD 请求到 /ai_model 表（与 supabase_status 一致，轻量级查询）
-                response = await client.head(f"{base_url}/ai_model", headers=headers, params={"limit": 1})
-                response.raise_for_status()
+        # 重试配置
+        max_retries = 3
+        last_exc: Optional[Exception] = None
 
-            self._last_ping_iso = datetime.now(timezone.utc).isoformat()
-            self._success_count += 1
-            self._last_error = None
-            logger.debug("Supabase keepalive ping successful (total_success=%d)", self._success_count)
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+                    # 使用 HEAD 请求到 /ai_model 表（与 supabase_status 一致，轻量级查询）
+                    response = await client.head(f"{base_url}/ai_model", headers=headers, params={"limit": 1})
+                    response.raise_for_status()
 
-            # 更新 Prometheus 指标
-            from app.core.metrics import supabase_keepalive_last_success_timestamp, supabase_keepalive_requests_total
+                # 成功处理
+                self._last_ping_iso = datetime.now(timezone.utc).isoformat()
+                self._success_count += 1
+                self._last_error = None
+                
+                # 仅在重试后成功时记录 INFO，否则 DEBUG
+                if attempt > 1:
+                    logger.info("Supabase keepalive ping successful after %d attempts", attempt)
+                else:
+                    logger.debug("Supabase keepalive ping successful")
 
-            supabase_keepalive_requests_total.labels(status="success").inc()
-            supabase_keepalive_last_success_timestamp.set_to_current_time()
+                # 更新 Prometheus 指标
+                from app.core.metrics import supabase_keepalive_last_success_timestamp, supabase_keepalive_requests_total
 
-        except httpx.HTTPError as exc:
-            self._failure_count += 1
-            self._last_error = str(exc)
-            logger.warning(
-                "Supabase keepalive ping failed (total_failures=%d): %s",
-                self._failure_count,
-                exc,
-            )
+                supabase_keepalive_requests_total.labels(status="success").inc()
+                supabase_keepalive_last_success_timestamp.set_to_current_time()
+                return
 
-            # 更新 Prometheus 指标
-            from app.core.metrics import supabase_keepalive_requests_total
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt < max_retries:
+                    await asyncio.sleep(1)  # 简单的指数退避或固定等待
+                    continue
+            except Exception as exc:  # pragma: no cover
+                # 非网络/HTTP 错误不重试，直接记录
+                self._failure_count += 1
+                self._last_error = str(exc)
+                logger.exception("Supabase keepalive ping unexpected error (total_failures=%d)", self._failure_count)
+                
+                from app.core.metrics import supabase_keepalive_requests_total
+                supabase_keepalive_requests_total.labels(status="failure").inc()
+                return
 
-            supabase_keepalive_requests_total.labels(status="failure").inc()
+        # 重试全部失败后记录警告
+        self._failure_count += 1
+        error_msg = f"{type(last_exc).__name__}: {last_exc}"
+        self._last_error = error_msg
+        
+        logger.warning(
+            "Supabase keepalive ping failed (attempts=%d, total_failures=%d): %s",
+            max_retries,
+            self._failure_count,
+            error_msg,
+        )
 
-        except Exception as exc:  # pragma: no cover
-            self._failure_count += 1
-            self._last_error = str(exc)
-            logger.exception("Supabase keepalive ping unexpected error (total_failures=%d)", self._failure_count)
+        # 更新 Prometheus 指标
+        from app.core.metrics import supabase_keepalive_requests_total
 
-            # 更新 Prometheus 指标
-            from app.core.metrics import supabase_keepalive_requests_total
-
-            supabase_keepalive_requests_total.labels(status="failure").inc()
+        supabase_keepalive_requests_total.labels(status="failure").inc()
 
     def snapshot(self) -> dict[str, Optional[str | int | bool]]:
         """返回当前保活服务状态快照。"""
