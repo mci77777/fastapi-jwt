@@ -34,6 +34,19 @@ python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py
 
 `run_e2e_enhanced.py` 默认 `--email-mode auto`：当存在 `MAIL_API_KEY` 时会自动切换到 `mailapi`，并在登录失败且提示“邮箱未确认”时自动等待邮件并完成确认后重试登录。
 
+## 验证码（OTP）登录
+
+`run_e2e_enhanced.py` 支持 `--auth-method otp`：通过“注册确认邮件”里的验证码（OTP）直接换取 `access_token`，用于验证“注册 + 验证码登录 + SSE”全链路。
+
+- 推荐：配合 `--email-mode mailapi`，使用真实 Mail API 收取验证码
+- 兜底：若未配置 `MAIL_API_KEY`，脚本会回退使用 `SUPABASE_SERVICE_ROLE_KEY` 的 `admin/generate_link` 生成 OTP/verify link 来完成同等验证（不覆盖真实邮件投递）
+
+示例：
+
+```bash
+python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py --email-mode mailapi --auth-method otp
+```
+
 ## 维护准则
 
 - 新增脚本时请同步更新本 README 以及 `docs/SCRIPTS_INDEX.md` 的说明。

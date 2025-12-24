@@ -20,6 +20,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from dotenv import load_dotenv
@@ -235,6 +236,22 @@ class AnonymousE2E:
         text = text.lower()
         return ("not confirmed" in text) or ("email_not_confirmed" in text) or ("email not confirmed" in text)
 
+    @staticmethod
+    def _extract_verify_params_from_url(url: str) -> tuple[Optional[str], Optional[str]]:
+        """
+        从 Supabase /auth/v1/verify 链接中提取 (type, token)。
+
+        兼容 token / token_hash 两种 query key（不同版本或模板可能不同）。
+        """
+        try:
+            parsed = urlparse(url)
+            qs = parse_qs(parsed.query)
+            verify_type = qs.get("type", [None])[0]
+            token = qs.get("token", [None])[0] or qs.get("token_hash", [None])[0]
+            return (verify_type if isinstance(verify_type, str) else None), (token if isinstance(token, str) else None)
+        except Exception:
+            return None, None
+
     async def _register_user(self, client: httpx.AsyncClient, email: str, password: str) -> StepRecord:
         url = f"{self.supabase_url}/auth/v1/signup"
         payload = {
@@ -447,6 +464,269 @@ class AnonymousE2E:
             duration_ms=duration,
         )
 
+    async def _login_via_signup_otp_mail_api(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        mailbox: Mailbox,
+        max_wait_seconds: float,
+        poll_interval_seconds: float,
+        otp_output_path: Optional[str],
+    ) -> tuple[StepRecord, Optional[str]]:
+        """
+        通过“注册确认邮件”里的 OTP / verify 链接，直接换取 access_token（避免 password grant）。
+
+        适用场景：用户希望“注册 + 验证码(OTP)登录”闭环。
+        """
+        if not self.mail_api:
+            return (
+                StepRecord(name="supabase_login_otp", success=False, notes={"error": "mail_api_not_configured"}),
+                None,
+            )
+
+        start = self._now_ms()
+        deadline = time.monotonic() + max_wait_seconds
+        checked = 0
+        last_error: Optional[str] = None
+        last_message_id: Optional[str] = None
+        last_subject: Optional[str] = None
+        seen: set[str] = set()
+
+        verify_url = f"{self.supabase_url}/auth/v1/verify"
+        verify_headers = {
+            "apikey": self.supabase_anon_key or self.supabase_service_key,
+            "Authorization": f"Bearer {self.supabase_anon_key or self.supabase_service_key}",
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=self.timeout) as mail_client:
+            while time.monotonic() < deadline:
+                try:
+                    inbox = await self.mail_api.list_messages(mail_client, mailbox_id=mailbox.mailbox_id)
+                    if isinstance(inbox, dict) and inbox.get("error"):
+                        last_error = f"list_messages_failed: {inbox.get('error')}"
+                        await asyncio.sleep(poll_interval_seconds)
+                        continue
+                    messages = self._normalize_messages_list(inbox)
+
+                    for m in messages:
+                        mid = self._extract_message_id(m)
+                        if not mid or mid in seen:
+                            continue
+                        seen.add(mid)
+                        checked += 1
+                        last_message_id = mid
+
+                        detail = await self.mail_api.get_message(
+                            mail_client, mailbox_id=mailbox.mailbox_id, message_id=mid
+                        )
+                        if isinstance(detail, dict) and detail.get("error"):
+                            last_error = f"get_message_failed: {detail.get('error')}"
+                            continue
+
+                        subject = detail.get("subject") or (detail.get("data") or {}).get("subject")  # type: ignore[union-attr]
+                        last_subject = subject if isinstance(subject, str) else None
+
+                        text = self._extract_text_from_message(detail)
+                        if not text:
+                            candidates: list[str] = []
+                            self._collect_strings(detail, candidates)
+                            text = "\n".join(candidates)
+                        text = html.unescape(text or "")
+
+                        otp = self._extract_otp(text)
+                        urls = re.findall(r"https?://[^\s\"'<>]+", text)
+                        verify_link = None
+                        for u in urls:
+                            if "/auth/v1/verify" in u:
+                                verify_link = u
+                                break
+
+                        # 可选：导出 OTP 供人工确认（不写入 trace/artifacts）
+                        if otp_output_path and otp:
+                            try:
+                                Path(otp_output_path).write_text(f"email={mailbox.email}\notp={otp}\n", encoding="utf-8")
+                            except Exception:
+                                pass
+
+                        verify_type = "signup"
+                        token_for_verify = otp
+                        if not token_for_verify and verify_link:
+                            link_type, link_token = self._extract_verify_params_from_url(verify_link)
+                            if isinstance(link_type, str) and link_type.strip():
+                                verify_type = link_type.strip()
+                            token_for_verify = link_token
+
+                        if not token_for_verify:
+                            continue
+
+                        payload = {"type": verify_type, "email": mailbox.email, "token": token_for_verify}
+                        r = await client.post(verify_url, json=payload, headers=verify_headers, timeout=self.timeout)
+                        body = _safe_json(r)
+                        token = body.get("access_token") if isinstance(body, dict) else None
+
+                        duration = self._now_ms() - start
+                        if otp_output_path:
+                            try:
+                                meta_path = Path(otp_output_path).with_name("mail_meta.json")
+                                meta = {
+                                    "email": mailbox.email,
+                                    "mailbox_id": mailbox.mailbox_id,
+                                    "checked_messages": checked,
+                                    "message_id": mid,
+                                    "subject": subject,
+                                    "verify_url_base": (verify_link.split("?", 1)[0] if verify_link else None),
+                                    "verify_type": verify_type,
+                                    "has_otp": bool(otp),
+                                    "otp_len": (len(otp) if otp else None),
+                                    "otp_output_path": otp_output_path,
+                                    "otp_verify_status": r.status_code,
+                                    "has_access_token": isinstance(token, str),
+                                    "access_token_len": (len(token) if isinstance(token, str) else None),
+                                }
+                                meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+                            except Exception:
+                                pass
+
+                        step = StepRecord(
+                            name="supabase_login_otp",
+                            success=r.status_code == 200 and isinstance(token, str) and bool(token),
+                            request={"url": verify_url, "mailbox_id": mailbox.mailbox_id, "type": verify_type},
+                            response={"status_code": r.status_code, "body": self._redact_tokens(body)},
+                            notes={
+                                "checked_messages": checked,
+                                "message_id": mid,
+                                "subject": subject,
+                                "otp_len": (len(otp) if otp else None),
+                                "access_token_len": (len(token) if isinstance(token, str) else None),
+                                "otp_output_path": otp_output_path,
+                            },
+                            duration_ms=duration,
+                        )
+                        return step, (token if isinstance(token, str) else None)
+                except Exception as exc:
+                    last_error = str(exc)
+
+                await asyncio.sleep(poll_interval_seconds)
+
+        duration = self._now_ms() - start
+        return (
+            StepRecord(
+                name="supabase_login_otp",
+                success=False,
+                request={"mailbox_id": mailbox.mailbox_id},
+                response={"status_code": None},
+                notes={
+                    "checked_messages": checked,
+                    "last_error": last_error,
+                    "last_message_id": last_message_id,
+                    "last_subject": last_subject,
+                    "otp_output_path": otp_output_path,
+                },
+                duration_ms=duration,
+            ),
+            None,
+        )
+
+    async def _login_via_signup_otp_admin_generate_link(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        email: str,
+        password: str,
+    ) -> tuple[StepRecord, Optional[str]]:
+        """
+        通过 service_role 的 admin generate_link 生成 signup verify link/otp，
+        再调用 /auth/v1/verify 换取 access_token。
+
+        用于在缺少 Mail API Key 的情况下，仍能验证“验证码(OTP)登录”闭环。
+        """
+        if not self.supabase_service_key:
+            return (
+                StepRecord(
+                    name="supabase_login_otp",
+                    success=False,
+                    notes={"error": "missing_SUPABASE_SERVICE_ROLE_KEY_for_admin_generate_link"},
+                ),
+                None,
+            )
+
+        admin_url = f"{self.supabase_url}/auth/v1/admin/generate_link"
+        admin_headers = {
+            "apikey": self.supabase_service_key,
+            "Authorization": f"Bearer {self.supabase_service_key}",
+            "Content-Type": "application/json",
+        }
+        admin_payload: Dict[str, Any] = {"type": "signup", "email": email, "password": password}
+
+        start = self._now_ms()
+        admin_resp = await client.post(admin_url, json=admin_payload, headers=admin_headers, timeout=self.timeout)
+        admin_body = _safe_json(admin_resp)
+
+        # 尽量从响应中提取 verify link/otp，但不把敏感字段写入 trace
+        action_link = None
+        email_otp = None
+        if isinstance(admin_body, dict):
+            action_link = admin_body.get("action_link")
+            email_otp = admin_body.get("email_otp") or admin_body.get("otp")
+
+        verify_type = "signup"
+        token_for_verify: Optional[str] = None
+        if isinstance(email_otp, str) and email_otp.strip():
+            token_for_verify = email_otp.strip()
+        elif isinstance(action_link, str) and action_link.strip():
+            link_type, link_token = self._extract_verify_params_from_url(action_link)
+            if isinstance(link_type, str) and link_type.strip():
+                verify_type = link_type.strip()
+            token_for_verify = link_token
+
+        verify_url = f"{self.supabase_url}/auth/v1/verify"
+        verify_headers = {
+            "apikey": self.supabase_anon_key or self.supabase_service_key,
+            "Authorization": f"Bearer {self.supabase_anon_key or self.supabase_service_key}",
+            "Content-Type": "application/json",
+        }
+
+        token: Optional[str] = None
+        verify_status: Optional[int] = None
+        verify_body: Any = None
+        if token_for_verify:
+            verify_payload = {"type": verify_type, "email": email, "token": token_for_verify}
+            r = await client.post(verify_url, json=verify_payload, headers=verify_headers, timeout=self.timeout)
+            verify_status = r.status_code
+            verify_body = _safe_json(r)
+            token = verify_body.get("access_token") if isinstance(verify_body, dict) else None
+
+        duration = self._now_ms() - start
+        step = StepRecord(
+            name="supabase_login_otp",
+            success=(admin_resp.status_code == 200)
+            and (verify_status == 200)
+            and isinstance(token, str)
+            and bool(token),
+            request={
+                "admin_url": admin_url,
+                "admin_payload": self._redact_password(admin_payload),
+                "verify_url": verify_url,
+                "verify_type": verify_type,
+            },
+            response={
+                "admin_status_code": admin_resp.status_code,
+                "admin_body": {
+                    "has_action_link": isinstance(action_link, str) and bool(action_link),
+                    "has_email_otp": isinstance(email_otp, str) and bool(email_otp),
+                },
+                "verify_status_code": verify_status,
+                "verify_body": self._redact_tokens(verify_body) if verify_body is not None else None,
+            },
+            notes={
+                "access_token_len": (len(token) if isinstance(token, str) else None),
+                "token_source": ("email_otp" if isinstance(email_otp, str) and bool(email_otp) else "action_link"),
+            },
+            duration_ms=duration,
+        )
+        return step, (token if isinstance(token, str) else None)
+
     async def _send_message(self, client: httpx.AsyncClient, token: str) -> StepRecord:
         url = f"{self.api_base_url}/messages"
         payload = {
@@ -534,6 +814,7 @@ class AnonymousE2E:
     async def run(
         self,
         *,
+        auth_method: str,
         email_mode: str,
         mail_api_max_wait_seconds: float,
         mail_api_poll_interval_seconds: float,
@@ -548,52 +829,57 @@ class AnonymousE2E:
         email = f"anon-e2e-{int(time.time())}@{local_domain}"
         if email_mode == "mailapi":
             if not self.mail_api:
-                print("ERROR: email_mode=mailapi 但未配置 MAIL_API_KEY")
-                return await self._finalize(1)
-            async with httpx.AsyncClient(timeout=self.timeout) as mail_client:
-                domain = mail_api_domain
-                if not domain:
-                    try:
-                        cfg = await self.mail_api.get_config(mail_client)
-                    except Exception:
-                        cfg = {}
-                    candidates: set[str] = set()
-                    self._collect_domain_candidates(cfg, candidates)
-                    if candidates:
-                        domain = sorted(candidates)[0]
-                if not domain:
-                    domain = "moemail.app"
-                    print("[WARN] 未能从 Mail API /api/config 获取 domain，回退使用 moemail.app；建议显式设置 MAIL_DOMAIN。")
-
-                name = f"anon_e2e_{int(time.time())}"
-                try:
-                    mailbox = await self.mail_api.generate_email(
-                        mail_client,
-                        name=name,
-                        expiry_ms=mail_api_expiry_ms,
-                        domain=domain,
-                    )
-                except Exception as exc:
-                    self.report.add_step(
-                        StepRecord(
-                            name="mail_api_generate_email",
-                            success=False,
-                            request={"domain": domain, "expiry_ms": mail_api_expiry_ms},
-                            response={"error": str(exc)},
-                        )
-                    )
-                    print(f"ERROR: Mail API 生成邮箱失败: {exc}")
+                if auth_method == "otp":
+                    print("[WARN] email_mode=mailapi 但未配置 MAIL_API_KEY：将回退为 local email，并使用 admin generate_link 走 OTP 登录验证。")
+                    email_mode = "local"
+                else:
+                    print("ERROR: email_mode=mailapi 但未配置 MAIL_API_KEY")
                     return await self._finalize(1)
+            if email_mode == "mailapi":
+                async with httpx.AsyncClient(timeout=self.timeout) as mail_client:
+                    domain = mail_api_domain
+                    if not domain:
+                        try:
+                            cfg = await self.mail_api.get_config(mail_client)  # type: ignore[union-attr]
+                        except Exception:
+                            cfg = {}
+                        candidates: set[str] = set()
+                        self._collect_domain_candidates(cfg, candidates)
+                        if candidates:
+                            domain = sorted(candidates)[0]
+                    if not domain:
+                        domain = "moemail.app"
+                        print("[WARN] 未能从 Mail API /api/config 获取 domain，回退使用 moemail.app；建议显式设置 MAIL_DOMAIN。")
 
-            self.report.add_step(
-                StepRecord(
-                    name="mail_api_generate_email",
-                    success=True,
-                    request={"domain": domain, "expiry_ms": mail_api_expiry_ms},
-                    response={"mailbox_id": mailbox.mailbox_id, "email": mailbox.email},
+                    name = f"anon_e2e_{int(time.time())}"
+                    try:
+                        mailbox = await self.mail_api.generate_email(  # type: ignore[union-attr]
+                            mail_client,
+                            name=name,
+                            expiry_ms=mail_api_expiry_ms,
+                            domain=domain,
+                        )
+                    except Exception as exc:
+                        self.report.add_step(
+                            StepRecord(
+                                name="mail_api_generate_email",
+                                success=False,
+                                request={"domain": domain, "expiry_ms": mail_api_expiry_ms},
+                                response={"error": str(exc)},
+                            )
+                        )
+                        print(f"ERROR: Mail API 生成邮箱失败: {exc}")
+                        return await self._finalize(1)
+
+                self.report.add_step(
+                    StepRecord(
+                        name="mail_api_generate_email",
+                        success=True,
+                        request={"domain": domain, "expiry_ms": mail_api_expiry_ms},
+                        response={"mailbox_id": mailbox.mailbox_id, "email": mailbox.email},
+                    )
                 )
-            )
-            email = mailbox.email
+                email = mailbox.email
 
         password = f"Pwd-{uuid.uuid4().hex[:12]}"
         self.report.user_email = email
@@ -610,34 +896,56 @@ class AnonymousE2E:
             if not signup_step.success:
                 return await self._finalize(1)
 
-            # 登录换取 JWT
-            login_step, token = await self._login_user(client, email, password)
-            self.report.add_step(login_step)
-            print(f"[STEP] Login status: {login_step.response['status_code']}")
-            if not login_step.success and mailbox and self._is_email_not_confirmed(login_step.response.get("body")):
-                confirm_step = await self._confirm_email_via_mail_api(
-                    client,
-                    mailbox=mailbox,
-                    max_wait_seconds=mail_api_max_wait_seconds,
-                    poll_interval_seconds=mail_api_poll_interval_seconds,
-                    otp_output_path=otp_output_path,
-                )
-                self.report.add_step(confirm_step)
-                if not confirm_step.success:
-                    return await self._finalize(1)
+            token: Optional[str] = None
 
-                # 再试一次登录
-                login_step_retry, token_retry = await self._login_user(client, email, password)
-                login_step_retry.name = "supabase_login_retry"
-                self.report.add_step(login_step_retry)
-                print(f"[STEP] Login(retry) status: {login_step_retry.response['status_code']}")
-                if not login_step_retry.success:
-                    return await self._finalize(1)
-                token = token_retry
-            elif not login_step.success:
-                return await self._finalize(1)
+            if auth_method == "otp":
+                if not mailbox:
+                    login_step, token = await self._login_via_signup_otp_admin_generate_link(
+                        client, email=email, password=password
+                    )
+                    self.report.add_step(login_step)
+                    print(f"[STEP] Login(otp/adminlink) status: {login_step.response.get('verify_status_code')}")
+                    if not login_step.success:
+                        return await self._finalize(1)
+                else:
+                    login_step, token = await self._login_via_signup_otp_mail_api(
+                        client,
+                        mailbox=mailbox,
+                        max_wait_seconds=mail_api_max_wait_seconds,
+                        poll_interval_seconds=mail_api_poll_interval_seconds,
+                        otp_output_path=otp_output_path,
+                    )
+                    self.report.add_step(login_step)
+                    print(f"[STEP] Login(otp) status: {login_step.response.get('status_code')}")
+                    if not login_step.success:
+                        return await self._finalize(1)
             else:
-                token = token
+                # 登录换取 JWT（password grant）
+                login_step, token = await self._login_user(client, email, password)
+                self.report.add_step(login_step)
+                print(f"[STEP] Login status: {login_step.response['status_code']}")
+                if not login_step.success and mailbox and self._is_email_not_confirmed(login_step.response.get("body")):
+                    confirm_step = await self._confirm_email_via_mail_api(
+                        client,
+                        mailbox=mailbox,
+                        max_wait_seconds=mail_api_max_wait_seconds,
+                        poll_interval_seconds=mail_api_poll_interval_seconds,
+                        otp_output_path=otp_output_path,
+                    )
+                    self.report.add_step(confirm_step)
+                    if not confirm_step.success:
+                        return await self._finalize(1)
+
+                    # 再试一次登录
+                    login_step_retry, token_retry = await self._login_user(client, email, password)
+                    login_step_retry.name = "supabase_login_retry"
+                    self.report.add_step(login_step_retry)
+                    print(f"[STEP] Login(retry) status: {login_step_retry.response['status_code']}")
+                    if not login_step_retry.success:
+                        return await self._finalize(1)
+                    token = token_retry
+                elif not login_step.success:
+                    return await self._finalize(1)
 
             if not isinstance(token, str) or not token:
                 return await self._finalize(1)
@@ -726,6 +1034,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=float(os.getenv("E2E_HTTP_TIMEOUT", "30")),
         help="HTTP 请求超时时间（秒），默认为 30",
+    )
+    parser.add_argument(
+        "--auth-method",
+        choices=["password", "otp"],
+        default=os.getenv("E2E_AUTH_METHOD", "password"),
+        help="登录方式：password=邮箱+密码换取 JWT；otp=使用注册确认邮件里的验证码(OTP)换取 JWT（需要 email_mode=mailapi）",
     )
     parser.add_argument(
         "--email-mode",
@@ -881,6 +1195,7 @@ async def async_main() -> int:
         runner.mail_api = MailApiClient(base_url=mail_api_base_url, api_key=mail_api_key)
 
     return await runner.run(
+        auth_method=args.auth_method,
         email_mode=email_mode,
         mail_api_max_wait_seconds=args.mail_api_max_wait_seconds,
         mail_api_poll_interval_seconds=args.mail_api_poll_interval_seconds,
