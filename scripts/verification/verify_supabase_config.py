@@ -6,14 +6,15 @@ Supabase 配置验证脚本
 
 import asyncio
 import json
-import os
 import sys
+from pathlib import Path
 from typing import Any, Dict
 
 import httpx
 
-# 添加项目根目录到 Python 路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# 添加项目根目录到 Python 路径（脚本位于 scripts/verification/）
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.settings.config import get_settings  # noqa: E402
 
@@ -119,19 +120,19 @@ class SupabaseConfigValidator:
 
             log_success("✅ Supabase API 连接成功")
 
-            # 测试表是否存在
-            table_response = await self.client.get(
-                f"{base_url}/rest/v1/{self.settings.supabase_chat_table}?limit=1", headers=headers
-            )
+            # 统一校验：B2 落库模型（conversations/messages）+ AI 配置表（ai_model/ai_prompt）
+            required_tables = ["conversations", "messages", "ai_model", "ai_prompt"]
+            tables: Dict[str, Any] = {}
+            for table in required_tables:
+                table_response = await self.client.get(f"{base_url}/rest/v1/{table}?limit=1", headers=headers)
+                ok = table_response.status_code == 200
+                tables[table] = {"ok": ok, "status": table_response.status_code}
+                if ok:
+                    log_success(f"✅ 表 '{table}' 存在且可访问")
+                else:
+                    log_warning(f"⚠️ 表 '{table}' 不存在或不可访问（HTTP {table_response.status_code}）")
 
-            if table_response.status_code == 200:
-                log_success(f"✅ 表 '{self.settings.supabase_chat_table}' 存在且可访问")
-                table_exists = True
-            else:
-                log_warning(f"⚠️ 表 '{self.settings.supabase_chat_table}' 不存在或不可访问")
-                table_exists = False
-
-            return {"accessible": True, "table_exists": table_exists, "table_name": self.settings.supabase_chat_table}
+            return {"accessible": True, "tables": tables}
 
         except httpx.HTTPError as e:
             log_error(f"❌ Supabase API 连接失败: {e}")
@@ -195,9 +196,14 @@ async def main():
             log_info("5. 验证 SUPABASE_SERVICE_ROLE_KEY 是否正确")
             log_info("6. 确认 Supabase 项目已创建并可访问")
 
-        if results["supabase_api"].get("accessible") and not results["supabase_api"].get("table_exists"):
-            log_info("7. 运行 SQL 脚本创建数据库表")
-            log_info("   文件位置: docs/jwt改造/supabase_schema.sql")
+        if results["supabase_api"].get("accessible"):
+            missing = [
+                name for name, item in (results["supabase_api"].get("tables") or {}).items() if not item.get("ok")
+            ]
+            if missing:
+                log_info("7. 运行 SQL 脚本创建数据库表")
+                log_info(f"   缺失表: {', '.join(missing)}")
+                log_info("   建议脚本位置: scripts/deployment/sql/create_supabase_tables.sql")
 
     return 0 if results["overall_status"] == "PASS" else 1
 

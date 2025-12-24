@@ -1,0 +1,37 @@
+{
+  "generated_at": "2025-12-24",
+  "notes": "本文件用于给命名/引用审计脚本提供“表归属”的可配置来源；不应包含任何密钥或连接信息。",
+  "backend_owned_tables": [
+    "conversations",
+    "messages",
+    "ai_model",
+    "ai_prompt",
+    "user_anon",
+    "anon_sessions",
+    "anon_messages",
+    "anon_rate_limits"
+  ],
+  "app_owned_tables": [
+    "users",
+    "user_profiles",
+    "user_settings",
+    "user_metrics"
+  ],
+  "shared_or_unknown_tables": [
+    "api_endpoints",
+    "audit_logs",
+    "calendar_events",
+    "gateway_configs",
+    "memory_records",
+    "public_content",
+    "public_shares",
+    "search_content",
+    "system_prompts",
+    "tokens"
+  ],
+  "high_risk_public_tables_deleted_in_legacy_cleanup": [
+    "message_embedding",
+    "session_summary"
+  ]
+}
+

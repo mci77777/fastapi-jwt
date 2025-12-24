@@ -21,7 +21,8 @@ CREATE INDEX IF NOT EXISTS idx_ai_model_is_active ON public.ai_model(is_active);
 CREATE INDEX IF NOT EXISTS idx_ai_model_is_default ON public.ai_model(is_default);
 
 -- 创建更新时间触发器
-CREATE OR REPLACE FUNCTION update_updated_at_column()
+-- 与 B2（conversations/messages）保持一致：使用 public.update_updated_at_column()
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -29,10 +30,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_ai_model_updated_at ON public.ai_model;
 CREATE TRIGGER update_ai_model_updated_at
     BEFORE UPDATE ON public.ai_model
     FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+    EXECUTE FUNCTION public.update_updated_at_column();
 
 -- 创建 ai_prompt 表
 CREATE TABLE IF NOT EXISTS public.ai_prompt (
@@ -52,22 +54,25 @@ CREATE INDEX IF NOT EXISTS idx_ai_prompt_is_active ON public.ai_prompt(is_active
 CREATE INDEX IF NOT EXISTS idx_ai_prompt_name ON public.ai_prompt(name);
 
 -- 创建更新时间触发器
+DROP TRIGGER IF EXISTS update_ai_prompt_updated_at ON public.ai_prompt;
 CREATE TRIGGER update_ai_prompt_updated_at
     BEFORE UPDATE ON public.ai_prompt
     FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+    EXECUTE FUNCTION public.update_updated_at_column();
 
 -- 启用 Row Level Security (RLS)
 ALTER TABLE public.ai_model ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_prompt ENABLE ROW LEVEL SECURITY;
 
 -- 创建 RLS 策略：所有认证用户可以读取
+DROP POLICY IF EXISTS "Authenticated users can view ai_model" ON public.ai_model;
 CREATE POLICY "Authenticated users can view ai_model"
 ON public.ai_model
 FOR SELECT
 TO authenticated
 USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can view ai_prompt" ON public.ai_prompt;
 CREATE POLICY "Authenticated users can view ai_prompt"
 ON public.ai_prompt
 FOR SELECT
@@ -75,6 +80,7 @@ TO authenticated
 USING (true);
 
 -- 创建 RLS 策略：service_role 可以进行所有操作
+DROP POLICY IF EXISTS "Service role can manage ai_model" ON public.ai_model;
 CREATE POLICY "Service role can manage ai_model"
 ON public.ai_model
 FOR ALL
@@ -82,6 +88,7 @@ TO service_role
 USING (true)
 WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Service role can manage ai_prompt" ON public.ai_prompt;
 CREATE POLICY "Service role can manage ai_prompt"
 ON public.ai_prompt
 FOR ALL
@@ -95,16 +102,8 @@ GRANT SELECT ON public.ai_model TO authenticated;
 GRANT SELECT ON public.ai_prompt TO authenticated;
 GRANT ALL ON public.ai_model TO service_role;
 GRANT ALL ON public.ai_prompt TO service_role;
-GRANT USAGE, SELECT ON SEQUENCE ai_model_id_seq TO service_role;
-GRANT USAGE, SELECT ON SEQUENCE ai_prompt_id_seq TO service_role;
+GRANT USAGE, SELECT ON SEQUENCE public.ai_model_id_seq TO service_role;
+GRANT USAGE, SELECT ON SEQUENCE public.ai_prompt_id_seq TO service_role;
 
--- 插入默认数据
-INSERT INTO public.ai_model (name, model, base_url, api_key, description, timeout, is_active, is_default)
-VALUES
-    ('DeepSeek R1', 'deepseek-r1', 'https://zzzzapi.com', 'sk-VkX00c7dM8LOVtrMI9Zo3RarcvDSSsoYbHZjz5WRGzBsMCJJ', '默认 AI 模型', 60, true, true)
-ON CONFLICT DO NOTHING;
-
-INSERT INTO public.ai_prompt (name, version, system_prompt, description, is_active)
-VALUES
-    ('GymBro Assistant', 'v1.0', 'You are GymBro''s AI assistant. Help users with their fitness and workout questions.', '默认健身助手 Prompt', true)
-ON CONFLICT DO NOTHING;
+-- ✅ 安全默认：不在建表脚本中插入示例数据（避免重复插入与误提交敏感 key）
+-- 如需初始化数据，建议通过后台 UI 或单独的“种子脚本”在受控环境下执行。

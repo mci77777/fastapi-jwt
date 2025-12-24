@@ -169,7 +169,7 @@ POST /api/v1/messages
   "text": "Hello",
   "metadata": {"save_history": true}
 }
-# Expected: Record in Supabase chat_messages table
+# Expected: Record in Supabase `public.conversations` + `public.messages`（B2 SSOT）
 
 # Test save disabled
 POST /api/v1/messages
@@ -184,7 +184,7 @@ POST /api/v1/messages
 {
   "text": "Hello"
 }
-# Expected: Record in Supabase (backward compatible)
+# Expected: Record in Supabase（B2 SSOT，backward compatible）
 ```
 
 ### Scenario 3: Error Handling
@@ -256,7 +256,7 @@ sum by (model) (
 ### Issue: Supabase save failing
 **Solution**:
 1. Check `SUPABASE_PROJECT_ID` and `SUPABASE_SERVICE_ROLE_KEY` in `.env`
-2. Verify `chat_messages` table exists
+2. Verify `public.conversations` / `public.messages` table exists
 3. Check logs for `sync_chat_record` errors
 
 ### Issue: Model not being used
@@ -352,4 +352,3 @@ data: {"message_id": "...", "error": "error message"}
 - **Architecture**: `docs/dashboard-refactor/ARCHITECTURE_OVERVIEW.md`
 - **JWT Guide**: `docs/JWT_HARDENING_GUIDE.md`
 - **API Monitoring**: `docs/API_MONITOR_HANDOVER.md`
-

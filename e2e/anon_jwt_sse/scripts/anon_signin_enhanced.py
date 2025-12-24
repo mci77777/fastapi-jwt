@@ -20,8 +20,10 @@ from typing import Any, Dict, Optional
 import aiohttp
 from dotenv import load_dotenv
 
-# 加载环境变量
-load_dotenv()
+# 加载环境变量（优先加载本目录的 .env.local）
+_env_local = pathlib.Path(__file__).parent.parent / ".env.local"
+load_dotenv(_env_local, override=False)
+load_dotenv(override=False)
 
 
 class EnhancedAnonAuth:

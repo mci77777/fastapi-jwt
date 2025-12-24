@@ -142,6 +142,7 @@ const messageId = ref('')
 const aiResponse = ref('')
 const sendingMessage = ref(false)
 const sseEvents = ref([])
+const conversationId = ref('')
 
 /**
  * 获取 JWT Token
@@ -204,7 +205,7 @@ async function handleSendMessage() {
       '/messages',
       {
         text: chatForm.value.message,
-        conversation_id: null,
+        conversation_id: conversationId.value || null,
         metadata: {
           source: 'mock_user_ui',
           test_type: 'manual',
@@ -218,10 +219,11 @@ async function handleSendMessage() {
     )
 
     messageId.value = createResponse.message_id
+    conversationId.value = createResponse.conversation_id
     message.success(`消息创建成功，ID: ${messageId.value}`)
 
     // 步骤 2: 建立 SSE 连接
-    await streamSSEEvents(messageId.value)
+    await streamSSEEvents(messageId.value, conversationId.value)
   } catch (error) {
     message.error('发送消息失败：' + (error.message || '未知错误'))
   } finally {
@@ -232,9 +234,9 @@ async function handleSendMessage() {
 /**
  * 流式接收 SSE 事件
  */
-async function streamSSEEvents(msgId) {
+async function streamSSEEvents(msgId, convId) {
   const baseURL = import.meta.env.VITE_BASE_API || '/api/v1'
-  const url = `${baseURL}/messages/${msgId}/events`
+  const url = convId ? `${baseURL}/messages/${msgId}/events?conversation_id=${convId}` : `${baseURL}/messages/${msgId}/events`
 
   const eventSource = new EventSource(url, {
     headers: {

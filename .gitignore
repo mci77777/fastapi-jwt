@@ -30,6 +30,7 @@ migrations/
 .env.*
 *.env
 !.env.example
+!**/.env.local.example
 
 # API 密钥和凭证
 **/api_keys.json
@@ -47,6 +48,13 @@ storage/ai_router/**
 # JWT 测试数据
 **/jwt_test_*.json
 e2e/anon_jwt_sse/artifacts/token.json
+e2e/anon_jwt_sse/artifacts/anon_token_*.json
+
+# E2E 本地配置与产物（包含 token/验证码等敏感信息）
+e2e/anon_jwt_sse/.env.local
+e2e/anon_jwt_sse/artifacts/*
+!e2e/anon_jwt_sse/artifacts/.gitkeep
+e2e/anon_jwt_sse/artifacts/anon_token_*.json
 
 # ============ 前端 ============
 node_modules/

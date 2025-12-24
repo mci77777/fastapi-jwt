@@ -147,9 +147,13 @@ class AIService:
                 "message_id": message_id,
                 "conversation_id": message.conversation_id,
                 "user_id": user.uid,
-                "user_message": message.text,
-                "ai_reply": reply_text,
                 "metadata": message.metadata,
+                "user_type": user.user_type,
+                "title": (message.text or "").strip()[:80] or None,
+                "messages": [
+                    {"role": "user", "content": message.text, "metadata": message.metadata},
+                    {"role": "assistant", "content": reply_text, "metadata": {}},
+                ],
             }
             await to_thread.run_sync(self._provider.sync_chat_record, record)
 

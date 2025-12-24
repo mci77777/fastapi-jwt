@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
-from anon_signin_enhanced import EnhancedAnonAuth
+# 允许从任意 workdir 执行：确保同目录脚本可被导入
+sys.path.insert(0, str(Path(__file__).parent))
+from anon_signin_enhanced import EnhancedAnonAuth  # noqa: E402
 
 ARTIFACTS_DIR = Path(__file__).parent.parent / "artifacts"
 TOKEN_FILE = ARTIFACTS_DIR / "token.json"
@@ -67,7 +70,8 @@ def main() -> None:
     else:
         print("[WARN] Token file missing，可能需要检查权限或 Supabase 配置。")
 
-    print(f"[INFO] Access token preview: {token_data['access_token'][:50]}...")
+    # 不输出 token 内容（避免泄露）
+    print(f"[INFO] Access token length: {len(token_data.get('access_token',''))}")
 
 
 if __name__ == "__main__":

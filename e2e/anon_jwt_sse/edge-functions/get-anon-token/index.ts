@@ -58,10 +58,17 @@ async function createAnonUserAndGetToken() {
   const user = await r.json();
 
   const tokenUrl = `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
-  const form = new URLSearchParams();
-  form.set('email', anonEmail);
-  form.set('password', password);
-  r = await fetch(tokenUrl, { method: 'POST', headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form.toString() });
+  // GoTrue 的 password grant 期望 JSON body（否则会返回 bad_json）
+  const tokenBody = { email: anonEmail, password };
+  r = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: {
+      'apikey': SERVICE_KEY,
+      'Authorization': `Bearer ${SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(tokenBody),
+  });
   if (!r.ok) {
     const t = await r.text();
     try { await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${user.id}`, { method: 'DELETE', headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } }); } catch (_) { }

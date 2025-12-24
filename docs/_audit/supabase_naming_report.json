@@ -1,0 +1,187 @@
+{
+  "generated_at": "2025-12-24T04:53:23.914982+00:00",
+  "ownership_map_path": "docs/schemas/supabase_ownership_map.json",
+  "backend_owned_tables": [
+    "ai_model",
+    "ai_prompt",
+    "anon_messages",
+    "anon_rate_limits",
+    "anon_sessions",
+    "conversations",
+    "messages",
+    "user_anon"
+  ],
+  "referenced_tables_in_repo": [
+    "ai_chat_messages",
+    "ai_model",
+    "ai_prompt",
+    "anon_messages",
+    "anon_rate_limits",
+    "anon_sessions",
+    "audit_logs",
+    "chat_fts",
+    "chat_messages",
+    "chat_raw",
+    "chat_sessions",
+    "chat_vec",
+    "conversation_history",
+    "conversations",
+    "message_embedding",
+    "messages",
+    "public_content",
+    "session_summary",
+    "user_anon",
+    "user_metrics",
+    "user_profiles",
+    "user_settings",
+    "users"
+  ],
+  "ddl_touched_tables": [
+    "legacy.ai_chat_messages",
+    "legacy.chat_fts",
+    "legacy.chat_messages",
+    "legacy.chat_raw",
+    "legacy.chat_sessions",
+    "legacy.chat_vec",
+    "legacy.conversation_history",
+    "public.ai_chat_messages",
+    "public.ai_model",
+    "public.ai_prompt",
+    "public.anon_messages",
+    "public.anon_sessions",
+    "public.audit_logs",
+    "public.chat_fts",
+    "public.chat_messages",
+    "public.chat_raw",
+    "public.chat_sessions",
+    "public.chat_vec",
+    "public.conversations",
+    "public.message_embedding",
+    "public.messages",
+    "public.public_content",
+    "public.session_summary",
+    "public.user_anon",
+    "public.user_metrics",
+    "public.user_profiles",
+    "public.user_settings",
+    "public.users"
+  ],
+  "ddl_drop_tables": [
+    "legacy.ai_chat_messages",
+    "legacy.chat_fts",
+    "legacy.chat_messages",
+    "legacy.chat_raw",
+    "legacy.chat_sessions",
+    "legacy.chat_vec",
+    "public.message_embedding",
+    "public.session_summary"
+  ],
+  "findings_count": 2,
+  "findings": [
+    {
+      "kind": "ddl/public_non_backend/high",
+      "file": "(sql-scan)",
+      "identifier": "public.message_embedding",
+      "message": "SQL 触达 public 非后端归属表；需人工确认 App 端不依赖/允许变更"
+    },
+    {
+      "kind": "ddl/public_non_backend/high",
+      "file": "(sql-scan)",
+      "identifier": "public.session_summary",
+      "message": "SQL 触达 public 非后端归属表；需人工确认 App 端不依赖/允许变更"
+    }
+  ],
+  "per_file_references": [
+    {
+      "file": "app/auth/supabase_provider.py",
+      "tables": [
+        "conversations",
+        "messages"
+      ]
+    },
+    {
+      "file": "scripts/deployment/sql/archive_legacy_tables.sql",
+      "tables": [
+        "ai_chat_messages",
+        "chat_fts",
+        "chat_messages",
+        "chat_raw",
+        "chat_sessions",
+        "chat_vec"
+      ]
+    },
+    {
+      "file": "scripts/deployment/sql/create_ai_config_tables.sql",
+      "tables": [
+        "ai_model",
+        "ai_prompt"
+      ]
+    },
+    {
+      "file": "scripts/deployment/sql/create_supabase_tables.sql",
+      "tables": [
+        "conversations",
+        "messages"
+      ]
+    },
+    {
+      "file": "scripts/deployment/sql/drop_legacy_tables.sql",
+      "tables": [
+        "ai_chat_messages",
+        "chat_fts",
+        "chat_messages",
+        "chat_raw",
+        "chat_sessions",
+        "chat_vec",
+        "conversation_history",
+        "message_embedding",
+        "session_summary"
+      ]
+    },
+    {
+      "file": "scripts/deployment/sql/optimize_rls_performance.sql",
+      "tables": [
+        "anon_messages",
+        "anon_sessions",
+        "audit_logs",
+        "chat_raw",
+        "chat_sessions",
+        "public_content",
+        "user_anon",
+        "user_metrics",
+        "user_profiles",
+        "user_settings",
+        "users"
+      ]
+    },
+    {
+      "file": "scripts/deployment/sql/rollback_rls_optimization.sql",
+      "tables": [
+        "anon_messages",
+        "anon_sessions",
+        "audit_logs",
+        "chat_raw",
+        "chat_sessions",
+        "public_content",
+        "user_anon",
+        "user_metrics",
+        "user_profiles",
+        "user_settings",
+        "users"
+      ]
+    },
+    {
+      "file": "e2e/anon_jwt_sse/edge-functions/get-anon-token/index.ts",
+      "tables": [
+        "anon_rate_limits",
+        "user_anon"
+      ]
+    },
+    {
+      "file": "docs/features/SUPABASE_KEEPALIVE.md",
+      "tables": [
+        "ai_model"
+      ]
+    }
+  ]
+}

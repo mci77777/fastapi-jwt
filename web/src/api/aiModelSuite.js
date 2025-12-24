@@ -41,7 +41,7 @@ export const fetchLoadRun = (runId) => request.get(`/llm/tests/runs/${runId}`)
  * @param {string} options.text - 消息文本（必需）
  * @param {string} [options.conversationId] - 会话 ID
  * @param {Object} [options.metadata] - 元数据
- * @returns {Promise<{message_id: string}>} 消息 ID
+ * @returns {Promise<{message_id: string, conversation_id: string}>} 消息ID与会话ID
  */
 export const createMessage = ({ text, conversationId, metadata = {} }) => {
   // 输入验证

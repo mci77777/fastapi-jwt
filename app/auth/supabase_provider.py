@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 from typing import Any, Dict
+from uuid import UUID
 
 import httpx
 
@@ -61,16 +62,73 @@ class SupabaseProvider(AuthProvider):
         if not isinstance(record, dict):
             raise ProviderError("Chat record must be a dict")
 
-        url = f"{self._base_url}/rest/v1/{self._chat_table}"
+        conversation_id = record.get("conversation_id")
+        user_id = record.get("user_id")
+        user_type = record.get("user_type")
+        messages = record.get("messages")
+
+        if not conversation_id or not user_id:
+            raise ProviderError("Missing conversation_id or user_id")
+
+        try:
+            conversation_uuid = str(UUID(str(conversation_id)))
+            user_uuid = str(UUID(str(user_id)))
+        except (ValueError, TypeError) as exc:
+            raise ProviderError("conversation_id and user_id must be UUID") from exc
+
         headers = self._headers()
         headers["Prefer"] = "return=minimal"
 
+        # 1) Upsert conversations（以 id 为主键）
         try:
-            response = httpx.post(url, headers=headers, json=record, timeout=self._timeout)
+            upsert_headers = dict(headers)
+            upsert_headers["Prefer"] = "return=minimal,resolution=merge-duplicates"
+            conv_url = f"{self._base_url}/rest/v1/conversations?on_conflict=id"
+            conv_payload = {
+                "id": conversation_uuid,
+                "user_id": user_uuid,
+                "title": record.get("title"),
+                "is_active": True,
+                "user_type": user_type,
+            }
+            response = httpx.post(conv_url, headers=upsert_headers, json=conv_payload, timeout=self._timeout)
             response.raise_for_status()
         except httpx.HTTPError as exc:  # pragma: no cover - 外部依赖
-            logger.error("同步聊天记录失败: %s", exc)
-            raise ProviderError("Failed to sync chat record to Supabase") from exc
+            logger.error("同步 conversations 失败: %s", exc)
+            raise ProviderError("Failed to sync conversation to Supabase") from exc
+
+        # 2) Insert messages（按消息粒度落库）
+        if not isinstance(messages, list) or not messages:
+            raise ProviderError("Missing messages list")
+
+        rows: list[dict[str, Any]] = []
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            role = msg.get("role")
+            content = msg.get("content")
+            if not role or not content:
+                continue
+            rows.append(
+                {
+                    "conversation_id": conversation_uuid,
+                    "user_id": user_uuid,
+                    "role": role,
+                    "content": content,
+                    "user_type": user_type,
+                }
+            )
+
+        if not rows:
+            raise ProviderError("No valid message rows to insert")
+
+        try:
+            msg_url = f"{self._base_url}/rest/v1/messages"
+            response = httpx.post(msg_url, headers=headers, json=rows, timeout=self._timeout)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:  # pragma: no cover - 外部依赖
+            logger.error("同步 messages 失败: %s", exc)
+            raise ProviderError("Failed to sync messages to Supabase") from exc
 
 
 @lru_cache(maxsize=1)

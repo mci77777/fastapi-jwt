@@ -8,6 +8,8 @@ import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
@@ -22,6 +24,11 @@ class SetupVerifier:
         self.checks_passed = 0
         self.checks_failed = 0
         self.checks_total = 0
+
+        # 载入环境变量（不覆盖已存在的进程环境）
+        load_dotenv(self.project_root / ".env", override=False)
+        load_dotenv(self.base_dir / ".env.local", override=False)
+        load_dotenv(override=False)
 
     def check_file_exists(self, file_path: Path, description: str) -> bool:
         """检查文件是否存在"""
@@ -85,6 +92,29 @@ class SetupVerifier:
                 print(f"  [SKIP] Environment variable: {var_name} (optional)")
             return False
 
+    def check_env_var_with_alias(self, var_name: str, aliases: list[str], required: bool = True) -> bool:
+        """检查环境变量（允许别名）"""
+        self.checks_total += 1
+        value = os.getenv(var_name)
+        if value:
+            self.checks_passed += 1
+            print(f"  [OK] Environment variable: {var_name}")
+            return True
+
+        for alias in aliases:
+            if os.getenv(alias):
+                self.checks_passed += 1
+                print(f"  [OK] Environment variable: {var_name} (via alias: {alias})")
+                return True
+
+        if required:
+            self.checks_failed += 1
+            print(f"  [FAIL] Environment variable: {var_name} (required)")
+        else:
+            self.checks_passed += 1
+            print(f"  [SKIP] Environment variable: {var_name} (optional)")
+        return False
+
     def verify_file_structure(self) -> bool:
         """验证文件结构"""
         print("\n" + "=" * 60)
@@ -146,6 +176,12 @@ class SetupVerifier:
         env_file = self.project_root / ".env"
         self.check_file_exists(env_file, ".env file")
 
+        # 检查 E2E 本地环境文件（推荐）
+        env_local = self.base_dir / ".env.local"
+        if self.check_file_exists(env_local, "e2e/anon_jwt_sse/.env.local (recommended)"):
+            # 仅用于补齐环境变量（不输出敏感值）
+            load_dotenv(env_local, override=False)
+
         # 检查关键配置
         try:
             from app.settings.config import get_settings
@@ -175,6 +211,11 @@ class SetupVerifier:
             else:
                 self.checks_failed += 1
                 print("  [FAIL] SUPABASE_JWT_SECRET not configured")
+
+            # Mail API（真实邮箱流测试，非必需）
+            self.check_env_var("MAIL_API_BASE_URL", required=False)
+            self.check_env_var_with_alias("MAIL_API_KEY", aliases=["api"], required=False)
+            self.check_env_var("MAIL_DOMAIN", required=False)
 
         except Exception as e:
             self.checks_total += 3

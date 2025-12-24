@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any, Dict, Optional
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -29,6 +30,7 @@ class MessageCreateRequest(BaseModel):
 
 class MessageCreateResponse(BaseModel):
     message_id: str
+    conversation_id: str
 
 
 @router.post("/messages", response_model=MessageCreateResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -44,9 +46,17 @@ async def create_message(
     message_id = AIService.new_message_id()
     await broker.create_channel(message_id)
 
+    conversation_id: str
+    if payload.conversation_id:
+        try:
+            conversation_id = str(UUID(payload.conversation_id))
+        except (TypeError, ValueError):
+            conversation_id = str(uuid4())
+    else:
+        conversation_id = str(uuid4())
     message_input = AIMessageInput(
         text=payload.text,
-        conversation_id=payload.conversation_id,
+        conversation_id=conversation_id,
         metadata=payload.metadata,
     )
 
@@ -54,7 +64,7 @@ async def create_message(
         await ai_service.run_conversation(message_id, current_user, message_input, broker)
 
     asyncio.create_task(runner())
-    return MessageCreateResponse(message_id=message_id)
+    return MessageCreateResponse(message_id=message_id, conversation_id=conversation_id)
 
 
 @router.get("/messages/{message_id}/events")

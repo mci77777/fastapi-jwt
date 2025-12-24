@@ -1,7 +1,11 @@
 
-api=mk_Se9GzoZUl4Sy1ah-Avj4JYohg-IMEa8C
+Mail API（用于真实邮箱流测试）
 
-获取系统配置
+注意：
+- 不要把真实 API Key 写进仓库文件；请使用环境变量或本地 `.env` 保存。
+- 示例中的域名 `moemail.app` 仅用于演示，请以 `/api/config` 返回的可用域名为准。
+
+获取系统配置（查询可用域名等）
 
 curl https://taxbattle.xyz/api/config \
   -H "X-API-Key: YOUR_API_KEY"

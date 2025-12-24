@@ -5,6 +5,7 @@
 本测试套件实现了端到端的匿名JWT认证到AI消息处理的完整闭环测试，包括：
 
 - 🔐 **匿名JWT获取**：通过Supabase Anonymous获取真实JWT
+- 📧 **真实邮箱流测试**：使用 Mail API 生成临时邮箱并接收邮件验证码/链接（见 `docs/mail-api.txt`）
 - 🌊 **SSE流式调用**：测试AI消息接口的流式响应
 - 🗄️ **数据库验证**：验证数据一致性和外键约束
 - 🚫 **策略门测试**：验证匿名访问限制（403错误）
@@ -21,15 +22,15 @@ pnpm install
 pip install -r requirements.txt
 
 # 配置环境变量
-cp .env.local.example .env.local
-# 编辑 .env.local 填入正确的配置
+cp e2e/anon_jwt_sse/.env.local.example e2e/anon_jwt_sse/.env.local
+# 编辑 `e2e/anon_jwt_sse/.env.local` 填入正确的配置（包含 Supabase、后端 API、以及可选的 Mail API）
 ```
 
 ### 2. 验收检查
 
 ```bash
 # 验证测试套件完整性
-python scripts/verify_setup.py
+python e2e/anon_jwt_sse/scripts/verify_setup.py
 ```
 
 ### 3. 一键运行
@@ -66,11 +67,13 @@ pnpm run newman:run
 ```
 e2e/anon_jwt_sse/
 ├── scripts/           # 测试脚本
-│   ├── anon_signin.py    # 匿名登录脚本
-│   ├── sse_client.py     # SSE客户端脚本
-│   ├── db_assert.py      # 数据库断言脚本
-│   ├── policy_test.py    # 策略测试脚本
-│   └── run_e2e.py        # 主测试运行器
+│   ├── anon_signin_enhanced.py   # 匿名登录脚本（增强版）
+│   ├── generate_test_token.py    # 生成 Token（auto/edge/native）
+│   ├── run_e2e_enhanced.py       # 主测试运行器（增强版）
+│   ├── sse_client.py             # SSE 客户端脚本
+│   ├── sse_chaos.py              # SSE 混沌/压力
+│   ├── validate_anon_integration.py # 匿名链路快速校验
+│   └── verify_setup.py           # 环境体检
 ├── postman/           # Postman集合
 │   ├── collection.json   # API测试集合
 │   └── env.json          # 环境变量
@@ -146,10 +149,10 @@ e2e/anon_jwt_sse/
 
 ```bash
 # 查看详细日志
-python scripts/anon_signin.py --verbose
+python e2e/anon_jwt_sse/scripts/anon_signin_enhanced.py --verbose
 
-# 检查JWT令牌
-python -c "import jwt; print(jwt.decode('TOKEN', verify=False))"
+# 检查/解析 JWT（避免使用 python -c）
+python scripts/testing/jwt/test_complete.py --token "<YOUR_TOKEN>"
 
 # 测试API连接
 curl -H "Authorization: Bearer TOKEN" http://localhost:9999/api/v1/me
@@ -160,3 +163,4 @@ curl -H "Authorization: Bearer TOKEN" http://localhost:9999/api/v1/me
 - [JWT硬化指南](../../docs/JWT_HARDENING_GUIDE.md)
 - [Supabase配置指南](../../docs/SUPABASE_JWT_SETUP.md)
 - [K1交付报告](../../docs/K1_DELIVERY_REPORT.md)
+- [Mail API（真实邮箱流测试）](../../docs/mail-api.txt)

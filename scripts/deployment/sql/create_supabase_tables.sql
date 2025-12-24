@@ -1,102 +1,116 @@
--- 创建 Supabase 数据库表
+-- Supabase 数据库表（SSOT）
+-- ✅ B2 方案：统一对话落库到 public.conversations / public.messages
 -- 在 Supabase Dashboard 的 SQL Editor 中运行此脚本
 
--- 创建 ai_chat_messages 表
-CREATE TABLE IF NOT EXISTS public.ai_chat_messages (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
-    content TEXT NOT NULL,
-    timestamp TIMESTAMPTZ DEFAULT NOW(),
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    metadata JSONB DEFAULT '{}'::jsonb,
+-- UUID 生成（Supabase 默认已启用，但这里做幂等兜底）
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-    -- 索引
-    CONSTRAINT ai_chat_messages_role_check CHECK (role IN ('user', 'assistant'))
-);
-
--- 创建索引以提高查询性能
-CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_conversation_id
-ON public.ai_chat_messages(conversation_id);
-
-CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_user_id
-ON public.ai_chat_messages(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_timestamp
-ON public.ai_chat_messages(timestamp DESC);
-
--- 启用 Row Level Security (RLS)
-ALTER TABLE public.ai_chat_messages ENABLE ROW LEVEL SECURITY;
-
--- 创建 RLS 策略：用户只能访问自己的消息
-CREATE POLICY "Users can view their own messages"
-ON public.ai_chat_messages
-FOR SELECT
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own messages"
-ON public.ai_chat_messages
-FOR INSERT
-WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own messages"
-ON public.ai_chat_messages
-FOR UPDATE
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own messages"
-ON public.ai_chat_messages
-FOR DELETE
-USING (auth.uid() = user_id);
-
--- 创建一个视图来方便查询对话历史
-CREATE OR REPLACE VIEW public.conversation_history AS
-SELECT
-    id,
-    conversation_id,
-    role,
-    content,
-    timestamp,
-    user_id,
-    metadata
-FROM public.ai_chat_messages
-ORDER BY conversation_id, timestamp ASC;
-
--- 为服务端操作创建一个函数（使用 service role）
-CREATE OR REPLACE FUNCTION public.insert_ai_message(
-    p_conversation_id TEXT,
-    p_role TEXT,
-    p_content TEXT,
-    p_user_id UUID,
-    p_metadata JSONB DEFAULT '{}'::jsonb
-)
-RETURNS UUID
+-- updated_at 自动更新触发器（幂等）
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER
 LANGUAGE plpgsql
-SECURITY DEFINER
 AS $$
-DECLARE
-    message_id UUID;
 BEGIN
-    INSERT INTO public.ai_chat_messages (
-        conversation_id,
-        role,
-        content,
-        user_id,
-        metadata
-    ) VALUES (
-        p_conversation_id,
-        p_role,
-        p_content,
-        p_user_id,
-        p_metadata
-    ) RETURNING id INTO message_id;
-
-    RETURN message_id;
+  NEW.updated_at = NOW();
+  RETURN NEW;
 END;
 $$;
 
--- 授予必要的权限
+-- 1) conversations（会话）
+CREATE TABLE IF NOT EXISTS public.conversations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  title text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  is_active boolean NOT NULL DEFAULT true,
+  user_type text,
+  CONSTRAINT conversations_pkey PRIMARY KEY (id)
+);
+
+-- 统一 user_id -> auth.users（避免依赖 public.users 镜像表）
+ALTER TABLE IF EXISTS public.conversations
+  DROP CONSTRAINT IF EXISTS conversations_user_id_fkey;
+ALTER TABLE IF EXISTS public.conversations
+  ADD CONSTRAINT conversations_user_id_fkey
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON public.conversations(user_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON public.conversations(created_at DESC);
+
+DROP TRIGGER IF EXISTS update_conversations_updated_at ON public.conversations;
+CREATE TRIGGER update_conversations_updated_at
+  BEFORE UPDATE ON public.conversations
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+-- 2) messages（消息）
+CREATE TABLE IF NOT EXISTS public.messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  conversation_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  content text NOT NULL,
+  role text NOT NULL DEFAULT 'user',
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_type text,
+  CONSTRAINT messages_pkey PRIMARY KEY (id)
+);
+
+ALTER TABLE IF EXISTS public.messages
+  DROP CONSTRAINT IF EXISTS messages_conversation_id_fkey;
+ALTER TABLE IF EXISTS public.messages
+  ADD CONSTRAINT messages_conversation_id_fkey
+  FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE;
+
+ALTER TABLE IF EXISTS public.messages
+  DROP CONSTRAINT IF EXISTS messages_user_id_fkey;
+ALTER TABLE IF EXISTS public.messages
+  ADD CONSTRAINT messages_user_id_fkey
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON public.messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_messages_user_id ON public.messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON public.messages(created_at DESC);
+
+DROP TRIGGER IF EXISTS update_messages_updated_at ON public.messages;
+CREATE TRIGGER update_messages_updated_at
+  BEFORE UPDATE ON public.messages
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+-- 3) RLS（可选：如果未来要开放前端直连 DB，就需要；后端使用 service_role 时也建议保留）
+ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS conversations_select_own ON public.conversations;
+CREATE POLICY conversations_select_own
+  ON public.conversations
+  FOR SELECT TO authenticated
+  USING (user_id = (select auth.uid()));
+
+DROP POLICY IF EXISTS conversations_insert_own ON public.conversations;
+CREATE POLICY conversations_insert_own
+  ON public.conversations
+  FOR INSERT TO authenticated
+  WITH CHECK (user_id = (select auth.uid()));
+
+DROP POLICY IF EXISTS messages_select_own ON public.messages;
+CREATE POLICY messages_select_own
+  ON public.messages
+  FOR SELECT TO authenticated
+  USING (user_id = (select auth.uid()));
+
+DROP POLICY IF EXISTS messages_insert_own ON public.messages;
+CREATE POLICY messages_insert_own
+  ON public.messages
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    user_id = (select auth.uid())
+    AND conversation_id IN (SELECT id FROM public.conversations WHERE user_id = (select auth.uid()))
+  );
+
+-- 基础授权（保守：仅给 authenticated 查询/写入）
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ai_chat_messages TO authenticated;
-GRANT SELECT ON public.conversation_history TO authenticated;
-GRANT EXECUTE ON FUNCTION public.insert_ai_message TO service_role;
+GRANT SELECT, INSERT ON public.conversations TO authenticated;
+GRANT SELECT, INSERT ON public.messages TO authenticated;
