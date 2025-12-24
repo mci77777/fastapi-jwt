@@ -1,15 +1,55 @@
 {
   "mcpServers": {
-    "mcp-router": {
+    "feedback": {
+      "command": "D:\\code\\CC\\feedback.exe"
+    },
+    "context7": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@upstash/context7-mcp"
+      ]
+    },
+    "memory": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ]
+    },
+    "exa": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "exa-mcp-server"
+      ],
+      "env": {
+        "EXA_API_KEY": "eeb16e9f-5cf9-4779-be40-e8ea5c44770f"
+      }
+    },
+    "supabase-mcp-server": {
       "command": "npx",
       "args": [
         "-y",
-        "mcpr-cli@latest",
-        "connect"
+        "@supabase/mcp-server-supabase@latest",
+        "--access-token",
+        "sbp_cd559d1460f76f72f3a353960ffaa29baff1552e"
       ],
-      "env": {
-        "MCPR_TOKEN": "mcpr_FOOzbr0LjkL4R3syh38K8Le5RotGdiAY"
-      }
+      "env": {}
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ],
+      "env": {}
     }
   }
 }

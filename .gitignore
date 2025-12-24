@@ -104,3 +104,5 @@ frpc.pid
 *.backup
 *~
 .secrets.baseline
+.mcp.json
+web/package.json
