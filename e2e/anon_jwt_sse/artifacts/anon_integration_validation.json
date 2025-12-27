@@ -1,153 +1,110 @@
 {
-  "timestamp": "2025-09-29T14:21:01.959379+00:00",
+  "timestamp": "2025-12-24T11:33:03.228025+00:00",
   "tests": [
     {
       "test_name": "数据库表检查",
       "passed": false,
-      "timestamp": "2025-09-29T14:21:01.962928+00:00",
+      "timestamp": "2025-12-24T11:33:03.238380+00:00",
       "details": {
-        "error": "psycopg未安装，跳过数据库测试",
-        "skipped": true
+        "error": "connection failed: connection to server at \"127.0.0.1\", port 5432 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?"
       }
     },
     {
       "test_name": "RLS策略检查",
       "passed": false,
-      "timestamp": "2025-09-29T14:21:01.962928+00:00",
+      "timestamp": "2025-12-24T11:33:03.238638+00:00",
       "details": {
-        "error": "psycopg未安装，跳过RLS策略测试",
-        "skipped": true
-      }
-    },
-    {
-      "test_name": "API健康检查",
-      "passed": true,
-      "timestamp": "2025-09-29T14:21:02.241486+00:00",
-      "details": {
-        "endpoint": "http://localhost:9999/health",
-        "status_code": 404,
-        "response": "{\"detail\":\"Not Found\"}"
+        "error": "connection failed: connection to server at \"127.0.0.1\", port 5432 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?"
       }
     },
     {
       "test_name": "无token JWT验证",
-      "passed": true,
-      "timestamp": "2025-09-29T14:21:02.244495+00:00",
+      "passed": false,
+      "timestamp": "2025-12-24T11:33:03.240618+00:00",
       "details": {
-        "expected_status": 401,
-        "actual_status": 401,
-        "response": {
-          "code": "unauthorized",
-          "message": "Authorization header missing",
-          "status": 401,
-          "trace_id": "1a0c3f716df943e18404c0c599a74a31"
-        },
-        "has_unified_error_format": true
+        "error": "Cannot connect to host localhost:9999 ssl:default [Connect call failed ('127.0.0.1', 9999)]"
       }
     },
     {
       "test_name": "限流机制测试",
-      "passed": true,
-      "timestamp": "2025-09-29T14:21:02.244495+00:00",
+      "passed": false,
+      "timestamp": "2025-12-24T11:33:03.241118+00:00",
       "details": {
         "total_requests": 10,
         "status_codes": [
-          401,
-          401,
-          401,
-          401,
-          401,
-          401,
-          401,
-          401,
-          401,
-          401
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
         ],
         "has_429": false,
-        "has_consistent_auth_rejection": true,
-        "explanation": "限流可能在认证层生效",
+        "has_consistent_auth_rejection": false,
+        "explanation": "未检测到限流",
         "responses": [
           {
-            "status_code": 401,
-            "headers": {
-              "Date": "Mon, 29 Sep 2025 14:21:01 GMT",
-              "Server": "uvicorn",
-              "Content-Length": "102",
-              "Content-Type": "application/json",
-              "x-trace-id": "rate-test-0"
-            },
-            "response": "{\"code\":\"unauthorized\",\"message\":\"Authorization header missing\",\"status\":401,\"trace_id\":\"rate-test-0\"}"
+            "error": "Cannot connect to host localhost:9999 ssl:default [Connect call failed ('127.0.0.1', 9999)]"
           },
           {
-            "status_code": 401,
-            "headers": {
-              "Date": "Mon, 29 Sep 2025 14:21:01 GMT",
-              "Server": "uvicorn",
-              "Content-Length": "102",
-              "Content-Type": "application/json",
-              "x-trace-id": "rate-test-1"
-            },
-            "response": "{\"code\":\"unauthorized\",\"message\":\"Authorization header missing\",\"status\":401,\"trace_id\":\"rate-test-1\"}"
+            "error": "Cannot connect to host localhost:9999 ssl:default [Connect call failed ('127.0.0.1', 9999)]"
           },
           {
-            "status_code": 401,
-            "headers": {
-              "Date": "Mon, 29 Sep 2025 14:21:01 GMT",
-              "Server": "uvicorn",
-              "Content-Length": "102",
-              "Content-Type": "application/json",
-              "x-trace-id": "rate-test-2"
-            },
-            "response": "{\"code\":\"unauthorized\",\"message\":\"Authorization header missing\",\"status\":401,\"trace_id\":\"rate-test-2\"}"
+            "error": "Cannot connect to host localhost:9999 ssl:default [Connect call failed ('127.0.0.1', 9999)]"
           }
         ]
       }
     },
     {
       "test_name": "无效token验证",
-      "passed": true,
-      "timestamp": "2025-09-29T14:21:02.762987+00:00",
+      "passed": false,
+      "timestamp": "2025-12-24T11:33:03.241733+00:00",
       "details": {
         "invalid_token_1": {
           "token": "invalid.token.here...",
-          "status_code": 401,
-          "response": {
-            "status": 401,
-            "code": "invalid_token_header",
-            "message": "Invalid JWT header",
-            "trace_id": "941dadd6c067484199aedab651126045"
-          },
-          "success": true
+          "error": "Cannot connect to host localhost:9999 ssl:default [Connect call failed ('127.0.0.1', 9999)]",
+          "success": false
         },
         "invalid_token_2": {
           "token": "eyJhbGciOiJIUzI1NiIs...",
-          "status_code": 401,
-          "response": {
-            "status": 401,
-            "code": "invalid_token_header",
-            "message": "Invalid JWT header",
-            "trace_id": "ba8bdbab07074d47adb7ed3a5dfa249f"
-          },
-          "success": true
+          "error": "Cannot connect to host localhost:9999 ssl:default [Connect call failed ('127.0.0.1', 9999)]",
+          "success": false
         },
         "invalid_token_3": {
           "token": "Bearer invalid-token...",
-          "status_code": 401,
-          "response": {
-            "status": 401,
-            "code": "invalid_token_header",
-            "message": "Invalid JWT header",
-            "trace_id": "ff85d8b099ba4135b992b6de43cb9fcf"
-          },
-          "success": true
+          "error": "Cannot connect to host localhost:9999 ssl:default [Connect call failed ('127.0.0.1', 9999)]",
+          "success": false
         }
+      }
+    },
+    {
+      "test_name": "API健康检查",
+      "passed": false,
+      "timestamp": "2025-12-24T11:33:03.242127+00:00",
+      "details": {
+        "error": "所有健康检查端点都无法访问",
+        "tested_endpoints": [
+          "http://localhost:9999/health",
+          "http://localhost:9999/",
+          "http://localhost:9999/docs",
+          "http://localhost:9999/api/v1/"
+        ]
       }
     }
   ],
   "summary": {
     "total": 6,
-    "passed": 6,
-    "failed": 0,
-    "errors": []
+    "passed": 0,
+    "failed": 6,
+    "errors": [
+      "数据库表检查: connection failed: connection to server at \"127.0.0.1\", port 5432 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?",
+      "RLS策略检查: connection failed: connection to server at \"127.0.0.1\", port 5432 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?",
+      "无token JWT验证: Cannot connect to host localhost:9999 ssl:default [Connect call failed ('127.0.0.1', 9999)]",
+      "API健康检查: 所有健康检查端点都无法访问"
+    ]
   }
 }

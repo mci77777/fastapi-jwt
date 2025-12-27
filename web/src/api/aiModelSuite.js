@@ -34,6 +34,9 @@ export const runLoadTest = (data = {}) => request.post('/llm/tests/load', data, 
 
 export const fetchLoadRun = (runId) => request.get(`/llm/tests/runs/${runId}`)
 
+// 邮件用户创建（调试用）
+export const createMailUser = (data = {}) => request.post('/llm/tests/create-mail-user', data)
+
 // 消息与对话相关
 /**
  * 创建消息会话（统一请求体构建）

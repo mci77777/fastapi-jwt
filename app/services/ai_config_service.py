@@ -799,6 +799,12 @@ class AIConfigService:
     ) -> tuple[list[dict[str, Any]], int]:
         clauses: list[str] = []
         params: list[Any] = []
+        
+        # 自动从 assets/prompts 同步 (如果数据库为空)
+        total_check = await self._db.fetchone("SELECT COUNT(1) AS count FROM ai_prompts")
+        if total_check and total_check["count"] == 0:
+            await self.sync_prompts_from_assets()
+
         if keyword:
             clauses.append("(name LIKE ? OR content LIKE ? OR category LIKE ?)")
             fuzzy = f"%{keyword}%"
@@ -814,6 +820,49 @@ class AIConfigService:
             params + [page_size, (page - 1) * page_size],
         )
         return [self._format_prompt_row(row) for row in rows], total_count
+
+    async def sync_prompts_from_assets(self) -> None:
+        """从 assets/prompts 目录同步默认 Prompt"""
+        # 使用相对于项目根目录的绝对路径
+        project_root = Path(__file__).resolve().parent.parent.parent
+        assets_dir = project_root / "assets" / "prompts"
+        
+        logger.info(f"Syncing prompts from assets dir: {assets_dir}")
+        if not assets_dir.exists():
+            logger.warning(f"Assets directory not found: {assets_dir}")
+            return
+            
+        now = _utc_now()
+        for file_path in assets_dir.glob("*.md"):
+            try:
+                name = file_path.stem
+                content = file_path.read_text(encoding="utf-8")
+                
+                # Check if exists
+                existing = await self._db.fetchone("SELECT id FROM ai_prompts WHERE name = ?", [name])
+                if existing:
+                    continue
+                    
+                await self._db.execute(
+                    """
+                    INSERT INTO ai_prompts (
+                        name, content, version, category, description,
+                        is_active, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        name,
+                        content,
+                        "v1",
+                        "default",
+                        f"From {file_path.name}",
+                        1,
+                        now,
+                        now,
+                    ],
+                )
+            except Exception:
+                logger.exception(f"Failed to load prompt from {file_path}")
 
     async def get_prompt(self, prompt_id: int) -> dict[str, Any]:
         row = await self._db.fetchone("SELECT * FROM ai_prompts WHERE id = ?", [prompt_id])
@@ -1062,13 +1111,14 @@ class AIConfigService:
         success: bool,
         latency_ms: Optional[float],
         error: Optional[str],
+        skip_prompt: bool = False,
     ) -> None:
         await self._db.execute(
             """
             INSERT INTO ai_prompt_tests (
                 prompt_id, endpoint_id, model, request_message, response_message,
-                success, latency_ms, error, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                success, latency_ms, error, created_at, skip_prompt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 prompt_id,
@@ -1080,6 +1130,7 @@ class AIConfigService:
                 latency_ms,
                 error,
                 _utc_now(),
+                1 if skip_prompt else 0,
             ],
         )
 
@@ -1143,6 +1194,7 @@ class AIConfigService:
         endpoint_id: int,
         message: str,
         model: Optional[str] = None,
+        skip_prompt: bool = False,
     ) -> dict[str, Any]:
         prompt = await self.get_prompt(prompt_id)
         endpoint = await self.get_endpoint(endpoint_id)
@@ -1157,12 +1209,14 @@ class AIConfigService:
         if not selected_model:
             selected_model = "gpt-4o-mini"
 
+        messages = []
+        if not skip_prompt:
+            messages.append({"role": "system", "content": prompt["content"]})
+        messages.append({"role": "user", "content": message})
+
         payload = {
             "model": selected_model,
-            "messages": [
-                {"role": "system", "content": prompt["content"]},
-                {"role": "user", "content": message},
-            ],
+            "messages": messages,
         }
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -1225,6 +1279,7 @@ class AIConfigService:
             success=success,
             latency_ms=latency_ms,
             error=error_text,
+            skip_prompt=skip_prompt,
         )
 
         if not success:

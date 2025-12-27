@@ -8,7 +8,7 @@ export const basicRoutes = [
     path: '/',
     name: 'Root',
     redirect: '/dashboard', // 默认跳转到 Dashboard，路由守卫会根据 Token 状态处理
-    meta: { order: 0 },
+    meta: { order: 0, title: '主页' },
   },
   {
     name: t('views.profile.label_profile'),

@@ -23,6 +23,7 @@ class MessageCreateRequest(BaseModel):
     text: str = Field(..., min_length=1, description="用户输入的文本")
     conversation_id: Optional[str] = Field(None, description="会话标识")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="客户端附加信息")
+    skip_prompt: bool = False
 
     class Config:
         extra = "forbid"
@@ -58,6 +59,7 @@ async def create_message(
         text=payload.text,
         conversation_id=conversation_id,
         metadata=payload.metadata,
+        skip_prompt=payload.skip_prompt,
     )
 
     async def runner() -> None:

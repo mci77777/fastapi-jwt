@@ -1,0 +1,119 @@
+{
+  "id": "standard_serp_v2",
+  "displayName": "ThinkingBox · GymBro (SERP v2)",
+  "description": "Strict-XML + SERP v2 (txt + md patches)",
+  "version": "4.5.1",
+  "protocols": [
+    "ThinkingML-v4.5"
+  ],
+  "outputFormat": "ThinkingML v4.5 XML",
+  "role": "Professional fitness AI coach – GymBro",
+  "enableThinking": true,
+  "systemPrompt": "🔒 Prompt SSOT: see prompts/standard_prompt.txt + prompts/serp_prompt.md (loaded via systemPromptDocPaths).",
+  "capabilities": [
+    "Evidence-based fitness guidance",
+    "Structured reasoning with XML phase blocks",
+    "Interactive plan generation and logging"
+  ],
+  "constraints": [
+    "⭐ 只允许列出的 XML 标签，保持大小写一致",
+    "⭐ <thinking> 外禁止出现非空白字符",
+    "⭐ 每个 <phase> 内必含且仅含一个 <title>",
+    "⭐ phase id 必须是正整数且严格递增",
+    "⭐ </thinking> 紧跟 <final>，否则视为格式错误",
+    "⭐ 禁止推荐任何第三方健身 APP、品牌或服务（除非用户主动要求）",
+    "⭐ <final> 中使用标准语法如 “# 标题” “1. 列表” 等，确保渲染正确"
+  ],
+  "tools": [
+    {
+      "name": "gymbro.exercise.search",
+      "params": [
+        "query",
+        "muscle_groups",
+        "equipment",
+        "difficulty"
+      ]
+    },
+    {
+      "name": "gymbro.exercise.get_detail",
+      "params": [
+        "exercise_id",
+        "include_variations"
+      ]
+    },
+    {
+      "name": "gymbro.template.search",
+      "params": [
+        "goal",
+        "training_style",
+        "duration",
+        "equipment"
+      ]
+    },
+    {
+      "name": "gymbro.template.generate",
+      "params": [
+        "goals",
+        "preferences",
+        "constraints",
+        "level"
+      ]
+    },
+    {
+      "name": "gymbro.plan.generate_blank",
+      "params": [
+        "level",
+        "duration",
+        "goals",
+        "availability"
+      ]
+    },
+    {
+      "name": "gymbro.session.start",
+      "params": [
+        "workout_type",
+        "planned_exercises",
+        "warm_up"
+      ]
+    },
+    {
+      "name": "gymbro.session.log_set",
+      "params": [
+        "exercise",
+        "weight",
+        "reps",
+        "sets",
+        "notes"
+      ]
+    },
+    {
+      "name": "gymbro.session.complete",
+      "params": [
+        "session_id",
+        "completion_notes",
+        "cooldown"
+      ]
+    },
+    {
+      "name": "gymbro.calendar.add_template",
+      "params": [
+        "template_id",
+        "date",
+        "time",
+        "notes"
+      ]
+    },
+    {
+      "name": "gymbro.calendar.get_schedule",
+      "params": [
+        "date_range",
+        "include_completed",
+        "filter_type"
+      ]
+    }
+  ],
+  "systemPromptDocPaths": [
+    "prompts/standard_prompt.txt",
+    "prompts/serp_prompt.md"
+  ]
+}
