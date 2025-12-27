@@ -6,6 +6,8 @@
 
 - 🔐 **匿名JWT获取**：通过Supabase Anonymous获取真实JWT
 - 📧 **真实邮箱流测试**：使用 Mail API 生成临时邮箱并接收邮件验证码/链接（见 `docs/mail-api.txt`）
+- 🤖 **Prompt跳过机制**：支持通过 `TEST_SKIP_PROMPT` 环境变量在测试中跳过System Prompt注入，直接测试模型原生响应
+- 🧪 **Mock用户生成**：支持通过 `/llm/tests/create-mail-user` 快速生成测试用户（支持Mock模式）
 - 🌊 **SSE流式调用**：测试AI消息接口的流式响应
 - 🗄️ **数据库验证**：验证数据一致性和外键约束
 - 🚫 **策略门测试**：验证匿名访问限制（403错误）
@@ -164,3 +166,21 @@ curl -H "Authorization: Bearer TOKEN" http://localhost:9999/api/v1/me
 - [Supabase配置指南](../../docs/SUPABASE_JWT_SETUP.md)
 - [K1交付报告](../../docs/K1_DELIVERY_REPORT.md)
 - [Mail API（真实邮箱流测试）](../../docs/mail-api.txt)
+
+## JWT UI 测试与 Mock 模式
+
+本测试套件的后端支持与 Vue 前端（AI Model Suite -> JWT Test）集成。
+
+1. **生成测试用户 (Create Mail User)**
+   - 接口：`POST /api/v1/llm/tests/create-mail-user`
+   - 功能：调用 Mail API 生成临时邮箱并自动注册。
+   - Mock 模式：如果 API Key 填写 `test-key-mock`，则不调用真实 Mail API，直接返回 `auto-user-{ts}` 及有效 Token。这用于快速验证 UI 和 Token 逻辑。
+
+2. **Skip Prompt 功能**
+   - 允许在请求中携带 `skip_prompt=true` (或在 Frontend toggle 开关)。
+   - 后端 `AIConfigService` 会跳过注入 System Prompt，仅发送 User Message 给模型。
+   - 脚本使用：
+     ```bash
+     export TEST_SKIP_PROMPT=true
+     pnpm run test:sse-client
+     ```

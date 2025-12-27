@@ -24,10 +24,12 @@ import {
   NTabPane,
   NTag,
   NTooltip,
+  NInputGroup,
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 
 import { useAiModelSuiteStore } from '@/store'
+import { createMailUser } from '@/api/aiModelSuite'
 
 defineOptions({ name: 'AiJwtSimulation' })
 
@@ -45,6 +47,7 @@ const DEFAULT_SINGLE_FORM = {
   model: null,
   message: '',
   username: 'admin',
+  skip_prompt: false,
 }
 
 const DEFAULT_LOAD_FORM = {
@@ -56,6 +59,7 @@ const DEFAULT_LOAD_FORM = {
   concurrency: 5,
   stop_on_error: false,
   username: 'admin',
+  skip_prompt: false,
 }
 
 const DEFAULT_MULTI_USER_FORM = {
@@ -67,6 +71,7 @@ const DEFAULT_MULTI_USER_FORM = {
   model: null,
   message: '',
   concurrency: 3,
+  skip_prompt: false,
 }
 
 // 从 localStorage 加载配置
@@ -272,6 +277,27 @@ function exportJSON(data, filename) {
 }
 
 // ==================== 业务逻辑 ====================
+const generatingUser = ref(false)
+async function handleGenerateMailUser() {
+  generatingUser.value = true
+  try {
+    const { data } = await createMailUser({
+      mail_api_key: store.mailApiKey || undefined,
+      username_prefix: 'auto-user',
+    })
+    
+    if (data) {
+      singleForm.username = data.username
+      jwtToken.value = data.access_token
+      window.$message.success(`用户 ${data.username} 创建成功`)
+    }
+  } catch (error) {
+    window.$message.error('创建用户失败: ' + (error.message || '未知错误'))
+  } finally {
+    generatingUser.value = false
+  }
+}
+
 async function runSingle() {
   singleError.value = null
   singleResult.value = null
@@ -281,9 +307,19 @@ async function runSingle() {
     // 保存配置
     saveFormConfig(STORAGE_KEYS.SINGLE_FORM, singleForm)
 
-    // 1. 先获取真实的 Supabase JWT
-    window.$message?.info('正在获取 JWT Token...')
-    const token = await fetchRealJWT(singleForm.username)
+    // 1. 获取 JWT Token
+    let token = jwtToken.value
+    
+    // 如果是 admin，总是刷新 token 为最新的
+    // 如果不是 admin，且没有 token，尝试获取或报错
+    if (singleForm.username === 'admin') {
+         window.$message?.info('正在获取 admin Token...')
+         token = await fetchRealJWT('admin')
+    } else if (!token) {
+         // 尝试检查是否有缓存或者抛错
+         throw new Error("非 admin 用户请先生成用户或手动填入 Token")
+    }
+    
     jwtToken.value = token
 
     // 2. 使用真实 JWT 执行对话模拟
@@ -294,6 +330,7 @@ async function runSingle() {
       message: singleForm.message,
       model: singleForm.model,
       username: singleForm.username,
+      skip_prompt: singleForm.skip_prompt,
     }
     const { data } = await store.simulateDialog(payload)
     singleResult.value = {
@@ -334,6 +371,7 @@ async function runLoadTest() {
       stop_on_error: loadForm.stop_on_error,
       model: loadForm.model,
       username: loadForm.username,
+      skip_prompt: loadForm.skip_prompt,
     }
 
     const result = await store.triggerLoadTest(payload)
@@ -409,6 +447,7 @@ async function runMultiUserTest() {
           message: multiUserForm.message,
           model: multiUserForm.model,
           username: 'admin', // 实际使用 admin 账号
+          skip_prompt: multiUserForm.skip_prompt,
         }
         const { data } = await store.simulateDialog(payload)
         const testLatency = Date.now() - testStartTime
@@ -555,13 +594,33 @@ onBeforeUnmount(() => {
               />
             </NFormItem>
           </NGridItem>
+
           <NGridItem :span="12">
             <NFormItem label="用户名" path="username">
-              <NInput
-                v-model:value="singleForm.username"
-                placeholder="当前仅支持 admin"
-                :disabled="singleLoading"
-              />
+              <NInputGroup>
+                <NInput
+                  v-model:value="singleForm.username"
+                  placeholder="admin 或 生成的用户"
+                  :disabled="singleLoading"
+                />
+                <NButton type="info" ghost @click="handleGenerateMailUser" :loading="generatingUser">
+                   生成测试用户
+                </NButton>
+              </NInputGroup>
+            </NFormItem>
+          </NGridItem>
+          <NGridItem :span="12">
+            <NFormItem label="跳过Prompt" path="skip_prompt">
+              <NSwitch v-model:value="singleForm.skip_prompt">
+                <template #checked>跳过</template>
+                <template #unchecked>注入</template>
+              </NSwitch>
+              <NTooltip trigger="hover">
+                <template #trigger>
+                  <span class="ml-2 text-gray-400 cursor-help">ℹ️</span>
+                </template>
+                开启后，将不向模型发送 Prompt (System Message)，仅发送用户消息。
+              </NTooltip>
             </NFormItem>
           </NGridItem>
         </NGrid>
@@ -596,6 +655,7 @@ onBeforeUnmount(() => {
           </NSpace>
         </NSpace>
       </NForm>
+
 
       <!-- 简要结果摘要 -->
       <div v-if="singleResult && !singleLoading" class="mt-4">
@@ -677,6 +737,14 @@ onBeforeUnmount(() => {
           <NGridItem :span="8">
             <NFormItem label="出错即停" path="stop_on_error">
               <NSwitch v-model:value="loadForm.stop_on_error" :disabled="loadTestLoading" />
+            </NFormItem>
+          </NGridItem>
+          <NGridItem :span="8">
+            <NFormItem label="跳过Prompt" path="skip_prompt">
+              <NSwitch v-model:value="loadForm.skip_prompt" :disabled="loadTestLoading">
+                <template #checked>跳过</template>
+                <template #unchecked>注入</template>
+              </NSwitch>
             </NFormItem>
           </NGridItem>
         </NGrid>

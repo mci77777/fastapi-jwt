@@ -25,6 +25,7 @@ import TheIcon from '@/components/icon/TheIcon.vue'
 
 import { renderIcon } from '@/utils'
 import { useCRUD } from '@/composables'
+import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
 import api from '@/api'
 
 defineOptions({ name: 'AIConfigModels' })
@@ -100,6 +101,14 @@ const monitorIntervalOptions = [
   { label: '600s', value: 600 },
 ]
 let monitorStatusTimer = null
+
+const aiStore = useAiModelSuiteStore()
+const mailApiKeyInput = ref(aiStore.mailApiKey)
+
+function handleSaveMailApiKey() {
+  aiStore.setMailApiKey(mailApiKeyInput.value)
+  window.$message.success('Mail API Key 配置已更新')
+}
 
 const initForm = {
   id: null,
@@ -750,10 +759,27 @@ onBeforeUnmount(() => {
         <NFormItem label="描述">
           <NInput v-model:value="modalForm.description" type="textarea" placeholder="可选" />
         </NFormItem>
-        <NFormItem>
-          <NCheckbox v-model:checked="modalForm.auto_sync">保存后立即同步到 Supabase</NCheckbox>
-        </NFormItem>
       </NForm>
     </CrudModal>
+
+    <NCard title="测试环境配置" size="small" class="mt-4">
+       <NForm inline label-placement="left" label-width="auto">
+         <NFormItem label="Mail API Key (E2E Test)">
+           <NInput
+             v-model:value="mailApiKeyInput"
+             type="password"
+             placeholder="输入用于测试的 Mail API Key"
+             show-password-on="click"
+             style="width: 300px"
+           />
+         </NFormItem>
+         <NFormItem>
+           <NButton type="primary" @click="handleSaveMailApiKey">保存配置</NButton>
+         </NFormItem>
+       </NForm>
+       <div class="text-xs text-gray-500 mt-2">
+         此 Key 用于 JWT 测试页面的「生成测试用户」功能。设置为 <code>test-key-mock</code> 可开启 Mock 模式。
+       </div>
+    </NCard>
   </CommonPage>
 </template>

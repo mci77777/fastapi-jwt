@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     ai_model: Optional[str] = Field(default=None, alias="AI_MODEL")
     ai_api_base_url: Optional[AnyHttpUrl] = Field(default=None, alias="AI_API_BASE_URL")
     ai_api_key: Optional[str] = Field(default=None, alias="AI_API_KEY")
+    mail_api_key: Optional[str] = Field(default=None, alias="MAIL_API_KEY")
 
     # 匿名用户支持配置
     anon_enabled: bool = Field(default=True, alias="ANON_ENABLED")

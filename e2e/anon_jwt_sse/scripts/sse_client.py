@@ -58,7 +58,7 @@ class SSEClient:
         self.events: List[SSEEvent] = []
         self.trace_id = f"e2e-sse-{uuid.uuid4().hex[:8]}"
 
-    async def create_message(self, text: str, conversation_id: Optional[str] = None) -> str:
+    async def create_message(self, text: str, conversation_id: Optional[str] = None, skip_prompt: bool = False) -> str:
         """创建消息并返回message_id"""
         headers = {
             "Authorization": f"Bearer {self.token}",
@@ -69,6 +69,7 @@ class SSEClient:
         payload = {
             "text": text,
             "conversation_id": conversation_id,
+            "skip_prompt": skip_prompt,
             "metadata": {"source": "e2e_test", "test_type": "sse_client"},
         }
 
@@ -249,9 +250,11 @@ async def main():
     # 读取配置
     api_base = os.getenv("API_BASE", "http://localhost:9999")
     sse_timeout = int(os.getenv("SSE_TEST_TIMEOUT", "30"))
+    skip_prompt = os.getenv("TEST_SKIP_PROMPT", "false").lower() == "true"
 
     print(f"📍 API Base: {api_base}")
     print(f"⏱️ SSE超时: {sse_timeout}秒")
+    print(f"⏭️ Skip Prompt: {skip_prompt}")
 
     try:
         # 步骤1: 加载JWT令牌
@@ -266,7 +269,7 @@ async def main():
         # 步骤3: 创建消息
         print("\n📝 步骤3: 创建AI消息...")
         test_message = "Hello, this is an E2E test for anonymous JWT and SSE streaming."
-        message_id = await client.create_message(test_message)
+        message_id = await client.create_message(test_message, skip_prompt=skip_prompt)
         print(f"✅ 消息创建成功，ID: {message_id}")
 
         # 步骤4: 流式接收事件

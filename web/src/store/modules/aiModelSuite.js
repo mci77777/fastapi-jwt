@@ -28,6 +28,7 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
     latestRunLoading: false,
     syncingEndpoints: new Set(),
     syncAllLoading: false,
+    mailApiKey: localStorage.getItem('ai_suite_mail_api_key') || '',
   }),
   getters: {
     endpointOptions(state) {
@@ -158,6 +159,10 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
       } finally {
         this.latestRunLoading = false
       }
+    },
+    setMailApiKey(key) {
+      this.mailApiKey = key
+      localStorage.setItem('ai_suite_mail_api_key', key)
     },
   },
 })

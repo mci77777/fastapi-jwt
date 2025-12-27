@@ -25,6 +25,7 @@ class AIMessageInput:
     text: str
     conversation_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    skip_prompt: bool = False
 
 
 @dataclass(slots=True)
@@ -210,18 +211,23 @@ class AIService:
         raw_base_url = self._settings.ai_api_base_url or "https://api.openai.com/v1"
         base_url = str(raw_base_url).rstrip("/")
         endpoint = f"{base_url}/chat/completions"
+
+        messages = []
+        # Support skipping prompt injection
+        if not message.skip_prompt:
+            messages.append({
+                "role": "system",
+                "content": "You are GymBro's AI assistant.",
+            })
+        
+        messages.append({
+            "role": "user",
+            "content": message.text,
+        })
+
         payload = {
             "model": self._settings.ai_model or "gpt-4o-mini",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are GymBro's AI assistant.",
-                },
-                {
-                    "role": "user",
-                    "content": message.text,
-                },
-            ],
+            "messages": messages,
         }
         headers = {
             "Authorization": f"Bearer {self._settings.ai_api_key}",
