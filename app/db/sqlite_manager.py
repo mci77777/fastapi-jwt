@@ -60,23 +60,6 @@ CREATE INDEX IF NOT EXISTS idx_ai_prompts_is_active ON ai_prompts(is_active);
 CREATE INDEX IF NOT EXISTS idx_ai_prompts_name ON ai_prompts(name);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_prompts_supabase_id ON ai_prompts(supabase_id);
 
-CREATE TABLE IF NOT EXISTS ai_prompt_tests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    prompt_id INTEGER NOT NULL,
-    endpoint_id INTEGER NOT NULL,
-    model TEXT,
-    request_message TEXT NOT NULL,
-    response_message TEXT,
-    success INTEGER DEFAULT 0,
-    latency_ms REAL,
-    error TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(prompt_id) REFERENCES ai_prompts(id) ON DELETE CASCADE,
-    FOREIGN KEY(endpoint_id) REFERENCES ai_endpoints(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_ai_prompt_tests_prompt ON ai_prompt_tests(prompt_id);
-CREATE INDEX IF NOT EXISTS idx_ai_prompt_tests_endpoint ON ai_prompt_tests(endpoint_id);
 
 CREATE TABLE IF NOT EXISTS dashboard_stats (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -188,13 +171,6 @@ class SQLiteManager:
                     "tools_json": "ALTER TABLE ai_prompts ADD COLUMN tools_json TEXT",
                     "supabase_id": "ALTER TABLE ai_prompts ADD COLUMN supabase_id INTEGER",
                     "last_synced_at": "ALTER TABLE ai_prompts ADD COLUMN last_synced_at TEXT",
-                },
-            )
-            await self._ensure_columns(
-                "ai_prompt_tests",
-                {
-                    "latency_ms": "ALTER TABLE ai_prompt_tests ADD COLUMN latency_ms REAL",
-                    "error": "ALTER TABLE ai_prompt_tests ADD COLUMN error TEXT",
                 },
             )
             await self._conn.commit()

@@ -1100,93 +1100,6 @@ class AIConfigService:
             merged.append(await self.get_prompt_by_supabase_id(supabase_id))
         return merged
 
-    async def record_prompt_test(
-        self,
-        *,
-        prompt_id: int,
-        endpoint_id: int,
-        model: Optional[str],
-        request_message: str,
-        response_message: Optional[str],
-        success: bool,
-        latency_ms: Optional[float],
-        error: Optional[str],
-        skip_prompt: bool = False,
-    ) -> None:
-        await self._db.execute(
-            """
-            INSERT INTO ai_prompt_tests (
-                prompt_id, endpoint_id, model, request_message, response_message,
-                success, latency_ms, error, created_at, skip_prompt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                prompt_id,
-                endpoint_id,
-                model,
-                request_message,
-                response_message,
-                1 if success else 0,
-                latency_ms,
-                error,
-                _utc_now(),
-                1 if skip_prompt else 0,
-            ],
-        )
-
-    async def list_prompt_tests(self, prompt_id: int, limit: int = 20) -> list[dict[str, Any]]:
-        rows = await self._db.fetchall(
-            """
-            SELECT * FROM ai_prompt_tests
-            WHERE prompt_id = ?
-            ORDER BY created_at DESC
-            LIMIT ?
-            """,
-            [prompt_id, limit],
-        )
-        return [
-            {
-                "id": row["id"],
-                "prompt_id": row["prompt_id"],
-                "endpoint_id": row["endpoint_id"],
-                "model": row.get("model"),
-                "request_message": row.get("request_message"),
-                "response_message": row.get("response_message"),
-                "success": bool(row.get("success")),
-                "latency_ms": row.get("latency_ms"),
-                "error": row.get("error"),
-                "created_at": row.get("created_at"),
-            }
-            for row in rows
-        ]
-
-    async def list_prompt_tests_by_run(self, run_id: str, limit: int = 1000) -> list[dict[str, Any]]:
-        pattern = f"%run_id={run_id}%"
-        rows = await self._db.fetchall(
-            """
-            SELECT * FROM ai_prompt_tests
-            WHERE request_message LIKE ?
-            ORDER BY created_at DESC
-            LIMIT ?
-            """,
-            [pattern, limit],
-        )
-        return [
-            {
-                "id": row["id"],
-                "prompt_id": row["prompt_id"],
-                "endpoint_id": row["endpoint_id"],
-                "model": row.get("model"),
-                "request_message": row.get("request_message"),
-                "response_message": row.get("response_message"),
-                "success": bool(row.get("success")),
-                "latency_ms": row.get("latency_ms"),
-                "error": row.get("error"),
-                "created_at": row.get("created_at"),
-            }
-            for row in rows
-        ]
-
     async def test_prompt(
         self,
         *,
@@ -1269,18 +1182,6 @@ class AIConfigService:
             latency_ms = (perf_counter() - start) * 1000
             error_text = str(exc)
             logger.exception("Prompt 测试异常 prompt_id=%s endpoint_id=%s", prompt_id, endpoint_id)
-
-        await self.record_prompt_test(
-            prompt_id=prompt_id,
-            endpoint_id=endpoint_id,
-            model=selected_model,
-            request_message=message,
-            response_message=reply_text or (json.dumps(response_payload) if response_payload else None),
-            success=success,
-            latency_ms=latency_ms,
-            error=error_text,
-            skip_prompt=skip_prompt,
-        )
 
         if not success:
             raise RuntimeError(error_text or "prompt_test_failed")

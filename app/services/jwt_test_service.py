@@ -246,11 +246,9 @@ class JWTTestService:
         # 优先检查活动运行
         if run_id in self._active_runs:
             active_summary = self._active_runs[run_id]
-            # 获取当前已完成的测试记录
-            tests = await self._ai_service.list_prompt_tests_by_run(run_id, limit=1000)
             return {
                 "summary": active_summary.to_dict(),
-                "tests": tests,
+                "tests": [],  # 不再记录测试详情
                 "is_running": True,
             }
 
@@ -259,10 +257,9 @@ class JWTTestService:
         run = next((item for item in runs if item["id"] == run_id), None)
         if not run:
             return {}
-        tests = await self._ai_service.list_prompt_tests_by_run(run_id, limit=1000)
         return {
             "summary": run,
-            "tests": tests,
+            "tests": [],  # 不再记录测试详情
             "is_running": False,
         }
 

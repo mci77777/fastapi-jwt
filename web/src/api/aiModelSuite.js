@@ -28,7 +28,7 @@ export const fetchPromptTests = (promptId, params = {}) =>
 
 // JWT 测试相关（增加超时配置）
 export const simulateDialog = (data = {}) =>
-  request.post('/llm/tests/dialog', data, { timeout: 30000 }) // 30秒超时
+  request.post('/llm/tests/dialog', data, { timeout: 90000 }) // 90秒超时（大模型推理可能较慢）
 
 export const runLoadTest = (data = {}) => request.post('/llm/tests/load', data, { timeout: 60000 }) // 60秒超时（压测可能较慢）
 

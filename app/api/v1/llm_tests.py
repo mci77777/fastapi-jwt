@@ -56,18 +56,6 @@ class CreateMailUserRequest(BaseModel):
     username_prefix: str = "test"
 
 
-@router.get("/prompts/{prompt_id}/tests")
-async def prompt_tests(
-    prompt_id: int,
-    request: Request,
-    limit: int = Query(default=20, ge=1, le=100),  # noqa: B008
-    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
-) -> dict[str, Any]:
-    service = get_service(request)
-    tests = await service.list_prompt_tests(prompt_id, limit=limit)
-    return create_response(data=tests)
-
-
 @router.post("/prompts/test")
 async def test_prompt(
     payload: PromptTestRequest,
@@ -175,8 +163,23 @@ async def simulate_jwt_dialog(
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     service = get_jwt_test_service(request)
-    result = await service.simulate_dialog(payload.model_dump())
-    return create_response(data=result)
+    try:
+        result = await service.simulate_dialog(payload.model_dump())
+        return create_response(data=result)
+    except RuntimeError as exc:
+        # AI 服务调用失败（如 API 超时、模型不存在等）
+        return create_response(code=500, msg=str(exc), data={"error": str(exc)})
+    except ValueError as exc:
+        # 配置错误（如 prompt/endpoint 不存在）
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=create_response(code=404, msg=str(exc)),
+        )
+    except Exception as exc:
+        # 未知错误 - 记录并返回
+        import logging
+        logging.exception("simulate_jwt_dialog error")
+        return create_response(code=500, msg=f"内部错误: {exc}", data={"error": str(exc)})
 
 
 @router.post("/tests/load")
