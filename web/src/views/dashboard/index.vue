@@ -1,25 +1,17 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { useMessage, NButton, NModal, NCard, NSpace, NText } from 'naive-ui'
+import { useMessage, NModal, NCard, NSpace, NText } from 'naive-ui'
 import { getToken } from '@/utils'
-import draggable from 'vuedraggable'
 
-// Dashboard 组件
+// Dashboard Components
 import StatsBanner from '@/components/dashboard/StatsBanner.vue'
-import LogWindow from '@/components/dashboard/LogWindow.vue'
-import UserActivityChart from '@/components/dashboard/UserActivityChart.vue'
+import MonitorPanel from '@/components/dashboard/MonitorPanel.vue'
+import ControlCenter from '@/components/dashboard/ControlCenter.vue'
 import WebSocketClient from '@/components/dashboard/WebSocketClient.vue'
 import PollingConfig from '@/components/dashboard/PollingConfig.vue'
 import StatDetailModal from '@/components/dashboard/StatDetailModal.vue'
-import ModelSwitcher from '@/components/dashboard/ModelSwitcher.vue'
-import PromptSelector from '@/components/dashboard/PromptSelector.vue'
-import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
-import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
-import QuickAccessCard from '@/components/dashboard/QuickAccessCard.vue'
 import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
-import ModelMappingCard from '@/components/dashboard/ModelMappingCard.vue'
-import EndpointConnectivityCard from '@/components/dashboard/EndpointConnectivityCard.vue'
-import HeroIcon from '@/components/common/HeroIcon.vue'
+import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
 
 // Dashboard API
 import {
@@ -28,6 +20,7 @@ import {
   getStatsConfig,
   updateStatsConfig,
   createWebSocketUrl,
+  getDailyActiveUsers,
 } from '@/api/dashboard'
 
 defineOptions({ name: 'DashboardIndex' })
@@ -44,7 +37,7 @@ const showApiModal = ref(false)
 const showSupabaseModal = ref(false)
 const selectedStat = ref(null)
 
-// 统计数据（图标已改为 Heroicons 名称）
+// 统计数据
 const stats = ref([
   {
     id: 1,
@@ -102,7 +95,6 @@ const chartData = ref([])
 
 // 默认快速访问卡片配置
 const defaultQuickAccessCards = [
-  // 核心 AI 管理卡片（4 个强关联）
   {
     icon: 'wrench-screwdriver',
     title: 'AI 供应商',
@@ -131,8 +123,6 @@ const defaultQuickAccessCards = [
     path: '/ai/mapping',
     iconColor: '#2080f0',
   },
-
-  // 监控工具
   {
     icon: 'chart-line',
     title: 'API 监控',
@@ -140,17 +130,13 @@ const defaultQuickAccessCards = [
     path: '/dashboard/api-monitor',
     iconColor: '#f0a020',
   },
-
-  // 内容管理
   {
     icon: 'folder',
     title: '目录管理',
     description: '管理内容分类和标签',
     path: '/catalog',
-    iconColor: '#da7756', // Claude Terra Cotta 主色
+    iconColor: '#da7756',
   },
-
-  // 测试工具
   {
     icon: 'key',
     title: 'JWT 测试',
@@ -166,7 +152,6 @@ const loadSavedCardOrder = () => {
     const saved = localStorage.getItem('dashboard_card_order')
     if (saved) {
       const savedOrder = JSON.parse(saved)
-      // 验证保存的数据是否有效
       if (Array.isArray(savedOrder) && savedOrder.length === defaultQuickAccessCards.length) {
         return savedOrder
       }
@@ -177,12 +162,12 @@ const loadSavedCardOrder = () => {
   return defaultQuickAccessCards
 }
 
-// 快速访问卡片配置（响应式）
 const quickAccessCards = ref(loadSavedCardOrder())
 
 // 保存卡片顺序到 localStorage
-const saveCardOrder = () => {
+const saveCardOrder = (newOrder) => {
   try {
+     quickAccessCards.value = newOrder // update local state
     localStorage.setItem('dashboard_card_order', JSON.stringify(quickAccessCards.value))
     message.success('布局已保存')
   } catch (error) {
@@ -198,10 +183,6 @@ const resetCardOrder = () => {
   message.success('布局已重置')
 }
 
-// 拖拽结束事件
-const onDragEnd = () => {
-  saveCardOrder()
-}
 
 // Dashboard 配置
 const dashboardConfig = ref({
@@ -228,15 +209,11 @@ async function loadDashboardStats() {
     statsLoading.value = true
     const response = await getDashboardStats({ time_window: '24h' })
 
-    // 处理响应格式（兼容两种格式）
-    // 格式1: {code: 200, data: {...}}
-    // 格式2: {...} (直接返回数据)
     let data = response
     if (response.data && typeof response.data === 'object') {
       data = response.data
     }
 
-    // 更新统计数据
     stats.value[0].value = data.daily_active_users || 0
     stats.value[1].value = data.ai_requests?.total || 0
     stats.value[2].value = data.token_usage || '--'
@@ -245,7 +222,6 @@ async function loadDashboardStats() {
     }`
     stats.value[4].value = `${data.jwt_availability?.success_rate?.toFixed(1) || 0}%`
 
-    // 更新 API 连通性率
     if (data.api_connectivity) {
       const rate = data.api_connectivity.connectivity_rate || 0
       stats.value[3].trend = rate - 100
@@ -266,7 +242,6 @@ async function loadRecentLogs() {
     logsLoading.value = true
     const response = await getRecentLogs({ level: 'WARNING', limit: 100 })
 
-    // 处理响应格式（兼容两种格式）
     let data = response
     if (response.data && typeof response.data === 'object') {
       data = response.data
@@ -291,13 +266,40 @@ async function loadRecentLogs() {
 }
 
 /**
+ * 加载图表数据
+ */
+async function loadChartData() {
+  try {
+    const response = await getDailyActiveUsers({ time_window: chartTimeRange.value })
+    // Check if response has data property (standard response format) or is direct array
+    let data = response
+    if (response.data && Array.isArray(response.data)) {
+        data = response.data
+    } else if (response.data && typeof response.data === 'object' && response.data.data) {
+        // Handle cases where might be nested like { code: 200, data: [...] }
+        data = response.data
+    }
+    
+    // Ensure data is array of numbers as expected by chart
+    if (Array.isArray(data)) {
+         chartData.value = data
+    } else {
+         chartData.value = []
+    }
+    
+  } catch (error) {
+    console.error('Failed to load chart data:', error)
+    chartData.value = []
+  }
+}
+
+/**
  * 加载 Dashboard 配置
  */
 async function loadDashboardConfig() {
   try {
     const response = await getStatsConfig()
 
-    // 处理响应格式（兼容两种格式）
     let data = response
     if (response.data && typeof response.data === 'object') {
       data = response.data
@@ -318,7 +320,6 @@ function handleWebSocketMessage(data) {
   if (data.type === 'stats_update' && data.data) {
     const statsData = data.data
 
-    // 更新统计数据
     stats.value[0].value = statsData.daily_active_users || 0
     stats.value[1].value = statsData.ai_requests?.total || 0
     stats.value[2].value = statsData.token_usage || '--'
@@ -335,8 +336,6 @@ function handleWebSocketMessage(data) {
 function handleWebSocketConnected() {
   connectionStatus.value = 'connected'
   message.success('实时连接已建立')
-
-  // 停止 HTTP 轮询
   stopPolling()
 }
 
@@ -345,8 +344,6 @@ function handleWebSocketConnected() {
  */
 function handleWebSocketDisconnected() {
   connectionStatus.value = 'disconnected'
-
-  // 降级为 HTTP 轮询
   startPolling()
 }
 
@@ -356,8 +353,6 @@ function handleWebSocketDisconnected() {
 function handleWebSocketError(error) {
   console.error('WebSocket 错误:', error)
   connectionStatus.value = 'error'
-
-  // 降级为 HTTP 轮询
   startPolling()
 }
 
@@ -370,14 +365,14 @@ function startPolling() {
   connectionStatus.value = 'polling'
   message.warning('WebSocket 不可用，已降级为轮询模式')
 
-  // 立即加载一次
   loadDashboardStats()
   loadRecentLogs()
+  loadChartData()
 
-  // 定时轮询
   pollingTimer = setInterval(() => {
     loadDashboardStats()
     loadRecentLogs()
+    loadChartData()
   }, dashboardConfig.value.http_poll_interval * 1000)
 }
 
@@ -395,20 +390,12 @@ function stopPolling() {
  * 点击统计卡片（打开详情弹窗）
  */
 function handleStatClick(stat) {
-  // 如果点击的是 API 连通性卡片，打开 API 详情弹窗
   if (stat.id === 4) {
     showApiModal.value = true
   } else {
     selectedStat.value = stat
     showStatDetailModal.value = true
   }
-}
-
-/**
- * 点击日志项
- */
-function handleLogClick() {
-  // LogWindow 组件内部已处理复制逻辑
 }
 
 /**
@@ -430,7 +417,7 @@ function handleLogRefresh() {
  */
 function handleTimeRangeChange(range) {
   chartTimeRange.value = range
-  // 这里可以加载对应时间范围的数据
+  loadChartData()
 }
 
 /**
@@ -442,7 +429,6 @@ async function handleConfigSave(config) {
     dashboardConfig.value = { ...config }
     message.success('配置已保存')
 
-    // 如果是轮询模式，重启轮询
     if (connectionStatus.value === 'polling') {
       stopPolling()
       startPolling()
@@ -454,57 +440,20 @@ async function handleConfigSave(config) {
 }
 
 /**
- * 处理模型切换
- */
-function handleModelChange(modelId) {
-  console.log('[Dashboard] 模型已切换，新模型 ID:', modelId)
-  // 模型切换后可以触发相关数据刷新（如需要）
-  // 当前仅记录日志，后续可扩展
-}
-
-/**
- * 处理 Prompt 切换
- */
-function handlePromptChange(promptId) {
-  console.log('[Dashboard] Prompt 已切换，新 Prompt ID:', promptId)
-}
-
-/**
- * 处理 Supabase 状态变化
- */
-function handleSupabaseStatusChange(status) {
-  console.log('[Dashboard] Supabase 状态变化:', status)
-}
-
-/**
  * 处理服务器指标更新
  */
 function handleMetricsUpdate(metrics) {
   console.log('[Dashboard] 服务器指标更新:', metrics)
 }
 
-/**
- * 处理快速访问卡片点击
- */
-function handleQuickAccessClick(path) {
-  console.log('[Dashboard] 快速访问卡片点击，路径:', path)
-}
-
-/**
- * 处理模型映射变化
- */
-function handleMappingChange(mappings) {
-  console.log('[Dashboard] 模型映射已更新，共', mappings.length, '条映射')
-  // 映射变化后，ModelSwitcher 会自动刷新选项（通过 watch）
-}
 
 // 生命周期钩子
 onMounted(() => {
   nextTick(() => {
-    // 加载初始数据
     loadDashboardStats()
     loadRecentLogs()
     loadDashboardConfig()
+    loadChartData()
   })
 })
 
@@ -515,7 +464,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="dashboard-container">
-    <!-- WebSocket 客户端（无 UI） -->
     <WebSocketClient
       v-if="wsUrl"
       :url="wsUrl"
@@ -526,114 +474,52 @@ onBeforeUnmount(() => {
       @error="handleWebSocketError"
     />
 
-    <!-- 统计横幅（包含实时指示器和操作按钮） -->
-    <StatsBanner :stats="stats" :loading="statsLoading" @stat-click="handleStatClick" />
+    <!-- Header Stats -->
+    <StatsBanner 
+      :stats="stats" 
+      :loading="statsLoading" 
+      @stat-click="handleStatClick" 
+    />
 
-    <!-- 快速访问卡片组（支持拖拽重排） -->
-    <div class="quick-access-header">
-      <h2 class="section-title">快速访问</h2>
-      <NButton text @click="resetCardOrder">
-        <template #icon>
-          <HeroIcon name="arrow-path" :size="18" color="var(--claude-terra-cotta)" />
-        </template>
-        重置布局
-      </NButton>
-    </div>
-    <draggable
-      v-model="quickAccessCards"
-      class="quick-access-section"
-      item-key="path"
-      :animation="300"
-      :delay="100"
-      :delay-on-touch-only="true"
-      ghost-class="ghost-card"
-      chosen-class="chosen-card"
-      drag-class="drag-card"
-      @end="onDragEnd"
-    >
-      <template #item="{ element }">
-        <QuickAccessCard
-          :icon="element.icon"
-          :title="element.title"
-          :description="element.description"
-          :path="element.path"
-          :icon-color="element.iconColor"
-          @click="handleQuickAccessClick"
-        />
-      </template>
-    </draggable>
+    <!-- Main Grid Layout -->
+    <div class="main-grid">
+       <!-- Left: Monitoring Panel (75%) -->
+       <div class="monitor-area">
+          <MonitorPanel 
+            :chart-data="chartData"
+            :chart-time-range="chartTimeRange"
+            :stats-loading="statsLoading"
+            :logs="logs"
+            :logs-loading="logsLoading"
+            :dashboard-config="dashboardConfig"
+            @time-range-change="handleTimeRangeChange"
+            @log-click="() => {}"
+            @log-filter-change="handleLogFilterChange"
+            @log-refresh="handleLogRefresh"
+            @metrics-update="handleMetricsUpdate"
+          />
+       </div>
 
-    <!-- 控制面板：模型切换器 + Prompt 选择器 + 服务器负载（含 API 监控） -->
-    <div class="dashboard-controls">
-      <ModelSwitcher :compact="false" @change="handleModelChange" />
-      <PromptSelector :compact="false" @change="handlePromptChange" />
-      <ServerLoadCard
-        :auto-refresh="true"
-        :refresh-interval="60"
-        @metrics-update="handleMetricsUpdate"
-      />
-      <!-- Supabase 状态触发按钮 -->
-      <n-card title="数据库状态">
-        <n-space vertical>
-          <n-button type="primary" @click="showSupabaseModal = true">
-            <template #icon>
-              <HeroIcon name="circle-stack" :size="18" />
-            </template>
-            查看 Supabase 状态
-          </n-button>
-          <n-text depth="3" style="font-size: 12px"> 点击查看数据库连接详情 </n-text>
-        </n-space>
-      </n-card>
+       <!-- Right: Control Center (25%) -->
+       <div class="control-area">
+          <ControlCenter 
+            :quick-access-cards="quickAccessCards"
+            @update:quick-access-cards="saveCardOrder"
+            @reset-layout="resetCardOrder"
+            @show-supabase-modal="showSupabaseModal = true"
+          />
+       </div>
     </div>
 
-    <!-- 模型映射管理卡片 -->
-    <div class="dashboard-mapping">
-      <ModelMappingCard @mapping-change="handleMappingChange" />
-    </div>
 
-    <!-- API 端点连通性卡片 -->
-    <div class="dashboard-connectivity">
-      <EndpointConnectivityCard />
-    </div>
-
-    <!-- 主内容区域：Grid 两列布局 -->
-    <div class="dashboard-main">
-      <!-- 左侧：Log 小窗 -->
-      <div class="dashboard-left">
-        <LogWindow
-          :logs="logs"
-          :loading="logsLoading"
-          @log-click="handleLogClick"
-          @filter-change="handleLogFilterChange"
-          @refresh="handleLogRefresh"
-        />
-      </div>
-
-      <!-- 右侧：用户活跃度图表 -->
-      <div class="dashboard-right">
-        <UserActivityChart
-          :time-range="chartTimeRange"
-          :data="chartData"
-          :loading="statsLoading"
-          @time-range-change="handleTimeRangeChange"
-        />
-      </div>
-    </div>
-
-    <!-- 配置弹窗 -->
+    <!-- Dialogs -->
     <PollingConfig
       v-model:show="showConfigModal"
       :config="dashboardConfig"
       @save="handleConfigSave"
     />
-
-    <!-- 统计详情弹窗 -->
     <StatDetailModal v-model:show="showStatDetailModal" :stat="selectedStat" />
-
-    <!-- API 连通性详情弹窗 -->
     <ApiConnectivityModal v-model:show="showApiModal" />
-
-    <!-- Supabase 状态弹窗 -->
     <NModal
       v-model:show="showSupabaseModal"
       preset="card"
@@ -643,145 +529,37 @@ onBeforeUnmount(() => {
       <SupabaseStatusCard
         :auto-refresh="true"
         :refresh-interval="30"
-        @status-change="handleSupabaseStatusChange"
+        @status-change="() => {}"
       />
     </NModal>
   </div>
 </template>
 
 <style scoped>
-/* ========== Claude 设计系统（Design Tokens 已在全局导入） ========== */
-
 .dashboard-container {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg); /* 从 24px 减少到 16px */
-  padding: var(--spacing-xl); /* 从 24px 减少到 20px */
-  min-height: auto;
-  /* Claude 暖白背景 */
+  gap: 24px;
+  padding: 24px;
+  min-height: 100vh;
   background: var(--claude-bg-warm);
+  /* Optional: mesh gradient background for premium feel */
+  background-image: 
+      radial-gradient(at 0% 0%, rgba(200, 220, 255, 0.3) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(255, 220, 200, 0.3) 0px, transparent 50%);
 }
 
-/* ========== 快速访问区域标题 ========== */
-.quick-access-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-md);
-}
-
-.section-title {
-  font-family: var(--font-serif);
-  font-size: 24px;
-  font-weight: var(--font-weight-semibold);
-  color: var(--claude-black);
-  margin: 0;
-  letter-spacing: -0.01em;
-}
-
-/* ========== 快速访问卡片组（网格布局 + 拖拽支持） ========== */
-.quick-access-section {
+.main-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--spacing-lg); /* 保持 16px */
+  grid-template-columns: 3fr 1fr;
+  gap: 24px;
+  flex: 1;
 }
 
-/* ========== 拖拽状态样式 ========== */
-.ghost-card {
-  opacity: 0.4;
-  background: var(--claude-hover-bg);
-  border: 2px dashed var(--claude-terra-cotta);
-  transform: rotate(2deg);
-}
-
-.chosen-card {
-  cursor: move;
-  box-shadow: var(--shadow-float);
-  transform: scale(1.05);
-  transition: all var(--duration-normal) cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.drag-card {
-  opacity: 0.8;
-  transform: rotate(-2deg);
-  cursor: grabbing;
-}
-
-/* ========== 控制面板区域（2 列网格） ========== */
-.dashboard-controls {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--spacing-lg); /* 从 20px 减少到 16px */
-  margin: var(--spacing-md) 0; /* 从 16px 减少到 12px */
-}
-
-/* ========== 模型映射管理区域 ========== */
-.dashboard-mapping {
-  margin: var(--spacing-md) 0;
-}
-
-/* ========== 主内容区域（60% + 40% 网格） ========== */
-.dashboard-main {
-  display: grid;
-  grid-template-columns: 60% 40%;
-  gap: var(--spacing-lg); /* 从 24px 减少到 16px */
-  min-height: 600px;
-}
-
-.dashboard-left {
-  min-width: 0;
-}
-
-.dashboard-right {
-  min-width: 0;
-}
-
-/* ========== 响应式布局 ========== */
-@media (max-width: 1400px) {
-  .dashboard-main {
-    grid-template-columns: 55% 45%;
-  }
-}
-
+/* Response Layout */
 @media (max-width: 1200px) {
-  .dashboard-controls {
+  .main-grid {
     grid-template-columns: 1fr;
-  }
-
-  .dashboard-main {
-    grid-template-columns: 1fr;
-    min-height: auto;
-  }
-}
-
-@media (max-width: 768px) {
-  .dashboard-container {
-    padding: 16px;
-    gap: 16px;
-  }
-
-  .dashboard-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-start;
-    padding: 24px 20px;
-  }
-
-  .header-left {
-    width: 100%;
-  }
-
-  .header-right {
-    width: 100%;
-    justify-content: flex-end;
-  }
-
-  .dashboard-title {
-    font-size: 24px;
-  }
-
-  .quick-access-section {
-    gap: 12px;
   }
 }
 </style>

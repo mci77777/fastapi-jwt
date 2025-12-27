@@ -1,5 +1,5 @@
 <template>
-  <n-card title="服务器负载 & API 监控">
+  <n-card title="服务器负载 & API 监控" :bordered="false" style="background: transparent;">
     <n-space vertical :size="16">
       <!-- 服务器负载指标 -->
       <div>

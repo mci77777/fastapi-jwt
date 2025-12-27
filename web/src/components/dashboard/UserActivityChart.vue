@@ -1,5 +1,5 @@
 <template>
-  <NCard title="用户活跃度" :bordered="true" class="user-activity-chart">
+  <NCard title="用户活跃度" :bordered="false" class="user-activity-chart" style="background: transparent;">
     <template #header-extra>
       <NSelect
         v-model:value="currentTimeRange"
@@ -171,19 +171,12 @@ function generateXAxisData() {
  * 生成 Y 轴数据（用户数）
  */
 function generateYAxisData() {
-  // 如果有真实数据，使用真实数据
+  // Pass through provided data
   if (props.data && props.data.length > 0) {
     return props.data
   }
-
-  // 否则生成模拟数据
-  const count = currentTimeRange.value === '7d' ? 8 : 13
-  const baseValue = currentTimeRange.value === '7d' ? 500 : 100
-  const variance = currentTimeRange.value === '7d' ? 200 : 50
-
-  return Array.from({ length: count }, () => {
-    return Math.floor(baseValue + Math.random() * variance)
-  })
+  // No mock data - return empty to show real state
+  return []
 }
 
 /**
@@ -258,8 +251,8 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow: hidden;
   padding: var(--spacing-md);
-  /* Claude 卡片背景 */
-  background: var(--claude-card-bg);
+  /* Transparent for glass effect */
+  background: transparent;
 }
 
 .chart-container {
@@ -267,8 +260,8 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 300px;
   border-radius: var(--radius-md);
-  /* 淡淡的边框 */
-  border: 1px solid var(--claude-border);
+  /* 淡淡的边框 - remove or make subtle */
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .chart-loading {
