@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     app_version: str = Field(default="0.1.0", alias="APP_VERSION")
     debug: bool = Field(default=False, alias="DEBUG")
 
+    # 日志落盘（用于按 trace_id 聚合最小交接数据）
+    log_to_file: bool = Field(default=False, alias="LOG_TO_FILE")
+    log_file_path: str = Field(default="logs/app.log", alias="LOG_FILE_PATH")
+
     cors_allow_origins: List[str] = Field(default_factory=lambda: ["*"], alias="CORS_ALLOW_ORIGINS")
     cors_allow_methods: List[str] = Field(default_factory=lambda: ["*"], alias="CORS_ALLOW_METHODS")
     cors_allow_headers: List[str] = Field(default_factory=lambda: ["*"], alias="CORS_ALLOW_HEADERS")
@@ -31,6 +35,7 @@ class Settings(BaseSettings):
     supabase_service_role_key: Optional[str] = Field(default=None, alias="SUPABASE_SERVICE_ROLE_KEY")
     supabase_jwt_secret: Optional[str] = Field(default=None, alias="SUPABASE_JWT_SECRET")
     supabase_chat_table: str = Field(default="chat_messages", alias="SUPABASE_CHAT_TABLE")
+    supabase_return_representation: bool = Field(default=False, alias="SUPABASE_RETURN_REPRESENTATION")
 
     # Supabase 保活配置（防止免费层 7 天无活动后暂停）
     supabase_keepalive_enabled: bool = Field(default=True, alias="SUPABASE_KEEPALIVE_ENABLED")

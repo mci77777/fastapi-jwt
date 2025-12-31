@@ -6,6 +6,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.core.middleware import get_current_trace_id
@@ -55,6 +56,37 @@ def _build_detail(detail: Any, default_code: str) -> Dict[str, Any]:
 
 def register_exception_handlers(app: FastAPI) -> None:
     """注册 FastAPI 全局异常处理。"""
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        trace_id = getattr(request.state, "trace_id", None) or get_current_trace_id()
+
+        # 保持 FastAPI 默认结构（detail=list），仅补充 trace_id，便于排障聚合
+        payload: Dict[str, Any] = {
+            "detail": exc.errors(),
+            "trace_id": trace_id,
+        }
+
+        # 额外字段（extra=forbid / additionalProperties=false）常见错误类型：extra_forbidden
+        try:
+            extra_fields: list[str] = []
+            for item in exc.errors():
+                if isinstance(item, dict) and item.get("type") == "extra_forbidden":
+                    loc = item.get("loc") or ()
+                    if isinstance(loc, (list, tuple)) and len(loc) >= 2:
+                        extra_fields.append(str(loc[-1]))
+            if extra_fields:
+                logger.warning(
+                    "Request validation failed (extra_forbidden) extra_fields=%s trace_id=%s path=%s",
+                    ",".join(sorted(set(extra_fields))),
+                    trace_id,
+                    request.url.path,
+                )
+        except Exception:
+            # 不阻塞异常响应
+            pass
+
+        return JSONResponse(status_code=422, content=payload)
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:

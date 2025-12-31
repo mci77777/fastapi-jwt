@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 from functools import lru_cache
 from typing import Any, Dict
 from uuid import UUID
@@ -76,13 +77,22 @@ class SupabaseProvider(AuthProvider):
         except (ValueError, TypeError) as exc:
             raise ProviderError("conversation_id and user_id must be UUID") from exc
 
+        settings = get_settings()
+        return_representation = bool(getattr(settings, "supabase_return_representation", False)) and bool(
+            getattr(settings, "debug", False)
+        )
+
         headers = self._headers()
-        headers["Prefer"] = "return=minimal"
+        headers["Prefer"] = "return=representation" if return_representation else "return=minimal"
 
         # 1) Upsert conversations（以 id 为主键）
         try:
             upsert_headers = dict(headers)
-            upsert_headers["Prefer"] = "return=minimal,resolution=merge-duplicates"
+            upsert_headers["Prefer"] = (
+                "return=representation,resolution=merge-duplicates"
+                if return_representation
+                else "return=minimal,resolution=merge-duplicates"
+            )
             conv_url = f"{self._base_url}/rest/v1/conversations?on_conflict=id"
             conv_payload = {
                 "id": conversation_uuid,
@@ -129,6 +139,42 @@ class SupabaseProvider(AuthProvider):
         except httpx.HTTPError as exc:  # pragma: no cover - 外部依赖
             logger.error("同步 messages 失败: %s", exc)
             raise ProviderError("Failed to sync messages to Supabase") from exc
+
+        # 交接/排障：把“写入摘要”回填到 record（避免改接口签名）
+        try:
+            summary: Dict[str, Any] = {
+                "conversations": {"id": conversation_uuid, "upserted": True},
+                "messages": {"inserted": len(rows)},
+            }
+            if return_representation:
+                inserted_rows = response.json()
+                if isinstance(inserted_rows, list):
+                    ids: list[Any] = []
+                    assistant_preview = None
+                    assistant_len = None
+                    assistant_sha = None
+                    for item in inserted_rows:
+                        if not isinstance(item, dict):
+                            continue
+                        if "id" in item:
+                            ids.append(item.get("id"))
+                        role = item.get("role")
+                        content = item.get("content")
+                        if role == "assistant" and isinstance(content, str):
+                            assistant_len = len(content)
+                            assistant_preview = content[:20]
+                            assistant_sha = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
+                    summary["messages"]["ids"] = ids
+                    if assistant_len is not None:
+                        summary["messages"]["assistant_content_len"] = assistant_len
+                        summary["messages"]["assistant_preview"] = assistant_preview
+                        summary["messages"]["assistant_sha256"] = assistant_sha
+            record["_sync_result"] = summary
+        except Exception:
+            record["_sync_result"] = {
+                "conversations": {"id": conversation_uuid, "upserted": True},
+                "messages": {"inserted": len(rows)},
+            }
 
 
 @lru_cache(maxsize=1)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import Any, Dict, Optional
 from uuid import UUID, uuid4
 
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
 from app.core.sse_guard import check_sse_concurrency, unregister_sse_connection
+from app.db.sqlite_manager import get_sqlite_manager
 from app.services.ai_service import AIMessageInput, AIService, MessageEventBroker
 from app.settings.config import get_settings
 
@@ -58,6 +60,7 @@ async def create_message(
     message_input = AIMessageInput(
         text=payload.text,
         conversation_id=conversation_id,
+        raw_conversation_id=payload.conversation_id,
         metadata=payload.metadata,
         skip_prompt=payload.skip_prompt,
     )
@@ -92,25 +95,67 @@ async def stream_message_events(
     heartbeat_interval = max(settings.event_stream_heartbeat_seconds, 0.5)
 
     async def event_generator():
+        started = time.time()
+        end_reason = "unknown"
+        frames: list[dict[str, Any]] = []
         try:
             while True:
                 if await request.is_disconnected():
+                    end_reason = "client_disconnected"
                     break
                 try:
                     item = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval)
                 except asyncio.TimeoutError:
                     heartbeat = json.dumps({"message_id": message_id, "event": "heartbeat"})
+                    frames.append({"event": "heartbeat", "data": {"message_id": message_id, "event": "heartbeat"}})
                     yield f"event: heartbeat\ndata: {heartbeat}\n\n"
                     continue
 
                 if item is None:
+                    end_reason = "channel_closed"
                     break
+
+                # 脱敏记录 SSE 帧（用于交接/排障，不写入原文内容）
+                data = dict(item.data or {})
+                if item.event == "content_delta":
+                    delta = str(data.get("delta") or "")
+                    data = {
+                        "message_id": data.get("message_id"),
+                        "delta_len": len(delta),
+                        "delta_preview": delta[:20],
+                    }
+                elif item.event == "completed":
+                    reply = str(data.get("reply") or "")
+                    data = {
+                        "message_id": data.get("message_id"),
+                        "reply_len": len(reply),
+                        "reply_preview": reply[:20],
+                    }
+                frames.append({"event": item.event, "data": data})
 
                 yield f"event: {item.event}\ndata: {json.dumps(item.data)}\n\n"
         finally:
             # 清理连接
             await broker.close(message_id)
             await unregister_sse_connection(connection_id)
+
+            try:
+                db = get_sqlite_manager(request.app)
+                duration = time.time() - started
+                await db.patch_conversation_log_response_payload(
+                    message_id,
+                    {
+                        "sse": {
+                            "trace_id": getattr(request.state, "trace_id", None),
+                            "duration_s": round(duration, 3),
+                            "end_reason": end_reason,
+                            "frames": frames,
+                        }
+                    },
+                )
+            except Exception:
+                # 不阻塞 SSE 清理
+                pass
 
     return StreamingResponse(
         event_generator(),

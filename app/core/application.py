@@ -49,7 +49,11 @@ async def lifespan(app: FastAPI):
 
     # AI 服务层（注入 SQLiteManager 用于统计记录）
     app.state.message_broker = MessageEventBroker()
-    app.state.ai_service = AIService(db_manager=sqlite_manager)
+    app.state.ai_service = AIService(
+        db_manager=sqlite_manager,
+        ai_config_service=app.state.ai_config_service,
+        model_mapping_service=app.state.model_mapping_service,
+    )
 
     # Supabase 保活服务（防止免费层 7 天无活动后暂停）
     app.state.supabase_keepalive = SupabaseKeepaliveService(settings)

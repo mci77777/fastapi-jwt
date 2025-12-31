@@ -223,6 +223,10 @@ class AIConfigService:
         row = await self._db.fetchone("SELECT api_key FROM ai_endpoints WHERE id = ?", [endpoint_id])
         return row.get("api_key") if row else None
 
+    async def get_endpoint_api_key(self, endpoint_id: int) -> Optional[str]:
+        """获取 endpoint 的 api_key（敏感字段，仅服务端内部使用）。"""
+        return await self._get_api_key(endpoint_id)
+
     async def create_endpoint(self, payload: dict[str, Any], *, auto_sync: bool = False) -> dict[str, Any]:
         now = _utc_now()
         if payload.get("is_default"):

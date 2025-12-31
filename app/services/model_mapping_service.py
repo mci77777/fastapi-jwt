@@ -114,6 +114,105 @@ class ModelMappingService:
         }
         return await self.upsert_mapping(payload)
 
+    async def resolve_for_message(
+        self,
+        *,
+        user_id: str,
+        tenant_id: str | None = None,
+        prompt_id: int | None = None,
+    ) -> dict[str, Any]:
+        """为一次 messages 请求解析模型选择（SSOT：prompt tools_json + fallback 文件）。
+
+        优先级（越靠前越优先）：prompt → user → tenant → global。
+
+        Returns:
+            dict: {
+              "model": str|None,
+              "temperature": float|None,
+              "hit": {"scope_type":..., "scope_key":..., "source":...}|None,
+              "chain": [{"scope_type":..., "scope_key":..., "source":..., "found":bool, "active":bool}...],
+              "reason": str|None
+            }
+        """
+
+        chain: list[dict[str, Any]] = []
+
+        prompt_mapping = await self._read_prompt_mapping(prompt_id) if prompt_id else None
+        fallback = await self._read_fallback()
+
+        candidates: list[tuple[str, str | None, str]] = []
+        if prompt_id is not None:
+            candidates.append(("prompt", str(prompt_id), "prompt"))
+        candidates.append(("user", user_id, "fallback"))
+        if tenant_id:
+            candidates.append(("tenant", str(tenant_id), "fallback"))
+        candidates.append(("global", "global", "fallback"))
+
+        def _pick(mapping: dict[str, Any]) -> tuple[str | None, float | None, str | None]:
+            default_model = mapping.get("default_model")
+            if isinstance(default_model, str) and default_model.strip():
+                model = default_model.strip()
+            else:
+                candidates_list = mapping.get("candidates") or []
+                model = candidates_list[0] if isinstance(candidates_list, list) and candidates_list else None
+            meta = mapping.get("metadata") or {}
+            temperature = meta.get("temperature") if isinstance(meta, dict) else None
+            temp_value = None
+            if isinstance(temperature, (int, float)):
+                temp_value = float(temperature)
+            return model, temp_value, "default_model" if default_model else "first_candidate"
+
+        for scope_type, scope_key, source in candidates:
+            found = False
+            active = False
+            mapping_obj: dict[str, Any] | None = None
+
+            if source == "prompt":
+                mapping_obj = prompt_mapping
+            else:
+                scope_bucket = fallback.get(scope_type) if isinstance(fallback, dict) else None
+                if isinstance(scope_bucket, dict) and scope_key is not None:
+                    payload = scope_bucket.get(str(scope_key))
+                    if isinstance(payload, dict):
+                        mapping_obj = payload.get("mapping") if isinstance(payload.get("mapping"), dict) else None
+
+            if isinstance(mapping_obj, dict):
+                found = True
+                active = bool(mapping_obj.get("is_active", True))
+
+            chain.append(
+                {
+                    "scope_type": scope_type,
+                    "scope_key": scope_key,
+                    "source": source,
+                    "found": found,
+                    "active": active,
+                }
+            )
+
+            if not found or not active:
+                continue
+
+            model, temperature, picked_from = _pick(mapping_obj)
+            if not model:
+                return {
+                    "model": None,
+                    "temperature": temperature,
+                    "hit": {"scope_type": scope_type, "scope_key": scope_key, "source": source},
+                    "chain": chain,
+                    "reason": "mapping_empty",
+                }
+
+            return {
+                "model": model,
+                "temperature": temperature,
+                "hit": {"scope_type": scope_type, "scope_key": scope_key, "source": source, "picked_from": picked_from},
+                "chain": chain,
+                "reason": None,
+            }
+
+        return {"model": None, "temperature": None, "hit": None, "chain": chain, "reason": "mapping_not_found"}
+
     async def _collect_prompt_mappings(self) -> list[ModelMapping]:
         items: list[ModelMapping] = []
         page = 1
@@ -154,6 +253,23 @@ class ModelMappingService:
                 break
             page += 1
         return items
+
+    async def _read_prompt_mapping(self, prompt_id: int | None) -> dict[str, Any] | None:
+        if prompt_id is None:
+            return None
+        try:
+            prompt = await self._ai_service.get_prompt(int(prompt_id))
+        except Exception:
+            return None
+        tools = prompt.get("tools_json")
+        if isinstance(tools, dict):
+            mapping = tools.get(MAPPING_KEY)
+            return mapping if isinstance(mapping, dict) else None
+        if isinstance(tools, list):
+            for entry in tools:
+                if isinstance(entry, dict) and MAPPING_KEY in entry and isinstance(entry[MAPPING_KEY], dict):
+                    return entry[MAPPING_KEY]
+        return None
 
     async def _collect_fallback_mappings(self) -> list[ModelMapping]:
         data = await self._read_fallback()

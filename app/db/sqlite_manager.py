@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -285,6 +286,54 @@ class SQLiteManager:
             await cursor.close()
 
         return [dict(row) for row in rows]
+
+    async def patch_conversation_log_response_payload(self, message_id: str, patch: dict[str, Any]) -> None:
+        """按 message_id 合并更新 response_payload（JSON）。
+
+        说明：用于补齐 SSE 会话信息等“后置产生”的数据，避免依赖落盘日志。
+        """
+        if self._conn is None:
+            raise RuntimeError("SQLiteManager has not been initialised.")
+
+        async with self._lock:
+            cursor = await self._conn.execute(
+                """
+                SELECT id, response_payload
+                FROM conversation_logs
+                WHERE message_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (message_id,),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+
+            if not row:
+                return
+
+            record_id = row["id"]
+            existing_raw = row["response_payload"]
+            existing: dict[str, Any] = {}
+            if isinstance(existing_raw, str) and existing_raw.strip():
+                try:
+                    parsed = json.loads(existing_raw)
+                    if isinstance(parsed, dict):
+                        existing = parsed
+                except json.JSONDecodeError:
+                    existing = {}
+
+            merged = dict(existing)
+            merged.update(patch or {})
+            await self._conn.execute(
+                """
+                UPDATE conversation_logs
+                SET response_payload = ?
+                WHERE id = ?
+                """,
+                (json.dumps(merged, ensure_ascii=False), record_id),
+            )
+            await self._conn.commit()
 
     async def _ensure_columns(self, table: str, ddl_map: dict[str, str]) -> None:
         if not ddl_map:

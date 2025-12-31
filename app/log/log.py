@@ -1,5 +1,6 @@
 import logging
 import sys
+from pathlib import Path
 
 from loguru import logger as loguru_logger
 
@@ -46,8 +47,19 @@ class Loggin:
         # 拦截标准 logging 的日志并转发到 loguru
         logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 
-        # 可选：添加文件日志
-        # loguru_logger.add("logs/app.log", level=self.level, rotation="100 MB", retention="10 days")
+        # 可选：添加文件日志（用于按 trace_id 聚合排障/交接数据）
+        if getattr(settings, "log_to_file", False):
+            file_path = Path(getattr(settings, "log_file_path", "logs/app.log"))
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            loguru_logger.add(
+                sink=str(file_path),
+                level=self.level,
+                rotation="100 MB",
+                retention="10 days",
+                enqueue=True,
+                backtrace=False,
+                diagnose=False,
+            )
 
         return loguru_logger
 
