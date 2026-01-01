@@ -126,26 +126,15 @@ class AIService:
                 self._provider.get_user_details,
                 user.uid,
             )
-        except ProviderError as exc:
-            logger.error("获取用户信息失败 uid=%s request_id=%s error=%s", user.uid, request_id, exc)
+
             await broker.publish(
                 message_id,
                 MessageEvent(
-                    event="error",
-                    data={"message_id": message_id, "error": str(exc), "request_id": request_id},
+                    event="status",
+                    data={"state": "working", "message_id": message_id},
                 ),
             )
-            return
 
-        await broker.publish(
-            message_id,
-            MessageEvent(
-                event="status",
-                data={"state": "working", "message_id": message_id},
-            ),
-        )
-
-        try:
             (
                 reply_text,
                 model_used,
@@ -190,6 +179,16 @@ class AIService:
                 ),
             )
             success = True
+        except ProviderError as exc:  # pragma: no cover - 运行时防护
+            error_message = str(exc)[:200]
+            logger.error("AI 会话处理失败（provider） message_id=%s request_id=%s error=%s", message_id, request_id, exc)
+            await broker.publish(
+                message_id,
+                MessageEvent(
+                    event="error",
+                    data={"message_id": message_id, "error": str(exc), "request_id": request_id},
+                ),
+            )
         except Exception as exc:  # pragma: no cover - 运行时防护
             error_message = str(exc)[:200]
             logger.exception("AI 会话处理失败 message_id=%s request_id=%s", message_id, request_id)
