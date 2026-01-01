@@ -14,7 +14,7 @@ from starlette.responses import JSONResponse
 
 from app.auth import AuthenticatedUser
 from app.core.exceptions import create_error_response
-from app.core.middleware import get_current_trace_id
+from app.core.middleware import get_current_request_id
 from app.settings.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -82,12 +82,12 @@ class SSEConcurrencyGuard:
                 self.rejection_reasons["user_limit_exceeded"] += 1
 
                 logger.warning(
-                    "SSE用户并发限制 user_id=%s user_type=%s current=%d max=%d trace_id=%s",
+                    "SSE用户并发限制 user_id=%s user_type=%s current=%d max=%d request_id=%s",
                     user_id,
                     user.user_type,
                     user_connection_count,
                     max_concurrent,
-                    get_current_trace_id(),
+                    get_current_request_id(),
                 )
                 return False, f"User concurrent SSE limit exceeded ({user_connection_count}/{max_concurrent})", 30
 
@@ -99,11 +99,11 @@ class SSEConcurrencyGuard:
                     self.rejection_reasons["conversation_limit_exceeded"] += 1
 
                     logger.warning(
-                        "SSE对话并发限制 conversation_id=%s current=%d max=%d trace_id=%s",
+                        "SSE对话并发限制 conversation_id=%s current=%d max=%d request_id=%s",
                         conversation_id,
                         conv_connection_count,
                         self.settings.sse_max_concurrent_per_conversation,
-                        get_current_trace_id(),
+                        get_current_request_id(),
                     )
                     return (
                         False,
@@ -129,12 +129,12 @@ class SSEConcurrencyGuard:
             self.total_connections_created += 1
 
             logger.info(
-                "SSE连接已注册 connection_id=%s user_id=%s conversation_id=%s message_id=%s trace_id=%s",
+                "SSE连接已注册 connection_id=%s user_id=%s conversation_id=%s message_id=%s request_id=%s",
                 connection_id,
                 user_id,
                 conversation_id,
                 message_id,
-                get_current_trace_id(),
+                get_current_request_id(),
             )
 
             return True, "OK", None
@@ -163,11 +163,11 @@ class SSEConcurrencyGuard:
 
             duration = time.time() - connection_info.start_time
             logger.info(
-                "SSE连接已注销 connection_id=%s user_id=%s duration=%.2fs trace_id=%s",
+                "SSE连接已注销 connection_id=%s user_id=%s duration=%.2fs request_id=%s",
                 connection_id,
                 connection_info.user_id,
                 duration,
-                get_current_trace_id(),
+                get_current_request_id(),
             )
 
     async def get_user_connections(self, user_id: str) -> Set[str]:
@@ -188,7 +188,10 @@ class SSEConcurrencyGuard:
                 await self.unregister_connection(connection_id)
 
             logger.warning(
-                "强制断开用户连接 user_id=%s count=%d trace_id=%s", user_id, len(connection_ids), get_current_trace_id()
+                "强制断开用户连接 user_id=%s count=%d request_id=%s",
+                user_id,
+                len(connection_ids),
+                get_current_request_id(),
             )
             return len(connection_ids)
 
@@ -224,10 +227,10 @@ class SSEConcurrencyGuard:
 
             if stale_connections:
                 logger.info(
-                    "清理过期SSE连接 count=%d max_age=%ds trace_id=%s",
+                    "清理过期SSE连接 count=%d max_age=%ds request_id=%s",
                     len(stale_connections),
                     max_age_seconds,
-                    get_current_trace_id(),
+                    get_current_request_id(),
                 )
 
             return len(stale_connections)

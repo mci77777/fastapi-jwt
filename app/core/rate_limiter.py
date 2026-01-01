@@ -16,7 +16,7 @@ from starlette.types import ASGIApp
 
 from app.auth import get_authenticated_user_optional
 from app.core.exceptions import create_error_response
-from app.core.middleware import get_current_trace_id
+from app.core.middleware import get_current_request_id
 from app.settings.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -87,10 +87,10 @@ class CooldownTracker:
         if self.failure_count >= failure_threshold:
             self.cooldown_until = now + cooldown_seconds
             logger.warning(
-                "触发冷静期 failure_count=%d cooldown_until=%f trace_id=%s",
+                "触发冷静期 failure_count=%d cooldown_until=%f request_id=%s",
                 self.failure_count,
                 self.cooldown_until,
-                get_current_trace_id(),
+                get_current_request_id(),
             )
 
     def is_in_cooldown(self) -> bool:
@@ -215,7 +215,12 @@ class RateLimiter:
         cooldown_tracker = self.cooldown_trackers[client_ip]
         if cooldown_tracker.is_in_cooldown():
             retry_after = int(cooldown_tracker.cooldown_until - time.time())
-            logger.warning("请求被冷静期阻止 ip=%s retry_after=%d trace_id=%s", client_ip, retry_after, get_current_trace_id())
+            logger.warning(
+                "请求被冷静期阻止 ip=%s retry_after=%d request_id=%s",
+                client_ip,
+                retry_after,
+                get_current_request_id(),
+            )
             return False, "IP in cooldown period", retry_after
 
         # 检查异常UA和用户类型
@@ -226,17 +231,17 @@ class RateLimiter:
         ip_qps_bucket = self._get_ip_qps_bucket(client_ip, is_anonymous or is_suspicious)
         if not ip_qps_bucket.consume():
             logger.warning(
-                "IP QPS限流触发 ip=%s is_anonymous=%s is_suspicious=%s trace_id=%s",
+                "IP QPS限流触发 ip=%s is_anonymous=%s is_suspicious=%s request_id=%s",
                 client_ip,
                 is_anonymous,
                 is_suspicious,
-                get_current_trace_id(),
+                get_current_request_id(),
             )
             return False, "IP QPS limit exceeded", 60
 
         ip_daily_window = self._get_ip_daily_window(client_ip)
         if not ip_daily_window.add_request():
-            logger.warning("IP日限制触发 ip=%s trace_id=%s", client_ip, get_current_trace_id())
+            logger.warning("IP日限制触发 ip=%s request_id=%s", client_ip, get_current_request_id())
             return False, "IP daily limit exceeded", 3600
 
         # 用户限流检查（如果已认证）
@@ -244,14 +249,14 @@ class RateLimiter:
             user_qps_bucket = self._get_user_qps_bucket(user_id, is_anonymous)
             if not user_qps_bucket.consume():
                 logger.warning(
-                    "用户QPS限流触发 user_id=%s user_type=%s trace_id=%s", user_id, user_type, get_current_trace_id()
+                    "用户QPS限流触发 user_id=%s user_type=%s request_id=%s", user_id, user_type, get_current_request_id()
                 )
                 return False, "User QPS limit exceeded", 60
 
             user_daily_window = self._get_user_daily_window(user_id, is_anonymous)
             if not user_daily_window.add_request():
                 logger.warning(
-                    "用户日限制触发 user_id=%s user_type=%s trace_id=%s", user_id, user_type, get_current_trace_id()
+                    "用户日限制触发 user_id=%s user_type=%s request_id=%s", user_id, user_type, get_current_request_id()
                 )
                 return False, "User daily limit exceeded", 3600
 
@@ -325,6 +330,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.rate_limiter = get_rate_limiter()
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        # 全局开关：允许在测试/回滚时禁用限流
+        if not getattr(self.rate_limiter.settings, "rate_limit_enabled", True):
+            return await call_next(request)
+
         # 检查是否为白名单路径（免限流）
         if request.url.path in self.WHITELIST_PATHS:
             return await call_next(request)
@@ -344,13 +353,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not allowed:
             # 记录限流命中
             logger.info(
-                "限流命中 ip=%s user_id=%s user_type=%s reason=%s retry_after=%s trace_id=%s",
+                "限流命中 ip=%s user_id=%s user_type=%s reason=%s retry_after=%s request_id=%s",
                 client_ip,
                 user_id,
                 user_type,
                 reason,
                 retry_after,
-                get_current_trace_id(),
+                get_current_request_id(),
             )
 
             # 返回429错误

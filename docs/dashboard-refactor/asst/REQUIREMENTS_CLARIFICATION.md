@@ -322,7 +322,7 @@ CREATE TABLE system_logs (
     source TEXT NOT NULL,  -- 'jwt_auth', 'ai_message', 'api_call'
     user_id TEXT,
     message TEXT NOT NULL,
-    trace_id TEXT,
+    request_id TEXT,
     metadata TEXT,  -- JSON
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -379,4 +379,3 @@ CREATE TABLE system_logs (
 ---
 
 **请回复确认以上所有问题，我将立即开始架构设计阶段。**
-

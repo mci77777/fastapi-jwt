@@ -61,7 +61,6 @@ class Settings(BaseSettings):
 
     http_timeout_seconds: float = Field(default=10.0, alias="HTTP_TIMEOUT_SECONDS")
     event_stream_heartbeat_seconds: float = Field(default=15.0, alias="SSE_HEARTBEAT_SECONDS")
-    trace_header_name: str = Field(default="x-trace-id", alias="TRACE_HEADER_NAME")
     ai_provider: Optional[str] = Field(default=None, alias="AI_PROVIDER")
     ai_model: Optional[str] = Field(default=None, alias="AI_MODEL")
     ai_api_base_url: Optional[AnyHttpUrl] = Field(default=None, alias="AI_API_BASE_URL")

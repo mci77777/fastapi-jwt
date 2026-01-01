@@ -251,7 +251,7 @@ class SQLiteManager:
                 DELETE FROM conversation_logs
                 WHERE id NOT IN (
                     SELECT id FROM conversation_logs
-                    ORDER BY created_at DESC
+                    ORDER BY id DESC
                     LIMIT 100
                 )
                 """
@@ -277,7 +277,7 @@ class SQLiteManager:
                 SELECT id, user_id, message_id, request_payload, response_payload,
                        model_used, latency_ms, status, error_message, created_at
                 FROM conversation_logs
-                ORDER BY created_at DESC
+                ORDER BY id DESC
                 LIMIT ?
                 """,
                 (limit,),

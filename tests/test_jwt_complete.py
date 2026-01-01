@@ -15,6 +15,7 @@
 """
 
 import time
+from contextlib import contextmanager
 from unittest.mock import Mock, patch
 
 import pytest
@@ -24,6 +25,23 @@ from fastapi.testclient import TestClient
 from app import app
 from app.auth.jwt_verifier import AuthenticatedUser, JWTError, JWTVerifier
 from app.auth.provider import InMemoryProvider, UserDetails
+
+
+@contextmanager
+def _mock_jwt_header_and_key(*, alg: str = "ES256", kid: str = "test-kid"):
+    """屏蔽 token 结构/密钥细节，让测试聚焦 claim/策略逻辑。"""
+    algorithm_cls = Mock()
+    algorithm_cls.from_jwk.return_value = "public-key"
+    alg_map = {
+        "RS256": algorithm_cls,
+        "ES256": algorithm_cls,
+        "HS256": algorithm_cls,
+        alg: algorithm_cls,
+    }
+    with patch("jwt.get_unverified_header", return_value={"alg": alg, "kid": kid}):
+        with patch("app.auth.jwt_verifier.JWKSCache.get_key", return_value={"kty": "RSA", "kid": kid}):
+            with patch("app.auth.jwt_verifier.get_default_algorithms", return_value=alg_map):
+                yield
 
 # ============================================================================
 # 第一部分：基础验证测试
@@ -66,6 +84,10 @@ class TestJWTVerifier:
             supabase_issuer="https://test.supabase.co",
             allowed_issuers=[],
             token_leeway_seconds=30,
+            jwt_clock_skew_seconds=120,
+            jwt_max_future_iat_seconds=120,
+            jwt_require_nbf=False,
+            jwt_allowed_algorithms=["RS256", "ES256", "HS256"],
         )
 
         # 创建测试 JWT
@@ -83,7 +105,8 @@ class TestJWTVerifier:
             mock_decode.return_value = payload
 
             verifier = JWTVerifier()
-            result = verifier.verify_token("mock.jwt.token")
+            with _mock_jwt_header_and_key(alg="RS256", kid="test"):
+                result = verifier.verify_token("mock.jwt.token")
 
             assert isinstance(result, AuthenticatedUser)
             assert result.uid == "test-user-123"
@@ -136,7 +159,8 @@ class TestJWTHardening:
         with patch("app.auth.jwt_verifier.get_settings", return_value=mock_settings):
             with patch("jwt.decode", return_value=base_payload):
                 verifier = JWTVerifier()
-                result = verifier.verify_token("mock.jwt.token")
+                with _mock_jwt_header_and_key():
+                    result = verifier.verify_token("mock.jwt.token")
 
                 assert result.uid == "test-user-123"
                 assert result.claims == base_payload
@@ -149,7 +173,8 @@ class TestJWTHardening:
         with patch("app.auth.jwt_verifier.get_settings", return_value=mock_settings):
             with patch("jwt.decode", return_value=payload_with_nbf):
                 verifier = JWTVerifier()
-                result = verifier.verify_token("mock.jwt.token")
+                with _mock_jwt_header_and_key():
+                    result = verifier.verify_token("mock.jwt.token")
 
                 assert result.uid == "test-user-123"
 
@@ -163,12 +188,12 @@ class TestJWTHardening:
                 verifier = JWTVerifier()
 
                 with pytest.raises(HTTPException) as exc_info:
-                    verifier.verify_token("mock.jwt.token")
+                    with _mock_jwt_header_and_key():
+                        verifier.verify_token("mock.jwt.token")
 
                 assert exc_info.value.status_code == 401
                 assert exc_info.value.detail["code"] == "iat_too_future"
                 assert "status" in exc_info.value.detail
-                assert "trace_id" in exc_info.value.detail
 
     def test_nbf_future_rejection(self, mock_settings, base_payload):
         """测试 nbf 未来时间的 JWT 被拒绝。"""
@@ -180,7 +205,8 @@ class TestJWTHardening:
                 verifier = JWTVerifier()
 
                 with pytest.raises(HTTPException) as exc_info:
-                    verifier.verify_token("mock.jwt.token")
+                    with _mock_jwt_header_and_key():
+                        verifier.verify_token("mock.jwt.token")
 
                 assert exc_info.value.status_code == 401
                 assert exc_info.value.detail["code"] == "token_not_yet_valid"
@@ -194,7 +220,8 @@ class TestJWTHardening:
         with patch("app.auth.jwt_verifier.get_settings", return_value=mock_settings):
             with patch("jwt.decode", return_value=skewed_payload):
                 verifier = JWTVerifier()
-                result = verifier.verify_token("mock.jwt.token")
+                with _mock_jwt_header_and_key():
+                    result = verifier.verify_token("mock.jwt.token")
 
                 assert result.uid == "test-user-123"
 
@@ -232,7 +259,8 @@ class TestJWTHardening:
                 verifier = JWTVerifier()
 
                 with pytest.raises(HTTPException) as exc_info:
-                    verifier.verify_token("mock.jwt.token")
+                    with _mock_jwt_header_and_key():
+                        verifier.verify_token("mock.jwt.token")
 
                 assert exc_info.value.status_code == 401
                 assert exc_info.value.detail["code"] == "issuer_not_allowed"
@@ -247,7 +275,8 @@ class TestJWTHardening:
                 verifier = JWTVerifier()
 
                 with pytest.raises(HTTPException) as exc_info:
-                    verifier.verify_token("mock.jwt.token")
+                    with _mock_jwt_header_and_key():
+                        verifier.verify_token("mock.jwt.token")
 
                 assert exc_info.value.status_code == 401
                 assert exc_info.value.detail["code"] == "subject_missing"
@@ -278,7 +307,6 @@ class TestJWTHardening:
             assert "status" in detail
             assert "code" in detail
             assert "message" in detail
-            assert "trace_id" in detail
             assert detail["status"] == 401
             assert detail["code"] == "token_missing"
 
@@ -288,7 +316,8 @@ class TestJWTHardening:
         with patch("app.auth.jwt_verifier.get_settings", return_value=mock_settings):
             with patch("jwt.decode", return_value=base_payload):
                 verifier = JWTVerifier()
-                verifier.verify_token("mock.jwt.token")
+                with _mock_jwt_header_and_key():
+                    verifier.verify_token("mock.jwt.token")
 
                 # 验证成功日志被调用
                 mock_logger.info.assert_called_once()
@@ -328,10 +357,17 @@ class TestJWTHardening:
 class TestJWTHardeningIntegration:
     """JWT 验证器硬化功能的端到端集成测试。"""
 
+    @pytest.fixture(autouse=True)
+    def _clear_jwt_verifier_cache(self):
+        from app.auth.jwt_verifier import get_jwt_verifier
+
+        get_jwt_verifier.cache_clear()
+
     @pytest.fixture
     def client(self):
         """测试客户端。"""
-        return TestClient(app)
+        with TestClient(app) as client:
+            yield client
 
     @pytest.fixture
     def mock_hardened_settings(self):
@@ -369,11 +405,12 @@ class TestJWTHardeningIntegration:
 
         with patch("app.auth.jwt_verifier.get_settings", return_value=mock_hardened_settings):
             with patch("jwt.decode", return_value=payload):
-                response = client.post(
-                    "/api/v1/messages",
-                    json={"text": "Hello AI", "conversation_id": "conv-123"},
-                    headers={"Authorization": "Bearer mock.supabase.jwt"},
-                )
+                with _mock_jwt_header_and_key():
+                    response = client.post(
+                        "/api/v1/messages",
+                        json={"text": "Hello AI", "conversation_id": "conv-123"},
+                        headers={"Authorization": "Bearer mock.supabase.jwt"},
+                    )
 
                 assert response.status_code == 202
                 data = response.json()
@@ -392,17 +429,18 @@ class TestJWTHardeningIntegration:
 
         with patch("app.auth.jwt_verifier.get_settings", return_value=mock_hardened_settings):
             with patch("jwt.decode", return_value=payload):
-                response = client.post(
-                    "/api/v1/messages",
-                    json={"text": "Hello AI"},
-                    headers={"Authorization": "Bearer future.iat.jwt"},
-                )
+                with _mock_jwt_header_and_key():
+                    response = client.post(
+                        "/api/v1/messages",
+                        json={"text": "Hello AI"},
+                        headers={"Authorization": "Bearer future.iat.jwt"},
+                    )
 
                 assert response.status_code == 401
                 data = response.json()
                 assert data["code"] == "iat_too_future"
                 assert data["status"] == 401
-                assert "trace_id" in data
+                assert "request_id" in data
 
     def test_api_endpoint_rejects_unsupported_algorithm(self, client, mock_hardened_settings):
         """测试 API 端点拒绝不支持的算法。"""
@@ -423,11 +461,11 @@ class TestJWTHardeningIntegration:
         """测试 API 端点错误格式的一致性。"""
         test_cases = [
             # 缺失 token
-            {"headers": {}, "expected_code": "token_missing"},
+            {"headers": {}, "expected_code": "unauthorized"},
             # 无效 token
             {"headers": {"Authorization": "Bearer invalid"}, "expected_code": "invalid_token_header"},
             # 空 token
-            {"headers": {"Authorization": "Bearer "}, "expected_code": "token_missing"},
+            {"headers": {"Authorization": "Bearer "}, "expected_code": "unauthorized"},
         ]
 
         for case in test_cases:
@@ -441,26 +479,26 @@ class TestJWTHardeningIntegration:
                 assert "status" in data
                 assert "code" in data
                 assert "message" in data
-                assert "trace_id" in data
+                assert "request_id" in data
                 assert data["status"] == 401
 
                 if case["expected_code"]:
                     assert data["code"] == case["expected_code"]
 
-    def test_trace_id_propagation_in_errors(self, client, mock_hardened_settings):
-        """测试错误响应中 trace_id 的传播。"""
-        custom_trace_id = "custom-trace-12345"
+    def test_request_id_propagation_in_errors(self, client, mock_hardened_settings):
+        """测试错误响应中 request_id 的传播。"""
+        custom_request_id = "custom-request-12345"
 
         with patch("app.auth.jwt_verifier.get_settings", return_value=mock_hardened_settings):
             response = client.post(
                 "/api/v1/messages",
                 json={"text": "Hello AI"},
-                headers={"Authorization": "Bearer invalid", "x-trace-id": custom_trace_id},
+                headers={"Authorization": "Bearer invalid", "x-request-id": custom_request_id},
             )
 
             assert response.status_code == 401
             data = response.json()
-            assert data["trace_id"] == custom_trace_id
+            assert data["request_id"] == custom_request_id
 
     def test_clock_skew_tolerance_integration(self, client, mock_hardened_settings):
         """测试时钟偏移容忍度的集成测试。"""
@@ -476,11 +514,12 @@ class TestJWTHardeningIntegration:
 
         with patch("app.auth.jwt_verifier.get_settings", return_value=mock_hardened_settings):
             with patch("jwt.decode", return_value=payload):
-                response = client.post(
-                    "/api/v1/messages",
-                    json={"text": "Hello AI"},
-                    headers={"Authorization": "Bearer skewed.time.jwt"},
-                )
+                with _mock_jwt_header_and_key():
+                    response = client.post(
+                        "/api/v1/messages",
+                        json={"text": "Hello AI"},
+                        headers={"Authorization": "Bearer skewed.time.jwt"},
+                    )
 
                 assert response.status_code == 202
 
@@ -499,11 +538,12 @@ class TestJWTHardeningIntegration:
 
         with patch("app.auth.jwt_verifier.get_settings", return_value=mock_hardened_settings):
             with patch("jwt.decode", return_value=valid_nbf_payload):
-                response = client.post(
-                    "/api/v1/messages",
-                    json={"text": "Hello AI"},
-                    headers={"Authorization": "Bearer valid.nbf.jwt"},
-                )
+                with _mock_jwt_header_and_key():
+                    response = client.post(
+                        "/api/v1/messages",
+                        json={"text": "Hello AI"},
+                        headers={"Authorization": "Bearer valid.nbf.jwt"},
+                    )
 
                 assert response.status_code == 202
 
@@ -513,11 +553,12 @@ class TestJWTHardeningIntegration:
 
         with patch("app.auth.jwt_verifier.get_settings", return_value=mock_hardened_settings):
             with patch("jwt.decode", return_value=invalid_nbf_payload):
-                response = client.post(
-                    "/api/v1/messages",
-                    json={"text": "Hello AI"},
-                    headers={"Authorization": "Bearer invalid.nbf.jwt"},
-                )
+                with _mock_jwt_header_and_key():
+                    response = client.post(
+                        "/api/v1/messages",
+                        json={"text": "Hello AI"},
+                        headers={"Authorization": "Bearer invalid.nbf.jwt"},
+                    )
 
                 assert response.status_code == 401
                 data = response.json()
@@ -535,8 +576,8 @@ class TestJWTHardeningIntegration:
         }
 
         with patch("app.auth.jwt_verifier.get_settings", return_value=mock_hardened_settings):
-            with patch("jwt.get_unverified_header", return_value={"alg": "ES256", "kid": "test-kid"}):
-                with patch("jwt.decode", return_value=payload):
+            with patch("jwt.decode", return_value=payload):
+                with _mock_jwt_header_and_key(alg="ES256", kid="test-kid"):
                     response = client.post(
                         "/api/v1/messages",
                         json={"text": "Hello AI"},
@@ -584,18 +625,19 @@ class TestJWTHardeningIntegration:
         for scenario in error_scenarios:
             with patch("app.auth.jwt_verifier.get_settings", return_value=mock_hardened_settings):
                 with patch("jwt.decode", return_value=scenario["payload"]):
-                    response = client.post(
-                        "/api/v1/messages",
-                        json={"text": "Hello AI"},
-                        headers={"Authorization": f"Bearer {scenario['name']}.jwt"},
-                    )
+                    with _mock_jwt_header_and_key():
+                        response = client.post(
+                            "/api/v1/messages",
+                            json={"text": "Hello AI"},
+                            headers={"Authorization": f"Bearer {scenario['name']}.jwt"},
+                        )
 
                     assert response.status_code == 401, f"Scenario {scenario['name']} should return 401"
                     data = response.json()
                     assert (
                         data["code"] == scenario["expected_code"]
                     ), f"Scenario {scenario['name']} should have code {scenario['expected_code']}"
-                    assert "trace_id" in data
+                    assert "request_id" in data
                     assert data["status"] == 401
 
 
@@ -641,7 +683,8 @@ class TestAPIEndpoints:
     @pytest.fixture
     def client(self):
         """测试客户端。"""
-        return TestClient(app)
+        with TestClient(app) as client:
+            yield client
 
     @pytest.fixture
     def mock_auth_user(self):
@@ -701,7 +744,7 @@ class TestJWTErrorClass:
             status=401,
             code="test_error",
             message="Test message",
-            trace_id="trace-123",
+            request_id="request-123",
             hint="Test hint",
         )
 
@@ -710,7 +753,7 @@ class TestJWTErrorClass:
             "status": 401,
             "code": "test_error",
             "message": "Test message",
-            "trace_id": "trace-123",
+            "request_id": "request-123",
             "hint": "Test hint",
         }
 

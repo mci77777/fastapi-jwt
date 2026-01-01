@@ -15,7 +15,8 @@ class TestAPIContracts:
     @pytest.fixture
     def client(self):
         """测试客户端。"""
-        return TestClient(app)
+        with TestClient(app) as client:
+            yield client
 
     @pytest.fixture
     def mock_auth_user(self):
@@ -42,7 +43,7 @@ class TestAPIContracts:
         assert response.status_code == 401
 
         data = response.json()
-        required_fields = ["code", "message", "trace_id"]
+        required_fields = ["code", "message", "request_id"]
         for field in required_fields:
             assert field in data, f"Response missing required field: {field}"
 
@@ -64,6 +65,7 @@ class TestAPIContracts:
 
         # 验证响应结构
         assert "message_id" in data
+        assert "conversation_id" in data
         assert isinstance(data["message_id"], str)
         assert len(data["message_id"]) > 0
 
@@ -102,7 +104,9 @@ class TestAPIContracts:
         assert response.status_code == 404
 
         data = response.json()
-        assert "detail" in data
+        assert "code" in data
+        assert "message" in data
+        assert "request_id" in data
 
     def test_error_response_contract(self, client):
         """测试错误响应契约。"""
@@ -111,27 +115,27 @@ class TestAPIContracts:
         assert response.status_code == 401
 
         data = response.json()
-        required_fields = ["code", "message", "trace_id"]
+        required_fields = ["code", "message", "request_id"]
         for field in required_fields:
             assert field in data
 
         assert isinstance(data["code"], str)
         assert isinstance(data["message"], str)
-        assert isinstance(data["trace_id"], str)
+        assert isinstance(data["request_id"], str)
 
-    def test_trace_id_contract(self, client):
-        """测试Trace ID契约。"""
-        custom_trace_id = "test-trace-12345"
-        headers = {"x-trace-id": custom_trace_id}
+    def test_request_id_contract(self, client):
+        """测试 Request ID 契约。"""
+        custom_request_id = "test-request-12345"
+        headers = {"x-request-id": custom_request_id}
 
         response = client.post("/api/v1/messages", json={"text": "Hello"}, headers=headers)
 
-        # 验证响应头包含Trace ID
-        assert response.headers.get("x-trace-id") == custom_trace_id
+        # 验证响应头包含 Request ID
+        assert response.headers.get("x-request-id") == custom_request_id
 
-        # 验证响应体包含Trace ID
+        # 验证响应体包含 Request ID
         data = response.json()
-        assert data.get("trace_id") == custom_trace_id
+        assert data.get("request_id") == custom_request_id
 
     def test_content_type_contract(self, client):
         """测试Content-Type契约。"""

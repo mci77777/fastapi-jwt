@@ -224,7 +224,8 @@ class AIConfigService:
         return row.get("api_key") if row else None
 
     async def get_endpoint_api_key(self, endpoint_id: int) -> Optional[str]:
-        """获取 endpoint 的 api_key（敏感字段，仅服务端内部使用）。"""
+        """读取端点 API Key（严禁写入日志）。"""
+
         return await self._get_api_key(endpoint_id)
 
     async def create_endpoint(self, payload: dict[str, Any], *, auto_sync: bool = False) -> dict[str, Any]:
@@ -803,12 +804,6 @@ class AIConfigService:
     ) -> tuple[list[dict[str, Any]], int]:
         clauses: list[str] = []
         params: list[Any] = []
-        
-        # 自动从 assets/prompts 同步 (如果数据库为空)
-        total_check = await self._db.fetchone("SELECT COUNT(1) AS count FROM ai_prompts")
-        if total_check and total_check["count"] == 0:
-            await self.sync_prompts_from_assets()
-
         if keyword:
             clauses.append("(name LIKE ? OR content LIKE ? OR category LIKE ?)")
             fuzzy = f"%{keyword}%"
@@ -824,49 +819,6 @@ class AIConfigService:
             params + [page_size, (page - 1) * page_size],
         )
         return [self._format_prompt_row(row) for row in rows], total_count
-
-    async def sync_prompts_from_assets(self) -> None:
-        """从 assets/prompts 目录同步默认 Prompt"""
-        # 使用相对于项目根目录的绝对路径
-        project_root = Path(__file__).resolve().parent.parent.parent
-        assets_dir = project_root / "assets" / "prompts"
-        
-        logger.info(f"Syncing prompts from assets dir: {assets_dir}")
-        if not assets_dir.exists():
-            logger.warning(f"Assets directory not found: {assets_dir}")
-            return
-            
-        now = _utc_now()
-        for file_path in assets_dir.glob("*.md"):
-            try:
-                name = file_path.stem
-                content = file_path.read_text(encoding="utf-8")
-                
-                # Check if exists
-                existing = await self._db.fetchone("SELECT id FROM ai_prompts WHERE name = ?", [name])
-                if existing:
-                    continue
-                    
-                await self._db.execute(
-                    """
-                    INSERT INTO ai_prompts (
-                        name, content, version, category, description,
-                        is_active, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        name,
-                        content,
-                        "v1",
-                        "default",
-                        f"From {file_path.name}",
-                        1,
-                        now,
-                        now,
-                    ],
-                )
-            except Exception:
-                logger.exception(f"Failed to load prompt from {file_path}")
 
     async def get_prompt(self, prompt_id: int) -> dict[str, Any]:
         row = await self._db.fetchone("SELECT * FROM ai_prompts WHERE id = ?", [prompt_id])
@@ -1104,6 +1056,91 @@ class AIConfigService:
             merged.append(await self.get_prompt_by_supabase_id(supabase_id))
         return merged
 
+    async def record_prompt_test(
+        self,
+        *,
+        prompt_id: int,
+        endpoint_id: int,
+        model: Optional[str],
+        request_message: str,
+        response_message: Optional[str],
+        success: bool,
+        latency_ms: Optional[float],
+        error: Optional[str],
+    ) -> None:
+        await self._db.execute(
+            """
+            INSERT INTO ai_prompt_tests (
+                prompt_id, endpoint_id, model, request_message, response_message,
+                success, latency_ms, error, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                prompt_id,
+                endpoint_id,
+                model,
+                request_message,
+                response_message,
+                1 if success else 0,
+                latency_ms,
+                error,
+                _utc_now(),
+            ],
+        )
+
+    async def list_prompt_tests(self, prompt_id: int, limit: int = 20) -> list[dict[str, Any]]:
+        rows = await self._db.fetchall(
+            """
+            SELECT * FROM ai_prompt_tests
+            WHERE prompt_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            [prompt_id, limit],
+        )
+        return [
+            {
+                "id": row["id"],
+                "prompt_id": row["prompt_id"],
+                "endpoint_id": row["endpoint_id"],
+                "model": row.get("model"),
+                "request_message": row.get("request_message"),
+                "response_message": row.get("response_message"),
+                "success": bool(row.get("success")),
+                "latency_ms": row.get("latency_ms"),
+                "error": row.get("error"),
+                "created_at": row.get("created_at"),
+            }
+            for row in rows
+        ]
+
+    async def list_prompt_tests_by_run(self, run_id: str, limit: int = 1000) -> list[dict[str, Any]]:
+        pattern = f"%run_id={run_id}%"
+        rows = await self._db.fetchall(
+            """
+            SELECT * FROM ai_prompt_tests
+            WHERE request_message LIKE ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            [pattern, limit],
+        )
+        return [
+            {
+                "id": row["id"],
+                "prompt_id": row["prompt_id"],
+                "endpoint_id": row["endpoint_id"],
+                "model": row.get("model"),
+                "request_message": row.get("request_message"),
+                "response_message": row.get("response_message"),
+                "success": bool(row.get("success")),
+                "latency_ms": row.get("latency_ms"),
+                "error": row.get("error"),
+                "created_at": row.get("created_at"),
+            }
+            for row in rows
+        ]
+
     async def test_prompt(
         self,
         *,
@@ -1111,7 +1148,6 @@ class AIConfigService:
         endpoint_id: int,
         message: str,
         model: Optional[str] = None,
-        skip_prompt: bool = False,
     ) -> dict[str, Any]:
         prompt = await self.get_prompt(prompt_id)
         endpoint = await self.get_endpoint(endpoint_id)
@@ -1126,14 +1162,12 @@ class AIConfigService:
         if not selected_model:
             selected_model = "gpt-4o-mini"
 
-        messages = []
-        if not skip_prompt:
-            messages.append({"role": "system", "content": prompt["content"]})
-        messages.append({"role": "user", "content": message})
-
         payload = {
             "model": selected_model,
-            "messages": messages,
+            "messages": [
+                {"role": "system", "content": prompt["content"]},
+                {"role": "user", "content": message},
+            ],
         }
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -1186,6 +1220,17 @@ class AIConfigService:
             latency_ms = (perf_counter() - start) * 1000
             error_text = str(exc)
             logger.exception("Prompt 测试异常 prompt_id=%s endpoint_id=%s", prompt_id, endpoint_id)
+
+        await self.record_prompt_test(
+            prompt_id=prompt_id,
+            endpoint_id=endpoint_id,
+            model=selected_model,
+            request_message=message,
+            response_message=reply_text or (json.dumps(response_payload) if response_payload else None),
+            success=success,
+            latency_ms=latency_ms,
+            error=error_text,
+        )
 
         if not success:
             raise RuntimeError(error_text or "prompt_test_failed")

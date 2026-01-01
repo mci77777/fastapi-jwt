@@ -249,7 +249,8 @@ class ModelMappingService:
                     },
                 )
                 items.append(mapping)
-            if len(items) >= total:
+            # 使用 total + 分页参数作为终止条件，避免上游分页/映射缺失导致死循环
+            if total and page * page_size >= total:
                 break
             page += 1
         return items

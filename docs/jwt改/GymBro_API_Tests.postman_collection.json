@@ -210,9 +210,9 @@
 							"    pm.collectionVariables.set('message_id', jsonData.message_id);",
 							"});",
 							"",
-							"pm.test(\"Response has trace_id\", function () {",
-							"    pm.expect(pm.response.headers.get('x-trace-id')).to.not.be.null;",
-							"});"
+"pm.test(\"Response has request_id\", function () {",
+"    pm.expect(pm.response.headers.get('x-request-id')).to.not.be.null;",
+"});"
 						],
 						"type": "text/javascript"
 					}

@@ -12,7 +12,7 @@ from starlette.types import ASGIApp
 
 from app.auth import AuthenticatedUser
 from app.core.exceptions import create_error_response
-from app.core.middleware import get_current_trace_id
+from app.core.middleware import get_current_request_id
 from app.settings.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -141,9 +141,8 @@ class PolicyGateMiddleware(BaseHTTPMiddleware):
 
     def _create_anonymous_restriction_error(self, path: str, method: str) -> Response:
         """创建匿名用户访问限制错误响应。"""
-        trace_id = get_current_trace_id()
-
-        logger.warning("匿名用户访问受限端点被拒绝 path=%s method=%s trace_id=%s", path, method, trace_id)
+        request_id = get_current_request_id()
+        logger.warning("匿名用户访问受限端点被拒绝 path=%s method=%s request_id=%s", path, method, request_id)
 
         return create_error_response(
             status_code=403,

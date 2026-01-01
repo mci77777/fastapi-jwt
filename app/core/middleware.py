@@ -3,36 +3,54 @@
 from __future__ import annotations
 
 import uuid
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
-_trace_id_ctx: ContextVar[str | None] = ContextVar("trace_id", default=None)
+REQUEST_ID_HEADER_NAME = "X-Request-Id"
 
+_request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 
-class TraceIDMiddleware(BaseHTTPMiddleware):
-    """为每个请求生成或透传 Trace ID。"""
-
-    def __init__(self, app: ASGIApp, header_name: str) -> None:
-        super().__init__(app)
-        self._header_name = header_name
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """为每个请求生成或透传 Request ID（SSOT：X-Request-Id）。"""
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        incoming = request.headers.get(self._header_name)
-        trace_id = incoming or uuid.uuid4().hex
-        token = _trace_id_ctx.set(trace_id)
-        request.state.trace_id = trace_id
+        incoming = request.headers.get(REQUEST_ID_HEADER_NAME)
+        request_id = incoming or uuid.uuid4().hex
+        token = _request_id_ctx.set(request_id)
+        request.state.request_id = request_id
 
         response = await call_next(request)
-        response.headers[self._header_name] = trace_id
-        _trace_id_ctx.reset(token)
+        response.headers[REQUEST_ID_HEADER_NAME] = request_id
+        _request_id_ctx.reset(token)
         return response
 
 
-def get_current_trace_id() -> str | None:
-    """向日志等场景暴露当前 Trace ID。"""
+def get_current_request_id() -> str | None:
+    """向日志等场景暴露当前 Request ID。"""
 
-    return _trace_id_ctx.get()
+    return _request_id_ctx.get()
+
+
+def set_current_request_id(request_id: str) -> Token[str | None]:
+    """为非 HTTP 调用链（如 BackgroundTasks）绑定 request_id。"""
+
+    return _request_id_ctx.set(request_id)
+
+
+def reset_current_request_id(token: Token[str | None]) -> None:
+    """重置 set_current_request_id() 绑定的 request_id。"""
+
+    _request_id_ctx.reset(token)
+
+
+__all__ = [
+    "REQUEST_ID_HEADER_NAME",
+    "RequestIDMiddleware",
+    "get_current_request_id",
+    "reset_current_request_id",
+    "set_current_request_id",
+]

@@ -4,15 +4,17 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+import pytest_asyncio
 
 from app.db.sqlite_manager import SQLiteManager
+from app.auth.provider import UserDetails
 from app.services.ai_service import AIMessageInput, AIService, MessageEventBroker
 
 # 配置 pytest-asyncio
 pytestmark = pytest.mark.asyncio
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def sqlite_manager(tmp_path):
     """创建临时 SQLite 数据库。"""
     db_path = tmp_path / "test.db"
@@ -26,34 +28,15 @@ async def sqlite_manager(tmp_path):
 def mock_supabase_provider():
     """Mock Supabase provider。"""
     provider = MagicMock()
-    provider.get_user_details.return_value = MagicMock(
-        uid="test-user-123",
-        email="test@example.com",
-        user_metadata={"name": "Test User"},
-    )
+    provider.get_user_details.return_value = UserDetails(uid="test-user-123", email="test@example.com")
     provider.sync_chat_record = MagicMock()
     return provider
 
 
-@pytest.fixture
-def mock_settings():
-    """Mock settings。"""
-    settings = MagicMock()
-    settings.ai_model = "gpt-4o-mini"
-    settings.openai_api_key = "test-key"
-    settings.openai_base_url = "https://api.openai.com/v1"
-    return settings
-
-
-@pytest.fixture
-async def ai_service(sqlite_manager, mock_supabase_provider, mock_settings):
+@pytest_asyncio.fixture
+async def ai_service(sqlite_manager, mock_supabase_provider):
     """创建 AIService 实例。"""
-    service = AIService(
-        provider=mock_supabase_provider,
-        settings=mock_settings,
-        db=sqlite_manager,
-    )
-    return service
+    return AIService(provider=mock_supabase_provider, db_manager=sqlite_manager)
 
 
 async def test_log_conversation_success(sqlite_manager):
@@ -180,31 +163,36 @@ async def test_ai_service_logs_conversation(ai_service, sqlite_manager, mock_sup
     """测试 AIService 在 run_conversation 中记录日志。"""
     from app.auth import AuthenticatedUser
 
-    # Mock OpenAI API 调用
-    with patch("app.services.ai_service.AIService._call_openai_completion") as mock_openai:
-        mock_openai.return_value = "This is a test reply from AI"
+    request_payload = json.dumps(
+        {
+            "conversation_id": "conv-123",
+            "text": "Hello AI",
+            "model": "gpt-4o",
+            "messages": [
+                {"role": "system", "content": "You are GymBro's AI assistant."},
+                {"role": "user", "content": "Hello AI"},
+            ],
+        },
+        ensure_ascii=False,
+    )
+    response_payload = json.dumps(
+        {"choices": [{"message": {"content": "This is a test reply from AI"}}]},
+        ensure_ascii=False,
+    )
 
-        # 创建测试用户
-        user = AuthenticatedUser(
-            uid="test-user-123",
-            email="test@example.com",
-            user_type="permanent",
-        )
+    with patch.object(
+        ai_service,
+        "_generate_reply",
+        return_value=("This is a test reply from AI", "gpt-4o", request_payload, response_payload, "up-req-1"),
+    ):
+        user = AuthenticatedUser(uid="test-user-123", claims={}, user_type="permanent")
 
-        # 创建消息输入
-        message = AIMessageInput(
-            text="Hello AI",
-            conversation_id="conv-123",
-            model="gpt-4o",
-            metadata={"save_history": True},
-        )
+        message = AIMessageInput(text="Hello AI", conversation_id="conv-123", model="gpt-4o", metadata={"save_history": True})
 
-        # 创建 broker
         broker = MessageEventBroker()
         message_id = "msg-test-123"
         await broker.create_channel(message_id)
 
-        # 运行对话
         await ai_service.run_conversation(message_id, user, message, broker)
 
         # 验证日志已记录
@@ -223,42 +211,26 @@ async def test_ai_service_logs_conversation(ai_service, sqlite_manager, mock_sup
 
         # 验证 response payload
         resp = json.loads(logs[0]["response_payload"])
-        assert resp["message_id"] == message_id
-        assert resp["reply"] == "This is a test reply from AI"
+        assert resp["choices"][0]["message"]["content"] == "This is a test reply from AI"
 
 
 async def test_ai_service_logs_error(ai_service, sqlite_manager, mock_supabase_provider):
     """测试 AIService 在错误时记录日志。"""
     from app.auth import AuthenticatedUser
 
-    # Mock OpenAI API 调用抛出异常
-    with patch("app.services.ai_service.AIService._call_openai_completion") as mock_openai:
-        mock_openai.side_effect = Exception("API error")
-
-        user = AuthenticatedUser(
-            uid="test-user-456",
-            email="test2@example.com",
-            user_type="permanent",
-        )
-
-        message = AIMessageInput(
-            text="Test error",
-            conversation_id="conv-456",
-            model="gpt-4o-mini",
-            metadata={},
-        )
+    with patch.object(ai_service, "_generate_reply", side_effect=Exception("API error")):
+        user = AuthenticatedUser(uid="test-user-456", claims={}, user_type="permanent")
+        message = AIMessageInput(text="Test error", conversation_id="conv-456", model="gpt-4o-mini", metadata={})
 
         broker = MessageEventBroker()
         message_id = "msg-error-123"
         await broker.create_channel(message_id)
 
-        # 运行对话（应该捕获异常）
         await ai_service.run_conversation(message_id, user, message, broker)
 
-        # 验证错误日志已记录
-        logs = await sqlite_manager.get_conversation_logs(limit=10)
-        assert len(logs) == 1
-        assert logs[0]["status"] == "error"
-        assert logs[0]["error_message"] is not None
-        assert "API error" in logs[0]["error_message"]
-        assert logs[0]["response_payload"] is None
+    logs = await sqlite_manager.get_conversation_logs(limit=10)
+    assert len(logs) == 1
+    assert logs[0]["status"] == "error"
+    assert logs[0]["error_message"] is not None
+    assert "API error" in logs[0]["error_message"]
+    assert logs[0]["response_payload"] is None

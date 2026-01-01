@@ -115,7 +115,7 @@ make upgrade      # aerich upgrade（应用迁移）
 
 2. **错误响应**: 使用 `app/core/exceptions.py::create_error_response()` 确保格式一致
    ```python
-   # 返回: {"status": 401, "code": "token_expired", "message": "...", "trace_id": "...", "hint": "..."}
+   # 返回: {"status": 401, "code": "token_expired", "message": "...", "request_id": "...", "hint": "..."}
    ```
 
 3. **服务访问**: 从 `request.app.state` 获取，不要全局导入
@@ -189,8 +189,7 @@ RATE_LIMIT_ENABLED=true
 ANON_ENABLED=true                # 允许匿名用户
 POLICY_GATE_ENABLED=true         # 执行访问策略
 
-# 监控（app/core/metrics.py）
-TRACE_HEADER_NAME=X-Trace-ID
+# 请求追踪：固定使用 `X-Request-Id`（无需配置项）
 ```
 
 ## ⚠️ 常见陷阱

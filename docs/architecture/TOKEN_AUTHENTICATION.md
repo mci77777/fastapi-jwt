@@ -161,7 +161,7 @@ def verify_token(self, token: str) -> dict:
   "status": 401,
   "code": "token_expired",
   "message": "JWT token has expired",
-  "trace_id": "abc123",
+  "request_id": "abc123",
   "hint": "Please refresh your token or login again"
 }
 ```
@@ -476,4 +476,3 @@ curl -X POST http://localhost:9999/api/v1/base/refresh_token \
 
 **最后更新**: 2025-10-17  
 **维护者**: GymBro Team
-

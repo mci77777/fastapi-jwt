@@ -2020,7 +2020,7 @@
       "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
       "severity": "MEDIUM",
       "description": "检测到环境变量使用: \"token_missing\"",
-      "code_snippet": "self._log_verification_failure(\"token_missing\", \"Token missing\", trace_id=trace_id)"
+      "code_snippet": "self._log_verification_failure(\"token_missing\", \"Token missing\", request_id=request_id)"
     },
     {
       "file_path": "app\\auth\\jwt_verifier.py",
@@ -2036,7 +2036,7 @@
       "issue_type": "ENVIRONMENT_VARIABLE_LEAK",
       "severity": "MEDIUM",
       "description": "检测到环境变量使用: \"invalid_token_header\"",
-      "code_snippet": "self._log_verification_failure(\"invalid_token_header\", f\"Invalid JWT header: {exc}\", trace_id=trace_"
+      "code_snippet": "self._log_verification_failure(\"invalid_token_header\", f\"Invalid JWT header: {exc}\", request_id=request_"
     },
     {
       "file_path": "app\\auth\\jwt_verifier.py",

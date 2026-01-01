@@ -10,7 +10,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api import api_router
 from app.core.exceptions import register_exception_handlers
-from app.core.middleware import TraceIDMiddleware
+from app.core.middleware import RequestIDMiddleware
 from app.core.policy_gate import PolicyGateMiddleware
 from app.core.rate_limiter import RateLimitMiddleware
 from app.db import SQLiteManager
@@ -96,7 +96,7 @@ def create_app() -> FastAPI:
     if settings.allowed_hosts and settings.allowed_hosts != ["*"]:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
 
-    app.add_middleware(TraceIDMiddleware, header_name=settings.trace_header_name)
+    app.add_middleware(RequestIDMiddleware)
     app.add_middleware(PolicyGateMiddleware)  # 策略门中间件，在限流之前
     app.add_middleware(RateLimitMiddleware)
 
@@ -105,7 +105,12 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_allow_origins,
         allow_methods=settings.cors_allow_methods,
         allow_headers=settings.cors_allow_headers,
-        allow_credentials=settings.cors_allow_credentials,
+        # 规范化：CORS 允许来源为 "*" 时，按规范不能同时允许 credentials（否则预检会失败）
+        allow_credentials=(
+            False
+            if settings.cors_allow_credentials and settings.cors_allow_origins == ["*"]
+            else settings.cors_allow_credentials
+        ),
     )
 
     # AIService 和 MessageEventBroker 已在 lifespan() 中初始化

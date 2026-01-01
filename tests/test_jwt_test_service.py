@@ -1,4 +1,5 @@
 from pathlib import Path
+import asyncio
 
 import pytest
 
@@ -77,7 +78,7 @@ async def test_simulate_dialog_success(tmp_path: Path, settings: Settings) -> No
 async def test_run_load_test(tmp_path: Path, settings: Settings) -> None:
     ai_service = FakeAIConfigService()
     service = JWTTestService(ai_service, settings, tmp_path)
-    result = await service.run_load_test(
+    started = await service.run_load_test(
         {
             "prompt_id": 1,
             "endpoint_id": 2,
@@ -88,6 +89,15 @@ async def test_run_load_test(tmp_path: Path, settings: Settings) -> None:
             "stop_on_error": False,
         }
     )
+    run_id = started["summary"]["id"]
+
+    # 等待后台任务完成
+    for _ in range(200):
+        result = await service.get_run(run_id)
+        if result.get("is_running") is False:
+            break
+        await asyncio.sleep(0.01)
+
     summary = result["summary"]
     assert summary["success_count"] == 3
     assert summary["failure_count"] == 0
@@ -99,7 +109,7 @@ async def test_run_load_test_stop_on_error(tmp_path: Path, settings: Settings) -
     ai_service = FakeAIConfigService()
     service = JWTTestService(ai_service, settings, tmp_path)
     ai_service.fail_next = True
-    result = await service.run_load_test(
+    started = await service.run_load_test(
         {
             "prompt_id": 1,
             "endpoint_id": 2,
@@ -109,6 +119,14 @@ async def test_run_load_test_stop_on_error(tmp_path: Path, settings: Settings) -
             "stop_on_error": True,
         }
     )
+    run_id = started["summary"]["id"]
+
+    for _ in range(200):
+        result = await service.get_run(run_id)
+        if result.get("is_running") is False:
+            break
+        await asyncio.sleep(0.01)
+
     summary = result["summary"]
     assert summary["failure_count"] >= 1
     assert summary["status"] in {"partial", "failed"}

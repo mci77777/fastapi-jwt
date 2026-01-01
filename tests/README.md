@@ -132,7 +132,7 @@ pytest tests/ --durations=10
 - ✅ `iat` 过于未来的 JWT 拒绝
 - ✅ `nbf` 未来时间的 JWT 拒绝
 - ✅ 无效 Issuer/Subject 拒绝
-- ✅ 统一错误响应格式（status, code, message, trace_id）
+- ✅ 统一错误响应格式（status, code, message, request_id）
 
 ### API 契约测试 (`test_api_contracts.py`)
 
@@ -302,4 +302,3 @@ CI 配置文件：`.github/workflows/test.yml`
 
 - 项目维护者：[GitHub Issues](https://github.com/your-repo/issues)
 - 文档问题：查看 `docs/` 目录
-

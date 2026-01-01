@@ -11,7 +11,7 @@ from typing import Dict, Optional
 
 from prometheus_client import Counter, Gauge, Histogram
 
-from app.core.middleware import get_current_trace_id
+from app.core.middleware import get_current_request_id
 from app.core.rate_limiter import get_rate_limiter
 from app.core.sse_guard import get_sse_guard
 
@@ -174,7 +174,7 @@ class MetricsCollector:
             metrics_report = {
                 "timestamp": time.time(),
                 "uptime_hours": round(uptime_hours, 2),
-                "trace_id": get_current_trace_id(),
+                "request_id": get_current_request_id(),
                 "rate_limiting": {
                     "total_requests": self.rate_limit_metrics.total_requests,
                     "blocked_requests": self.rate_limit_metrics.blocked_requests,
@@ -210,20 +210,20 @@ class MetricsCollector:
             # 如果有异常情况，输出警告
             if self.rate_limit_metrics.block_rate > 20:
                 logger.warning(
-                    "限流阻止率过高 block_rate=%.2f%% trace_id=%s",
+                    "限流阻止率过高 block_rate=%.2f%% request_id=%s",
                     self.rate_limit_metrics.block_rate,
-                    get_current_trace_id(),
+                    get_current_request_id(),
                 )
 
             if self.sse_metrics.rejection_rate > 10:
                 logger.warning(
-                    "SSE拒绝率过高 rejection_rate=%.2f%% trace_id=%s",
+                    "SSE拒绝率过高 rejection_rate=%.2f%% request_id=%s",
                     self.sse_metrics.rejection_rate,
-                    get_current_trace_id(),
+                    get_current_request_id(),
                 )
 
         except Exception as e:
-            logger.error("指标收集失败 error=%s trace_id=%s", str(e), get_current_trace_id())
+            logger.error("指标收集失败 error=%s request_id=%s", str(e), get_current_request_id())
 
     def record_rate_limit_request(self, blocked: bool, block_reason: Optional[str] = None):
         """记录限流请求。"""
@@ -300,7 +300,11 @@ def log_rate_limit_hit(reason: str, user_id: Optional[str], client_ip: str):
     collector.record_rate_limit_request(blocked=True, block_reason=reason)
 
     logger.warning(
-        "限流命中 reason=%s user_id=%s client_ip=%s trace_id=%s", reason, user_id, client_ip, get_current_trace_id()
+        "限流命中 reason=%s user_id=%s client_ip=%s request_id=%s",
+        reason,
+        user_id,
+        client_ip,
+        get_current_request_id(),
     )
 
 
@@ -310,20 +314,20 @@ def log_sse_rejection(reason: str, user_id: str, conversation_id: Optional[str])
     collector.record_sse_attempt(successful=False, rejection_reason=reason)
 
     logger.warning(
-        "SSE连接拒绝 reason=%s user_id=%s conversation_id=%s trace_id=%s",
+        "SSE连接拒绝 reason=%s user_id=%s conversation_id=%s request_id=%s",
         reason,
         user_id,
         conversation_id,
-        get_current_trace_id(),
+        get_current_request_id(),
     )
 
 
 def log_cooldown_triggered(client_ip: str, failure_count: int, cooldown_seconds: int):
     """记录冷静期触发的便捷函数。"""
     logger.warning(
-        "冷静期触发 client_ip=%s failure_count=%d cooldown_seconds=%d trace_id=%s",
+        "冷静期触发 client_ip=%s failure_count=%d cooldown_seconds=%d request_id=%s",
         client_ip,
         failure_count,
         cooldown_seconds,
-        get_current_trace_id(),
+        get_current_request_id(),
     )

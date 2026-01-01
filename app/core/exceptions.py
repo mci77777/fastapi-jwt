@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.core.middleware import get_current_trace_id
+from app.core.middleware import get_current_request_id
 
 logger = logging.getLogger(__name__)
 
@@ -18,21 +20,21 @@ def create_error_response(
     status_code: int,
     code: str,
     message: str,
-    trace_id: Optional[str] = None,
+    request_id: Optional[str] = None,
     headers: Optional[Dict[str, str]] = None,
     hint: Optional[str] = None,
 ) -> JSONResponse:
     """创建统一格式的错误响应。"""
-    from app.core.middleware import get_current_trace_id
+    from app.core.middleware import get_current_request_id
 
-    if trace_id is None:
-        trace_id = get_current_trace_id()
+    if request_id is None:
+        request_id = get_current_request_id() or uuid.uuid4().hex
 
     payload: Dict[str, Any] = {
         "status": status_code,
         "code": code,
         "message": message,
-        "trace_id": trace_id,
+        "request_id": request_id,
     }
     if hint is not None:
         payload["hint"] = hint
@@ -58,14 +60,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     """注册 FastAPI 全局异常处理。"""
 
     @app.exception_handler(RequestValidationError)
-    async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        trace_id = getattr(request.state, "trace_id", None) or get_current_trace_id()
-
-        # 保持 FastAPI 默认结构（detail=list），仅补充 trace_id，便于排障聚合
-        payload: Dict[str, Any] = {
-            "detail": exc.errors(),
-            "trace_id": trace_id,
-        }
+    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", None) or get_current_request_id() or uuid.uuid4().hex
 
         # 额外字段（extra=forbid / additionalProperties=false）常见错误类型：extra_forbidden
         try:
@@ -77,27 +73,33 @@ def register_exception_handlers(app: FastAPI) -> None:
                         extra_fields.append(str(loc[-1]))
             if extra_fields:
                 logger.warning(
-                    "Request validation failed (extra_forbidden) extra_fields=%s trace_id=%s path=%s",
+                    "Request validation failed (extra_forbidden) extra_fields=%s request_id=%s path=%s",
                     ",".join(sorted(set(extra_fields))),
-                    trace_id,
+                    request_id,
                     request.url.path,
                 )
         except Exception:
             # 不阻塞异常响应
             pass
 
-        return JSONResponse(status_code=422, content=payload)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": jsonable_encoder(exc.errors()),
+                "request_id": request_id,
+            },
+        )
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-        trace_id = getattr(request.state, "trace_id", None) or get_current_trace_id()
+        request_id = getattr(request.state, "request_id", None) or get_current_request_id() or uuid.uuid4().hex
         payload = _build_detail(exc.detail, default_code="http_error")
 
         # 确保状态码正确
         payload["status"] = exc.status_code
 
-        # 确保包含trace_id
-        payload["trace_id"] = trace_id
+        # 确保包含 request_id
+        payload["request_id"] = request_id
 
         # 对于401错误，确保不泄露敏感信息
         if exc.status_code == 401:
@@ -107,19 +109,19 @@ def register_exception_handlers(app: FastAPI) -> None:
                     "status": 401,
                     "code": "unauthorized",
                     "message": "Authentication required",
-                    "trace_id": trace_id,
+                    "request_id": request_id,
                 }
 
         return JSONResponse(status_code=exc.status_code, content=payload)
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:  # noqa: D401
-        trace_id = getattr(request.state, "trace_id", None) or get_current_trace_id()
-        logger.exception("Unhandled exception trace_id=%s path=%s", trace_id, request.url.path)
+        request_id = getattr(request.state, "request_id", None) or get_current_request_id() or uuid.uuid4().hex
+        logger.exception("Unhandled exception request_id=%s path=%s", request_id, request.url.path)
         payload = {
             "status": 500,
             "code": "internal_server_error",
             "message": "Internal server error",
-            "trace_id": trace_id,
+            "request_id": request_id,
         }
         return JSONResponse(status_code=500, content=payload)

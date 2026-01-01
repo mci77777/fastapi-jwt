@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from time import perf_counter
 from typing import Any, AsyncIterator, Dict, Optional
 from uuid import uuid4
@@ -17,7 +16,7 @@ from anyio import to_thread
 
 from app.auth import AuthenticatedUser, ProviderError, UserDetails, get_auth_provider
 from app.auth.provider import AuthProvider
-from app.core.middleware import get_current_trace_id
+from app.core.middleware import REQUEST_ID_HEADER_NAME, get_current_request_id
 from app.services.ai_config_service import AIConfigService
 from app.services.model_mapping_service import ModelMappingService
 from app.settings.config import get_settings
@@ -27,11 +26,20 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class AIMessageInput:
-    text: str
+    text: Optional[str] = None
     conversation_id: Optional[str] = None
-    raw_conversation_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     skip_prompt: bool = False
+
+    # OpenAI 兼容透传字段（SSOT：OpenAI 语义）
+    model: Optional[str] = None
+    messages: Optional[list[dict[str, Any]]] = None
+    system_prompt: Optional[str] = None
+    tools: Optional[list[Any]] = None
+    tool_choice: Any = None
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_tokens: Optional[int] = None
 
 
 @dataclass(slots=True)
@@ -62,8 +70,7 @@ class MessageEventBroker:
             await queue.put(event)
 
     async def close(self, message_id: str) -> None:
-        async with self._lock:
-            queue = self._channels.pop(message_id, None)
+        queue = self._channels.get(message_id)
         if queue:
             await queue.put(None)
 
@@ -75,14 +82,15 @@ class AIService:
         self,
         provider: Optional[AuthProvider] = None,
         db_manager: Optional[Any] = None,
+        *,
         ai_config_service: Optional[AIConfigService] = None,
         model_mapping_service: Optional[ModelMappingService] = None,
     ) -> None:
         self._settings = get_settings()
         self._provider = provider or get_auth_provider()
-        self._db = db_manager  # SQLiteManager 实例（用于记录统计）
-        self._ai_config = ai_config_service
-        self._mappings = model_mapping_service
+        self._db = db_manager  # SQLiteManager 实例（用于记录统计/日志）
+        self._ai_config_service = ai_config_service
+        self._model_mapping_service = model_mapping_service
 
     @staticmethod
     def new_message_id() -> str:
@@ -95,75 +103,7 @@ class AIService:
         message: AIMessageInput,
         broker: MessageEventBroker,
     ) -> None:
-        trace_id = get_current_trace_id()
-        request_received_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-        sse_event_sources = {
-            "status": "AIService.run_conversation",
-            "content_delta": "AIService.run_conversation",
-            "completed": "AIService.run_conversation",
-            "error": "AIService.run_conversation",
-        }
-
-        def _sha256_prefix(text: str, n: int = 12) -> str:
-            if not text:
-                return ""
-            return hashlib.sha256(text.encode("utf-8")).hexdigest()[:n]
-
-        broker_events: list[dict[str, Any]] = []
-
-        def _record_event(event: str, data: dict[str, Any]) -> None:
-            safe_data: dict[str, Any] = dict(data or {})
-            if event == "content_delta":
-                delta = str(safe_data.get("delta") or "")
-                safe_data = {
-                    "message_id": safe_data.get("message_id"),
-                    "delta_len": len(delta),
-                    "delta_preview": delta[:20],
-                    "delta_sha256": _sha256_prefix(delta),
-                }
-            elif event == "completed":
-                reply = str(safe_data.get("reply") or "")
-                safe_data = {
-                    "message_id": safe_data.get("message_id"),
-                    "reply_len": len(reply),
-                    "reply_preview": reply[:20],
-                    "reply_sha256": _sha256_prefix(reply),
-                }
-            broker_events.append(
-                {
-                    "ts": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-                    "event": event,
-                    "data": safe_data,
-                }
-            )
-
-        request_payload = {
-            "trace_id": trace_id,
-            "message_id": message_id,
-            "user_id": user.uid,
-            "conversation_id": message.conversation_id,
-            "request_received_at": request_received_at,
-            "request_parsed": {
-                "text_len": len(message.text or ""),
-                "conversation_id_raw": message.raw_conversation_id,
-                "conversation_id_raw_empty": message.raw_conversation_id == "",
-                "conversation_id_normalized": message.conversation_id,
-                "metadata_type": type(message.metadata).__name__,
-                "metadata_keys_count": len(message.metadata) if isinstance(message.metadata, dict) else None,
-                "skip_prompt": bool(message.skip_prompt),
-                "additional_properties_policy": "forbid",
-                "additional_properties_violation": False,
-            },
-        }
-
-        selection_payload: dict[str, Any] = {
-            "provider": None,
-            "endpoint_id": None,
-            "model": None,
-            "prompt": {"prompt_id": None, "name": None, "version": None},
-            "temperature": None,
-            "mapping": {"hit": None, "chain": [], "reason": None},
-        }
+        request_id = get_current_request_id()
 
         await broker.publish(
             message_id,
@@ -172,26 +112,13 @@ class AIService:
                 data={"state": "queued", "message_id": message_id},
             ),
         )
-        _record_event("status", {"state": "queued", "message_id": message_id})
 
-        # 记录 AI 请求统计（Phase 1）
         start_time = perf_counter()
         success = False
         model_used: Optional[str] = None
-        reply_text: str = ""
-        llm_meta: dict[str, Any] = {
-            "called": False,
-            "reason_code": "not_started",
-            "reason_detail": None,
-            "request_id": None,
-            "started_at": None,
-            "ended_at": None,
-            "duration_ms": None,
-            "upstream_status": None,
-            "upstream_error": None,
-            "usage": None,
-        }
-        supabase_summary: Optional[dict[str, Any]] = None
+        request_payload: Optional[str] = None
+        response_payload: Optional[str] = None
+        upstream_request_id: Optional[str] = None
         error_message: Optional[str] = None
 
         try:
@@ -200,43 +127,14 @@ class AIService:
                 user.uid,
             )
         except ProviderError as exc:
-            error_message = str(exc)
-            logger.error("获取用户信息失败 uid=%s error=%s", user.uid, exc)
+            logger.error("获取用户信息失败 uid=%s request_id=%s error=%s", user.uid, request_id, exc)
             await broker.publish(
                 message_id,
                 MessageEvent(
                     event="error",
-                    data={"message_id": message_id, "error": str(exc)},
+                    data={"message_id": message_id, "error": str(exc), "request_id": request_id},
                 ),
             )
-            _record_event("error", {"message_id": message_id, "error": str(exc)})
-            await broker.close(message_id)
-            # 记录失败的请求（用户信息获取失败）
-            latency_ms = (perf_counter() - start_time) * 1000
-            await self._record_ai_request(user.uid, None, None, latency_ms, success=False)
-
-            if self._db and hasattr(self._db, "log_conversation"):
-                response_payload = {
-                    "trace_id": trace_id,
-                    "message_id": message_id,
-                    "status": "error",
-                    "selection": selection_payload,
-                    "llm_called": False,
-                    "llm": {**llm_meta, "called": False, "reason_code": "auth_provider_user_lookup_failed"},
-                    "error": {"code": "provider_error", "message": error_message},
-                    "broker_events": broker_events,
-                    "sse_event_sources": sse_event_sources,
-                }
-                await self._db.log_conversation(
-                    user_id=user.uid,
-                    message_id=message_id,
-                    request_payload=json.dumps(request_payload, ensure_ascii=False),
-                    response_payload=json.dumps(response_payload, ensure_ascii=False),
-                    model_used=None,
-                    latency_ms=latency_ms,
-                    status="error",
-                    error_message=error_message,
-                )
             return
 
         await broker.publish(
@@ -246,24 +144,15 @@ class AIService:
                 data={"state": "working", "message_id": message_id},
             ),
         )
-        _record_event("status", {"state": "working", "message_id": message_id})
 
         try:
-            reply_text, llm_meta, selection_payload = await self._generate_reply_with_meta(message, user, user_details)
-            model_used = selection_payload.get("model") if isinstance(selection_payload, dict) else None
-
-            if not reply_text:
-                reason = llm_meta.get("reason_code") if isinstance(llm_meta, dict) else "unknown"
-                error_message = str(llm_meta.get("reason_detail") or reason)
-                await broker.publish(
-                    message_id,
-                    MessageEvent(
-                        event="error",
-                        data={"message_id": message_id, "error": error_message, "reason": reason},
-                    ),
-                )
-                _record_event("error", {"message_id": message_id, "error": error_message})
-                return
+            (
+                reply_text,
+                model_used,
+                request_payload,
+                response_payload,
+                upstream_request_id,
+            ) = await self._generate_reply(message, user, user_details)
 
             async for chunk in self._stream_chunks(reply_text):
                 await broker.publish(
@@ -273,23 +162,25 @@ class AIService:
                         data={"message_id": message_id, "delta": chunk},
                     ),
                 )
-                _record_event("content_delta", {"message_id": message_id, "delta": chunk})
 
-            record = {
-                "message_id": message_id,
-                "conversation_id": message.conversation_id,
-                "user_id": user.uid,
-                "metadata": message.metadata,
-                "user_type": user.user_type,
-                "title": (message.text or "").strip()[:80] or None,
-                "messages": [
-                    {"role": "user", "content": message.text, "metadata": message.metadata},
-                    {"role": "assistant", "content": reply_text, "metadata": {}},
-                ],
-            }
-            await to_thread.run_sync(self._provider.sync_chat_record, record)
-            if isinstance(record.get("_sync_result"), dict):
-                supabase_summary = record.get("_sync_result")
+            save_history = bool((message.metadata or {}).get("save_history", True))
+            if save_history:
+                metadata = dict(message.metadata or {})
+                if upstream_request_id:
+                    metadata["upstream_request_id"] = upstream_request_id
+
+                record = {
+                    "message_id": message_id,
+                    "conversation_id": message.conversation_id,
+                    "user_id": user.uid,
+                    "user_message": message.text or "",
+                    "ai_reply": reply_text,
+                    "metadata": metadata,
+                }
+                try:
+                    await to_thread.run_sync(self._provider.sync_chat_record, record)
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("写入对话记录失败 message_id=%s request_id=%s error=%s", message_id, request_id, exc)
 
             await broker.publish(
                 message_id,
@@ -298,260 +189,141 @@ class AIService:
                     data={"message_id": message_id, "reply": reply_text},
                 ),
             )
-            _record_event("completed", {"message_id": message_id, "reply": reply_text})
             success = True
         except Exception as exc:  # pragma: no cover - 运行时防护
-            error_message = str(exc)
-            logger.exception("AI 会话处理失败 message_id=%s", message_id)
+            error_message = str(exc)[:200]
+            logger.exception("AI 会话处理失败 message_id=%s request_id=%s", message_id, request_id)
             await broker.publish(
                 message_id,
                 MessageEvent(
                     event="error",
-                    data={
-                        "message_id": message_id,
-                        "error": str(exc),
-                        "reason": llm_meta.get("reason_code") if isinstance(llm_meta, dict) else None,
-                    },
+                    data={"message_id": message_id, "error": str(exc), "request_id": request_id},
                 ),
             )
-            _record_event("error", {"message_id": message_id, "error": error_message})
         finally:
-            # 记录 AI 请求统计
             latency_ms = (perf_counter() - start_time) * 1000
-            endpoint_id = selection_payload.get("endpoint_id") if isinstance(selection_payload, dict) else None
-            await self._record_ai_request(user.uid, endpoint_id, model_used, latency_ms, success)
+            await self._record_ai_request(user.uid, None, model_used, latency_ms, success)
 
-            if self._db and hasattr(self._db, "log_conversation"):
+            # Prometheus：会话延迟与成功率（按 model/user_type/status 维度）
+            try:
+                from app.core.metrics import ai_conversation_latency_seconds
+
+                model_label = (
+                    model_used
+                    or (message.model.strip() if isinstance(message.model, str) and message.model.strip() else None)
+                    or (self._settings.ai_model.strip() if isinstance(self._settings.ai_model, str) and self._settings.ai_model.strip() else None)
+                    or "unknown"
+                )
+                ai_conversation_latency_seconds.labels(
+                    model=model_label,
+                    user_type=user.user_type,
+                    status="success" if success else "error",
+                ).observe(latency_ms / 1000.0)
+            except Exception:  # pragma: no cover
+                pass
+
+            if getattr(self._db, "log_conversation", None):
                 try:
-                    completed_sha = _sha256_prefix(reply_text or "")
-                    supabase_sha = None
-                    if isinstance(supabase_summary, dict):
-                        msgs = supabase_summary.get("messages")
-                        if isinstance(msgs, dict):
-                            supabase_sha = msgs.get("assistant_sha256")
-                    response_payload = {
-                        "trace_id": trace_id,
-                        "message_id": message_id,
-                        "conversation_id": message.conversation_id,
-                        "user_id": user.uid,
-                        "user_type": user.user_type,
-                        "status": "success" if success else "error",
-                        "selection": selection_payload,
-                        "llm_called": bool(llm_meta.get("called")) if isinstance(llm_meta, dict) else False,
-                        "llm": llm_meta,
-                        "broker_events": broker_events,
-                        "completed": (
-                            {
-                                "reply_len": len(reply_text or ""),
-                                "reply_preview": (reply_text or "")[:20],
-                                "reply_sha256": completed_sha,
-                                "source": sse_event_sources["completed"],
-                            }
-                            if success
-                            else None
-                        ),
-                        "supabase": supabase_summary,
-                        "sse_event_sources": sse_event_sources,
-                        "ssot": {
-                            "assistant_reply_matches_completed": (
-                                True if not supabase_sha else str(supabase_sha) == str(completed_sha)
-                            ),
-                        },
-                    }
-                    if error_message:
-                        response_payload["error"] = {
-                            "message": error_message,
-                            "source": sse_event_sources["error"],
-                            "reason_code": llm_meta.get("reason_code") if isinstance(llm_meta, dict) else None,
-                        }
                     await self._db.log_conversation(
                         user_id=user.uid,
                         message_id=message_id,
-                        request_payload=json.dumps(request_payload, ensure_ascii=False),
-                        response_payload=json.dumps(response_payload, ensure_ascii=False),
+                        request_payload=request_payload,
+                        response_payload=response_payload,
                         model_used=model_used,
                         latency_ms=latency_ms,
                         status="success" if success else "error",
                         error_message=error_message,
                     )
-                except Exception as log_exc:  # pragma: no cover - 不阻塞主流程
-                    logger.warning("Failed to write conversation_logs: %s", log_exc)
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("写入对话日志失败 message_id=%s request_id=%s error=%s", message_id, request_id, exc)
+
             await broker.close(message_id)
 
-    async def _generate_reply_with_meta(
+    async def _generate_reply(
         self,
         message: AIMessageInput,
         user: AuthenticatedUser,
         user_details: UserDetails,
-    ) -> tuple[str, dict[str, Any], dict[str, Any]]:
-        if not message.text.strip():
-            raise ValueError("Message text can not be empty")
+    ) -> tuple[str, Optional[str], Optional[str], Optional[str], Optional[str]]:
+        if self._ai_config_service is None:
+            reply_text = await self._call_openai_completion_settings(message)
+            model_used = self._settings.ai_model or "gpt-4o-mini"
+            request_payload = json.dumps({"model": model_used, "text": message.text}, ensure_ascii=False)
+            return reply_text, model_used, request_payload, None, None
 
-        if self._ai_config is None or self._mappings is None:
-            return (
-                "",
-                {
-                    "called": False,
-                    "reason_code": "ai_config_not_initialised",
-                    "reason_detail": "AI config services not initialised",
-                    "request_id": None,
-                    "started_at": None,
-                    "ended_at": None,
-                    "duration_ms": None,
-                    "upstream_status": None,
-                    "upstream_error": None,
-                    "usage": None,
-                },
-                {
-                    "provider": None,
-                    "endpoint_id": None,
-                    "model": None,
-                    "prompt": {"prompt_id": None, "name": None, "version": None},
-                    "temperature": None,
-                    "mapping": {"hit": None, "chain": [], "reason": "ai_config_not_initialised"},
-                },
-            )
+        openai_req = await self._build_openai_request(message, user_details=user_details)
+        selected_endpoint, selected_model, provider_name = await self._select_endpoint_and_model(openai_req)
 
-        prompt = None
-        prompt_id = None
-        prompt_name = None
-        prompt_version = None
-        if not message.skip_prompt:
-            prompts, _ = await self._ai_config.list_prompts(only_active=True, page=1, page_size=1)
-            if prompts:
-                prompt = prompts[0]
-                prompt_id = prompt.get("id")
-                prompt_name = prompt.get("name")
-                prompt_version = prompt.get("version")
-
-        tenant_id = None
-        if isinstance(message.metadata, dict):
-            tenant_id = message.metadata.get("tenant_id") or message.metadata.get("tenant")
-
-        mapping_result = await self._mappings.resolve_for_message(
-            user_id=user.uid,
-            tenant_id=str(tenant_id) if tenant_id else None,
-            prompt_id=int(prompt_id) if prompt_id is not None else None,
-        )
-
-        model = mapping_result.get("model")
-        temperature = mapping_result.get("temperature")
-
-        selection_payload: dict[str, Any] = {
-            "provider": None,
-            "endpoint_id": None,
-            "model": model,
-            "prompt": {"prompt_id": prompt_id, "name": prompt_name, "version": prompt_version},
-            "temperature": temperature,
-            "mapping": {
-                "hit": mapping_result.get("hit"),
-                "chain": mapping_result.get("chain") or [],
-                "reason": mapping_result.get("reason"),
-            },
-            "model_source": "mapping",
-        }
-
-        if not isinstance(model, str) or not model.strip():
-            # SSOT fallback：若 mapping 未命中，则尝试使用“默认 endpoint 的配置 model / model_list”作为模型来源
-            endpoints, _ = await self._ai_config.list_endpoints(only_active=True, page=1, page_size=100)
-            candidates = [ep for ep in endpoints if ep.get("has_api_key")]
-            candidates.sort(key=lambda ep: (not bool(ep.get("is_default")), -(ep.get("id") or 0)))
-            default_ep = candidates[0] if candidates else None
-
-            fallback_model = None
-            if isinstance(default_ep, dict):
-                configured_model = default_ep.get("model")
-                if isinstance(configured_model, str) and configured_model.strip():
-                    fallback_model = configured_model.strip()
-                else:
-                    model_list = default_ep.get("model_list") or []
-                    if isinstance(model_list, list) and model_list:
-                        fallback_model = str(model_list[0])
-
-            if isinstance(fallback_model, str) and fallback_model.strip():
-                selection_payload["model"] = fallback_model.strip()
-                selection_payload["model_source"] = "endpoint_default"
-                selection_payload["mapping"]["fallback_used"] = True
-                selection_payload["mapping"]["fallback_reason"] = mapping_result.get("reason")
-                model = fallback_model.strip()
-            else:
-                reason_code = str(mapping_result.get("reason") or "model_selection_empty")
-                return (
-                    "",
-                    {
-                        "called": False,
-                        "reason_code": reason_code,
-                        "reason_detail": "model_selection_empty",
-                        "request_id": None,
-                        "started_at": None,
-                        "ended_at": None,
-                        "duration_ms": None,
-                        "upstream_status": None,
-                        "upstream_error": None,
-                        "usage": None,
-                    },
-                    selection_payload,
-                )
-
-        endpoint, endpoint_reason = await self._select_endpoint_for_model(model.strip())
-        if endpoint is None:
-            reason_code = f"endpoint_selection_failed:{endpoint_reason}"
-            return (
-                "",
-                {
-                    "called": False,
-                    "reason_code": reason_code,
-                    "reason_detail": endpoint_reason,
-                    "request_id": None,
-                    "started_at": None,
-                    "ended_at": None,
-                    "duration_ms": None,
-                    "upstream_status": None,
-                    "upstream_error": None,
-                    "usage": None,
-                },
-                selection_payload,
-            )
-
-        selection_payload["endpoint_id"] = endpoint.get("id")
-        selection_payload["provider"] = self._infer_provider_name(endpoint)
-
-        api_key = await self._ai_config.get_endpoint_api_key(int(endpoint["id"]))
+        api_key = await self._get_endpoint_api_key(selected_endpoint)
         if not api_key:
-            return (
-                "",
-                {
-                    "called": False,
-                    "reason_code": "endpoint_api_key_missing",
-                    "reason_detail": "endpoint_api_key_missing",
-                    "request_id": None,
-                    "started_at": None,
-                    "ended_at": None,
-                    "duration_ms": None,
-                    "upstream_status": None,
-                    "upstream_error": None,
-                    "usage": None,
-                },
-                selection_payload,
-            )
+            raise ProviderError("endpoint_missing_api_key")
 
-        system_prompt = None
-        if prompt and isinstance(prompt.get("content"), str) and not message.skip_prompt:
-            system_prompt = prompt.get("content")
-
-        reply, llm_meta = await self._call_chat_completions_with_meta(
-            endpoint=endpoint,
-            api_key=api_key,
-            model=model.strip(),
-            user_text=message.text,
-            system_prompt=system_prompt,
-            temperature=temperature,
+        request_payload = json.dumps(
+            {
+                "conversation_id": message.conversation_id,
+                "text": message.text,
+                "model": openai_req.get("model"),
+                "messages": openai_req.get("messages"),
+            },
+            ensure_ascii=False,
         )
-        if not reply:
-            # 上游失败：不允许走回显，直接 error（由调用方发送 event:error）
-            return "", llm_meta, selection_payload
 
-        return reply, llm_meta, selection_payload
+        if provider_name == "claude":
+            reply_text, response_payload, upstream_request_id = await self._call_anthropic_messages(
+                selected_endpoint,
+                api_key,
+                openai_req,
+            )
+            return reply_text, selected_model, request_payload, response_payload, upstream_request_id
+
+        reply_text, response_payload, upstream_request_id = await self._call_openai_chat_completions(
+            selected_endpoint,
+            api_key,
+            openai_req,
+        )
+        return reply_text, selected_model, request_payload, response_payload, upstream_request_id
+
+    async def _call_openai_completion_settings(self, message: AIMessageInput) -> str:
+        text = (message.text or "").strip()
+        if not text:
+            raise ValueError("text_or_messages_required")
+
+        api_key = getattr(self._settings, "ai_api_key", None)
+        if not api_key:
+            raise ProviderError("endpoint_missing_api_key")
+
+        raw_base_url = self._settings.ai_api_base_url or "https://api.openai.com"
+        base_url = str(raw_base_url).rstrip("/")
+        endpoint = f"{base_url}/v1/chat/completions"
+
+        payload = {
+            "model": self._settings.ai_model or "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": "You are GymBro's AI assistant."},
+                {"role": "user", "content": text},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        request_id = get_current_request_id()
+        if request_id:
+            headers[REQUEST_ID_HEADER_NAME] = request_id
+
+        async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+            response = await client.post(endpoint, json=payload, headers=headers)
+            response.raise_for_status()
+
+        data = response.json()
+        choices = data.get("choices") or []
+        if not choices:
+            raise ProviderError("upstream_empty_choices")
+
+        content = choices[0].get("message", {}).get("content", "")
+        if not content:
+            raise ProviderError("upstream_empty_content")
+        return content.strip()
 
     async def _stream_chunks(self, text: str, chunk_size: int = 120) -> AsyncIterator[str]:
         if not text:
@@ -561,199 +333,364 @@ class AIService:
             yield text[index : index + chunk_size]
             await asyncio.sleep(0)
 
-    async def _select_endpoint_for_model(self, model: str) -> tuple[dict[str, Any] | None, str | None]:
-        if self._ai_config is None:
-            return None, "ai_config_not_initialised"
-        endpoints, _ = await self._ai_config.list_endpoints(only_active=True, page=1, page_size=100)
-        if not endpoints:
-            return None, "no_active_endpoint"
+    async def _build_openai_request(self, message: AIMessageInput, *, user_details: UserDetails) -> dict[str, Any]:
+        model = message.model or (message.metadata or {}).get("model") or self._settings.ai_model or "gpt-4o-mini"
+        system_prompt = message.system_prompt or (message.metadata or {}).get("system_prompt")
+        tools = message.tools if message.tools is not None else (message.metadata or {}).get("tools")
 
-        def _supports(ep: dict[str, Any]) -> bool:
-            model_list = ep.get("model_list") or []
-            if isinstance(model_list, list) and model_list:
-                return model in model_list
-            configured_model = ep.get("model")
-            if isinstance(configured_model, str) and configured_model.strip():
-                return configured_model.strip() == model
-            return True
+        tool_choice = message.tool_choice
+        if tool_choice is None:
+            tool_choice = (message.metadata or {}).get("tool_choice")
+        if tool_choice is None:
+            tool_choice = self._map_legacy_function_call_to_tool_choice((message.metadata or {}).get("function_call"))
 
-        candidates = [ep for ep in endpoints if ep.get("has_api_key") and _supports(ep)]
-        if not candidates:
-            with_key = [ep for ep in endpoints if ep.get("has_api_key")]
-            if not with_key:
-                return None, "endpoint_missing_api_key"
-            return None, "model_not_activated"
+        temperature = message.temperature if message.temperature is not None else (message.metadata or {}).get("temperature")
+        top_p = message.top_p if message.top_p is not None else (message.metadata or {}).get("top_p")
+        max_tokens = message.max_tokens if message.max_tokens is not None else (message.metadata or {}).get("max_tokens")
 
-        candidates.sort(key=lambda ep: (not bool(ep.get("is_default")), -(ep.get("id") or 0)))
-        return candidates[0], None
+        messages = message.messages
+        if not messages:
+            text = (message.text or "").strip()
+            if not text:
+                raise ValueError("text_or_messages_required")
+            messages = [{"role": "user", "content": text}]
 
-    def _infer_provider_name(self, endpoint: dict[str, Any]) -> str:
-        base_url = str(endpoint.get("base_url") or "").lower()
-        name = str(endpoint.get("name") or "").lower()
-        if "openai" in base_url or "openai" in name:
-            return "openai"
-        if "azure" in base_url or "azure" in name:
-            return "azure_openai"
-        return "openai_compat"
+        final_messages: list[dict[str, Any]] = []
+        explicit_system_prompt = isinstance(system_prompt, str) and bool(system_prompt.strip())
+        if explicit_system_prompt:
+            final_messages.append({"role": "system", "content": system_prompt.strip()})
+            final_messages.extend([item for item in messages if isinstance(item, dict) and item.get("role") != "system"])
+        else:
+            final_messages.extend(messages)
+            if not message.skip_prompt and not any((item or {}).get("role") == "system" for item in messages):
+                default_prompt = await self._get_active_prompt_text() or "You are GymBro's AI assistant."
+                if default_prompt:
+                    final_messages.insert(0, {"role": "system", "content": default_prompt})
 
-    async def _call_chat_completions_with_meta(
-        self,
-        *,
-        endpoint: dict[str, Any],
-        api_key: str,
-        model: str,
-        user_text: str,
-        system_prompt: str | None,
-        temperature: float | None,
-    ) -> tuple[str, dict[str, Any]]:
-        resolved = endpoint.get("resolved_endpoints") if isinstance(endpoint.get("resolved_endpoints"), dict) else {}
-        url = resolved.get("chat_completions") or (str(endpoint.get("base_url") or "").rstrip("/") + "/v1/chat/completions")
+        resolved_tools = await self._resolve_tools(tools)
 
-        messages: list[dict[str, Any]] = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": user_text})
-
-        payload: dict[str, Any] = {"model": model, "messages": messages}
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": final_messages,
+        }
+        if resolved_tools is not None:
+            payload["tools"] = resolved_tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
         if temperature is not None:
             payload["temperature"] = temperature
+        if top_p is not None:
+            payload["top_p"] = top_p
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
 
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        timeout = float(endpoint.get("timeout") or self._settings.http_timeout_seconds)
+        return payload
 
-        started_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-        call_start = perf_counter()
+    def _map_legacy_function_call_to_tool_choice(self, value: Any) -> Any:
+        if value in (None, ""):
+            return None
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in ("auto", "none", "required"):
+                return lowered
+            return value
+        if isinstance(value, dict):
+            name = value.get("name")
+            if isinstance(name, str) and name.strip():
+                return {"type": "function", "function": {"name": name.strip()}}
+        return value
+
+    async def _get_active_prompt_text(self) -> Optional[str]:
+        if self._ai_config_service is None:
+            return None
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
-        except httpx.TimeoutException as exc:
-            ended_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-            duration_ms = (perf_counter() - call_start) * 1000
-            return (
-                "",
-                {
-                    "called": True,
-                    "reason_code": "upstream_timeout",
-                    "reason_detail": str(exc),
-                    "provider": self._infer_provider_name(endpoint),
-                    "endpoint_id": endpoint.get("id"),
-                    "request_id": None,
-                    "started_at": started_at,
-                    "ended_at": ended_at,
-                    "duration_ms": round(duration_ms, 2),
-                    "upstream_status": None,
-                    "upstream_error": "timeout",
-                    "usage": None,
-                },
-            )
-        except httpx.HTTPStatusError as exc:
-            ended_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-            duration_ms = (perf_counter() - call_start) * 1000
-            status_code = exc.response.status_code
-            request_id = exc.response.headers.get("x-request-id") or exc.response.headers.get("x-request_id")
-            return (
-                "",
-                {
-                    "called": True,
-                    "reason_code": f"upstream_http_{status_code}",
-                    "reason_detail": f"http_{status_code}",
-                    "provider": self._infer_provider_name(endpoint),
-                    "endpoint_id": endpoint.get("id"),
-                    "request_id": request_id,
-                    "started_at": started_at,
-                    "ended_at": ended_at,
-                    "duration_ms": round(duration_ms, 2),
-                    "upstream_status": status_code,
-                    "upstream_error": "http_status",
-                    "usage": None,
-                },
-            )
-        except httpx.RequestError as exc:
-            ended_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-            duration_ms = (perf_counter() - call_start) * 1000
-            return (
-                "",
-                {
-                    "called": True,
-                    "reason_code": "upstream_network_error",
-                    "reason_detail": str(exc),
-                    "provider": self._infer_provider_name(endpoint),
-                    "endpoint_id": endpoint.get("id"),
-                    "request_id": None,
-                    "started_at": started_at,
-                    "ended_at": ended_at,
-                    "duration_ms": round(duration_ms, 2),
-                    "upstream_status": None,
-                    "upstream_error": "network_error",
-                    "usage": None,
-                },
-            )
+            prompts, _ = await self._ai_config_service.list_prompts(only_active=True, page=1, page_size=1)
+        except Exception:
+            return None
+        if not prompts:
+            return None
+        content = prompts[0].get("content")
+        return str(content) if content else None
 
-        ended_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-        duration_ms = (perf_counter() - call_start) * 1000
+    async def _resolve_tools(self, tools_value: Any) -> Optional[list[Any]]:
+        if tools_value is None:
+            return None
+        if isinstance(tools_value, list):
+            if not tools_value:
+                return []
+            if all(isinstance(item, str) for item in tools_value):
+                return await self._filter_active_prompt_tools_by_name([str(item) for item in tools_value])
+            return tools_value
+        return None
+
+    async def _filter_active_prompt_tools_by_name(self, names: list[str]) -> list[Any]:
+        wanted = {name.strip() for name in names if name and name.strip()}
+        if not wanted or self._ai_config_service is None:
+            return []
+        prompts, _ = await self._ai_config_service.list_prompts(only_active=True, page=1, page_size=1)
+        if not prompts:
+            return []
+        tools_json = prompts[0].get("tools_json")
+        candidates: list[Any] = []
+        if isinstance(tools_json, dict):
+            raw = tools_json.get("tools")
+            if isinstance(raw, list):
+                candidates = raw
+        elif isinstance(tools_json, list):
+            candidates = tools_json
+
+        filtered: list[Any] = []
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            function = item.get("function") if isinstance(item.get("function"), dict) else None
+            name = (function or {}).get("name")
+            if isinstance(name, str) and name in wanted:
+                filtered.append(item)
+        return filtered
+
+    async def _select_endpoint_and_model(
+        self,
+        openai_req: dict[str, Any],
+    ) -> tuple[dict[str, Any], Optional[str], str]:
+        if self._ai_config_service is None:
+            raise ProviderError("ai_config_service_not_initialized")
+
+        raw_model = openai_req.get("model")
+        resolved_model = raw_model
+        if isinstance(raw_model, str) and raw_model.strip():
+            resolved_model = await self._resolve_mapped_model_name(raw_model.strip())
+
+        endpoints, _ = await self._ai_config_service.list_endpoints(only_active=True, page=1, page_size=200)
+        candidates = [item for item in endpoints if item.get("is_active") and item.get("has_api_key")]
+        if not candidates:
+            raise ProviderError("no_active_ai_endpoint")
+
+        default_endpoint = next((item for item in candidates if item.get("is_default")), candidates[0])
+        selected_endpoint = default_endpoint
+
+        if isinstance(resolved_model, str) and resolved_model.strip():
+            by_list = next(
+                (
+                    item
+                    for item in candidates
+                    if isinstance(item.get("model_list"), list) and resolved_model in (item.get("model_list") or [])
+                ),
+                None,
+            )
+            selected_endpoint = by_list or selected_endpoint
+
+        provider_name = self._infer_provider(selected_endpoint)
+
+        # 写回最终 model（SSOT：上游 OpenAI 语义）
+        if resolved_model and isinstance(resolved_model, str):
+            openai_req["model"] = resolved_model
+        else:
+            fallback_model = selected_endpoint.get("model")
+            if not fallback_model:
+                model_list = selected_endpoint.get("model_list") or []
+                fallback_model = model_list[0] if model_list else None
+            if fallback_model:
+                openai_req["model"] = fallback_model
+
+        return selected_endpoint, openai_req.get("model"), provider_name
+
+    async def _resolve_mapped_model_name(self, name: str) -> str:
+        if self._model_mapping_service is None:
+            return name
+        try:
+            mappings = await self._model_mapping_service.list_mappings()
+        except Exception:
+            return name
+        for mapping in mappings:
+            if not mapping.get("is_active", True):
+                continue
+            if mapping.get("name") == name or mapping.get("scope_key") == name:
+                default_model = mapping.get("default_model")
+                if isinstance(default_model, str) and default_model.strip():
+                    return default_model.strip()
+                candidates = mapping.get("candidates") or []
+                if isinstance(candidates, list) and candidates and isinstance(candidates[0], str):
+                    return candidates[0]
+        return name
+
+    def _infer_provider(self, endpoint: dict[str, Any]) -> str:
+        base_url = str(endpoint.get("base_url") or "").lower()
+        name = str(endpoint.get("name") or "").lower()
+        if "anthropic" in base_url or "claude" in name or "anthropic" in name:
+            return "claude"
+        return "openai"
+
+    async def _get_endpoint_api_key(self, endpoint: dict[str, Any]) -> Optional[str]:
+        if self._ai_config_service is None:
+            return None
+        endpoint_id = endpoint.get("id")
+        if endpoint_id is None:
+            return None
+        try:
+            return await self._ai_config_service.get_endpoint_api_key(int(endpoint_id))
+        except Exception:
+            return None
+
+    async def _call_openai_chat_completions(
+        self,
+        endpoint: dict[str, Any],
+        api_key: str,
+        openai_req: dict[str, Any],
+    ) -> tuple[str, str, Optional[str]]:
+        resolved = endpoint.get("resolved_endpoints") or {}
+        chat_url = resolved.get("chat_completions") or f"{str(endpoint.get('base_url') or '').rstrip('/')}/v1/chat/completions"
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        request_id = get_current_request_id()
+        if request_id:
+            headers[REQUEST_ID_HEADER_NAME] = request_id
+
+        # OpenAI 兼容 SSOT：仅转发 OpenAI 语义字段
+        payload: dict[str, Any] = {}
+        for key in ("model", "messages", "tools", "tool_choice", "temperature", "top_p", "max_tokens"):
+            if key in openai_req and openai_req[key] is not None:
+                payload[key] = openai_req[key]
+
+        async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+            response = await client.post(chat_url, json=payload, headers=headers)
+            response.raise_for_status()
+
         data = response.json()
-
         choices = data.get("choices") or []
         if not choices:
-            request_id = response.headers.get("x-request-id") or response.headers.get("x-request_id")
-            return (
-                "",
-                {
-                    "called": True,
-                    "reason_code": "upstream_empty_choices",
-                    "reason_detail": "empty_choices",
-                    "provider": self._infer_provider_name(endpoint),
-                    "endpoint_id": endpoint.get("id"),
-                    "request_id": request_id,
-                    "started_at": started_at,
-                    "ended_at": ended_at,
-                    "duration_ms": round(duration_ms, 2),
-                    "upstream_status": response.status_code,
-                    "upstream_error": "empty_choices",
-                    "usage": None,
-                },
-            )
+            raise ProviderError("upstream_empty_choices")
 
         content = choices[0].get("message", {}).get("content", "")
         if not content:
-            request_id = response.headers.get("x-request-id") or response.headers.get("x-request_id")
-            return (
-                "",
-                {
-                    "called": True,
-                    "reason_code": "upstream_empty_content",
-                    "reason_detail": "empty_content",
-                    "provider": self._infer_provider_name(endpoint),
-                    "endpoint_id": endpoint.get("id"),
-                    "request_id": request_id,
-                    "started_at": started_at,
-                    "ended_at": ended_at,
-                    "duration_ms": round(duration_ms, 2),
-                    "upstream_status": response.status_code,
-                    "upstream_error": "empty_content",
-                    "usage": None,
-                },
-            )
+            raise ProviderError("upstream_empty_content")
 
-        usage = data.get("usage") if isinstance(data, dict) else None
-        request_id = response.headers.get("x-request-id") or response.headers.get("x-request_id")
-        meta = {
-            "called": True,
-            "reason_code": None,
-            "reason_detail": None,
-            "provider": self._infer_provider_name(endpoint),
-            "endpoint_id": endpoint.get("id"),
-            "request_id": request_id,
-            "started_at": started_at,
-            "ended_at": ended_at,
-            "duration_ms": round(duration_ms, 2),
-            "upstream_status": response.status_code,
-            "upstream_error": None,
-            "usage": usage if isinstance(usage, dict) else None,
-            "reply_chars": len(content.strip()),
+        upstream_request_id = response.headers.get("x-request-id") or response.headers.get("request-id")
+        return content.strip(), json.dumps(data, ensure_ascii=False), upstream_request_id
+
+    async def _call_anthropic_messages(
+        self,
+        endpoint: dict[str, Any],
+        api_key: str,
+        openai_req: dict[str, Any],
+    ) -> tuple[str, str, Optional[str]]:
+        base_url = str(endpoint.get("base_url") or "").rstrip("/")
+        messages_url = f"{base_url}/v1/messages"
+
+        anthropic_payload = self._convert_openai_to_anthropic(openai_req)
+
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
         }
-        return content.strip(), meta
+        request_id = get_current_request_id()
+        if request_id:
+            headers[REQUEST_ID_HEADER_NAME] = request_id
+
+        async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+            response = await client.post(messages_url, json=anthropic_payload, headers=headers)
+            response.raise_for_status()
+
+        data = response.json()
+        content_blocks = data.get("content") if isinstance(data, dict) else None
+        if not isinstance(content_blocks, list):
+            raise ProviderError("upstream_invalid_response")
+        text = "".join(block.get("text", "") for block in content_blocks if isinstance(block, dict) and block.get("type") == "text")
+        if not text:
+            raise ProviderError("upstream_empty_content")
+
+        upstream_request_id = response.headers.get("request-id") or response.headers.get("x-request-id")
+        return text.strip(), json.dumps(data, ensure_ascii=False), upstream_request_id
+
+    def _convert_openai_to_anthropic(self, openai_req: dict[str, Any]) -> dict[str, Any]:
+        raw_messages = openai_req.get("messages") or []
+        system_parts: list[str] = []
+        messages: list[dict[str, Any]] = []
+        for item in raw_messages:
+            if not isinstance(item, dict):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if role == "system":
+                if isinstance(content, str) and content.strip():
+                    system_parts.append(content.strip())
+                continue
+            if role in ("user", "assistant"):
+                messages.append({"role": role, "content": content})
+
+        max_tokens = openai_req.get("max_tokens")
+        if not isinstance(max_tokens, int) or max_tokens <= 0:
+            max_tokens = 1024
+
+        payload: dict[str, Any] = {
+            "model": openai_req.get("model"),
+            "max_tokens": max_tokens,
+            "messages": messages,
+        }
+        if system_parts:
+            payload["system"] = "\n\n".join(system_parts)
+        if openai_req.get("temperature") is not None:
+            payload["temperature"] = openai_req["temperature"]
+        if openai_req.get("top_p") is not None:
+            payload["top_p"] = openai_req["top_p"]
+
+        raw_tools = openai_req.get("tools")
+        if isinstance(raw_tools, list):
+            payload["tools"] = self._map_openai_tools_to_anthropic(raw_tools)
+
+        tool_choice = openai_req.get("tool_choice")
+        mapped_tool_choice = self._map_openai_tool_choice_to_anthropic(tool_choice)
+        if mapped_tool_choice is not None:
+            payload["tool_choice"] = mapped_tool_choice
+
+        return payload
+
+    def _map_openai_tools_to_anthropic(self, tools: list[Any]) -> list[dict[str, Any]]:
+        mapped: list[dict[str, Any]] = []
+        for tool in tools:
+            if not isinstance(tool, dict):
+                continue
+            if tool.get("type") != "function":
+                continue
+            function = tool.get("function")
+            if not isinstance(function, dict):
+                continue
+            name = function.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            mapped.append(
+                {
+                    "name": name,
+                    "description": function.get("description") or "",
+                    "input_schema": function.get("parameters") or {"type": "object", "properties": {}},
+                }
+            )
+        return mapped
+
+    def _map_openai_tool_choice_to_anthropic(self, tool_choice: Any) -> Optional[dict[str, Any]]:
+        if tool_choice is None:
+            return None
+        if isinstance(tool_choice, str):
+            lowered = tool_choice.strip().lower()
+            if lowered == "auto":
+                return {"type": "auto"}
+            if lowered == "none":
+                return {"type": "none"}
+            if lowered == "required":
+                return {"type": "any"}
+            return None
+        if isinstance(tool_choice, dict):
+            if tool_choice.get("type") == "function":
+                function = tool_choice.get("function")
+                if isinstance(function, dict) and isinstance(function.get("name"), str):
+                    return {"type": "tool", "name": function["name"]}
+            if tool_choice.get("type") in ("auto", "any", "none", "tool"):
+                return tool_choice
+        return None
 
     async def _record_ai_request(
         self,
@@ -763,22 +700,12 @@ class AIService:
         latency_ms: float,
         success: bool,
     ) -> None:
-        """记录 AI 请求统计到 ai_request_stats 表。
+        """记录 AI 请求统计到 ai_request_stats 表。"""
 
-        Args:
-            user_id: 用户 ID
-            endpoint_id: 端点 ID（当前为 None，后续可扩展）
-            model: 模型名称
-            latency_ms: 请求延迟（毫秒）
-            success: 是否成功
-        """
         if not self._db:
-            # 未注入 SQLiteManager，跳过记录
             return
-
         try:
             today = datetime.now().date().isoformat()
-
             await self._db.execute(
                 """
                 INSERT INTO ai_request_stats (
@@ -808,5 +735,4 @@ class AIService:
                 ],
             )
         except Exception as exc:
-            # 不阻塞主流程，仅记录日志
-            logger.warning("Failed to record AI request stats: %s", exc)
+            logger.warning("Failed to record AI request stats request_id=%s error=%s", get_current_request_id(), exc)

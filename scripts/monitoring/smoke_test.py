@@ -109,10 +109,10 @@ class SmokeTest:
                 if response.status_code == 202:
                     data = response.json()
                     self.message_id = data.get("message_id")
-                    trace_id = response.headers.get("x-trace-id")
+                    request_id = response.headers.get("x-request-id")
                     print("   ✅ 认证成功，消息已创建")
                     print(f"   📝 Message ID: {self.message_id}")
-                    print(f"   🔍 Trace ID: {trace_id}")
+                    print(f"   🔍 Request ID: {request_id}")
                     return True
                 else:
                     print(f"   ❌ API调用失败: {response.status_code} - {response.text}")
@@ -139,10 +139,10 @@ class SmokeTest:
 
                 if response.status_code == 401:
                     error_data = response.json()
-                    trace_id = response.headers.get("x-trace-id")
+                    request_id = response.headers.get("x-request-id")
                     print("   ✅ 正确拒绝无效JWT")
                     print(f"   📋 错误码: {error_data.get('code')}")
-                    print(f"   🔍 Trace ID: {trace_id}")
+                    print(f"   🔍 Request ID: {request_id}")
                     return True
                 else:
                     print(f"   ❌ 应该返回401，实际返回: {response.status_code}")

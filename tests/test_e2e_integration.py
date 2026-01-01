@@ -17,7 +17,8 @@ class TestE2EIntegration:
     @pytest.fixture
     def client(self):
         """测试客户端。"""
-        return TestClient(app)
+        with TestClient(app) as client:
+            yield client
 
     @pytest.fixture
     def mock_jwt_token(self):
@@ -67,8 +68,8 @@ class TestE2EIntegration:
         assert response.status_code in [200, 404]  # 404是因为消息可能已经处理完成
 
     @patch("app.auth.dependencies.get_jwt_verifier")
-    def test_trace_id_propagation(self, mock_get_verifier, client, mock_jwt_token, auth_headers):
-        """测试Trace ID传播。"""
+    def test_request_id_propagation(self, mock_get_verifier, client, mock_jwt_token, auth_headers):
+        """测试 Request ID 传播。"""
         token, payload = mock_jwt_token
 
         # Mock JWT 验证
@@ -76,15 +77,15 @@ class TestE2EIntegration:
         mock_verifier.verify_token.return_value = AuthenticatedUser(uid=payload["sub"], claims=payload)
         mock_get_verifier.return_value = mock_verifier
 
-        # 发送带有自定义Trace ID的请求
-        custom_trace_id = "custom-trace-12345"
-        headers = {**auth_headers, "x-trace-id": custom_trace_id}
+        # 发送带有自定义 Request ID 的请求
+        custom_request_id = "custom-request-12345"
+        headers = {**auth_headers, "x-request-id": custom_request_id}
 
         response = client.post("/api/v1/messages", json={"text": "Hello with trace"}, headers=headers)
 
         assert response.status_code == 202
-        # 验证响应头中包含相同的Trace ID
-        assert response.headers.get("x-trace-id") == custom_trace_id
+        # 验证响应头中包含相同的 Request ID
+        assert response.headers.get("x-request-id") == custom_request_id
 
     def test_unauthorized_access(self, client):
         """测试未授权访问。"""
@@ -92,7 +93,7 @@ class TestE2EIntegration:
         response = client.post("/api/v1/messages", json={"text": "Hello"})
         assert response.status_code == 401
         data = response.json()
-        assert "trace_id" in data
+        assert "request_id" in data
         assert data["code"] == "unauthorized"
 
     def test_invalid_jwt_token(self, client):
@@ -102,7 +103,7 @@ class TestE2EIntegration:
         assert response.status_code == 401
         data = response.json()
         assert data["code"] == "invalid_token_header"
-        assert "trace_id" in data
+        assert "request_id" in data
 
     @patch("app.auth.dependencies.get_jwt_verifier")
     def test_cors_headers(self, mock_get_verifier, client, mock_jwt_token):
@@ -143,9 +144,10 @@ class TestE2EIntegration:
 
         # 测试聊天记录同步
         record = {"message_id": "msg-1", "user_id": "user-1", "text": "Hello"}
+        before = len(provider.records)
         provider.sync_chat_record(record)
-        assert len(provider.records) == 1
-        assert provider.records[0] == record
+        assert len(provider.records) == before + 1
+        assert provider.records[-1] == record
 
     @patch("app.auth.dependencies.get_jwt_verifier")
     def test_ai_service_integration(self, mock_get_verifier, client, mock_jwt_token, auth_headers):
@@ -178,8 +180,13 @@ class TestE2EIntegration:
         assert response.status_code == 422  # Unprocessable Entity
 
         # 测试缺少必需字段
-        response = client.post("/api/v1/messages", json={}, headers={"Authorization": "Bearer invalid"})  # 缺少text字段
-        assert response.status_code == 422
+        with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+            mock_verifier = Mock()
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
+            mock_get_verifier.return_value = mock_verifier
+
+            response = client.post("/api/v1/messages", json={}, headers={"Authorization": "Bearer mock-jwt-token"})
+            assert response.status_code == 422
 
     def test_health_check(self, client):
         """测试健康检查端点（如果存在）。"""

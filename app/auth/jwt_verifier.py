@@ -12,7 +12,7 @@ import jwt
 from fastapi import HTTPException, status
 from jwt.algorithms import get_default_algorithms
 
-from app.core.middleware import get_current_trace_id
+from app.core.middleware import get_current_request_id
 from app.settings.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class JWTError:
     status: int
     code: str
     message: str
-    trace_id: Optional[str] = None
+    request_id: Optional[str] = None
     hint: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -49,8 +49,8 @@ class JWTError:
             "code": self.code,
             "message": self.message,
         }
-        if self.trace_id:
-            result["trace_id"] = self.trace_id
+        if self.request_id:
+            result["request_id"] = self.request_id
         if self.hint:
             result["hint"] = self.hint
         return result
@@ -144,16 +144,16 @@ class JWTVerifier:
         )
 
     def verify_token(self, token: str) -> AuthenticatedUser:
-        trace_id = get_current_trace_id()
+        request_id = get_current_request_id()
 
         if not token:
-            self._log_verification_failure("token_missing", "Token missing", trace_id=trace_id)
+            self._log_verification_failure("token_missing", "Token missing", request_id=request_id)
             raise self._create_unauthorized_error("token_missing", "Authorization token is required")
 
         try:
             header = jwt.get_unverified_header(token)
         except jwt.InvalidTokenError as exc:
-            self._log_verification_failure("invalid_token_header", f"Invalid JWT header: {exc}", trace_id=trace_id)
+            self._log_verification_failure("invalid_token_header", f"Invalid JWT header: {exc}", request_id=request_id)
             raise self._create_unauthorized_error("invalid_token_header", "Invalid JWT header") from exc
 
         kid = header.get("kid")
@@ -162,7 +162,10 @@ class JWTVerifier:
         # 验证算法是否在允许列表中
         if not algorithm:
             self._log_verification_failure(
-                "algorithm_missing", "JWT header missing alg field", trace_id=trace_id, kid=kid
+                "algorithm_missing",
+                "JWT header missing alg field",
+                request_id=request_id,
+                kid=kid,
             )
             raise self._create_unauthorized_error("algorithm_missing", "JWT header missing alg field")
 
@@ -170,7 +173,7 @@ class JWTVerifier:
             self._log_verification_failure(
                 "unsupported_algorithm",
                 f"Algorithm {algorithm} not allowed",
-                trace_id=trace_id,
+                request_id=request_id,
                 kid=kid,
                 algorithm=algorithm,
             )
@@ -194,7 +197,7 @@ class JWTVerifier:
                     self._log_verification_failure(
                         "hmac_key_not_found",
                         f"HS256 secret/JWK retrieval failed: {exc}",
-                        trace_id=trace_id,
+                        request_id=request_id,
                         kid=kid,
                         algorithm=algorithm,
                     )
@@ -206,7 +209,7 @@ class JWTVerifier:
                 self._log_verification_failure(
                     "jwks_key_not_found",
                     f"JWKS key retrieval failed: {exc}",
-                    trace_id=trace_id,
+                    request_id=request_id,
                     kid=kid,
                     algorithm=algorithm,
                 )
@@ -219,7 +222,7 @@ class JWTVerifier:
                 self._log_verification_failure(
                     "unsupported_alg",
                     f"Unsupported algorithm: {algorithm}",
-                    trace_id=trace_id,
+                    request_id=request_id,
                     kid=kid,
                     algorithm=algorithm,
                 )
@@ -258,7 +261,7 @@ class JWTVerifier:
             self._log_verification_failure(
                 "token_expired",
                 "Token has expired",
-                trace_id=trace_id,
+                request_id=request_id,
                 kid=kid,
                 algorithm=algorithm,
                 audience=audience,
@@ -269,7 +272,7 @@ class JWTVerifier:
             self._log_verification_failure(
                 "token_not_yet_valid",
                 "Token not active yet",
-                trace_id=trace_id,
+                request_id=request_id,
                 kid=kid,
                 algorithm=algorithm,
                 audience=audience,
@@ -280,7 +283,7 @@ class JWTVerifier:
             self._log_verification_failure(
                 "invalid_audience",
                 "Audience validation failed",
-                trace_id=trace_id,
+                request_id=request_id,
                 kid=kid,
                 algorithm=algorithm,
                 audience=audience,
@@ -291,7 +294,7 @@ class JWTVerifier:
             self._log_verification_failure(
                 "invalid_issuer",
                 "Issuer validation failed",
-                trace_id=trace_id,
+                request_id=request_id,
                 kid=kid,
                 algorithm=algorithm,
                 audience=audience,
@@ -302,7 +305,7 @@ class JWTVerifier:
             self._log_verification_failure(
                 "invalid_token",
                 f"JWT validation failed: {exc}",
-                trace_id=trace_id,
+                request_id=request_id,
                 kid=kid,
                 algorithm=algorithm,
                 audience=audience,
@@ -312,7 +315,12 @@ class JWTVerifier:
 
         # 执行额外的时间验证
         self._validate_time_claims(
-            payload, trace_id, kid, algorithm, audience, issuers[0] if len(issuers) == 1 else None
+            payload,
+            request_id,
+            kid,
+            algorithm,
+            audience,
+            issuers[0] if len(issuers) == 1 else None,
         )
 
         issuer = payload.get("iss")
@@ -320,7 +328,7 @@ class JWTVerifier:
             self._log_verification_failure(
                 "issuer_not_allowed",
                 f"Issuer {issuer} not in allow list",
-                trace_id=trace_id,
+                request_id=request_id,
                 kid=kid,
                 algorithm=algorithm,
                 audience=audience,
@@ -334,7 +342,7 @@ class JWTVerifier:
             self._log_verification_failure(
                 "subject_missing",
                 "Token missing subject claim",
-                trace_id=trace_id,
+                request_id=request_id,
                 kid=kid,
                 algorithm=algorithm,
                 audience=audience,
@@ -347,13 +355,13 @@ class JWTVerifier:
         user_type = "anonymous" if is_anonymous else "permanent"
 
         # 记录成功验证，包含用户类型信息
-        self._log_verification_success(trace_id, subject, audience, issuer, kid, algorithm, user_type)
+        self._log_verification_success(request_id, subject, audience, issuer, kid, algorithm, user_type)
         return AuthenticatedUser(uid=subject, claims=payload, user_type=user_type)
 
     def _validate_time_claims(
         self,
         payload: Dict[str, Any],
-        trace_id: Optional[str],
+        request_id: Optional[str],
         kid: Optional[str],
         algorithm: str,
         audience: Optional[str],
@@ -369,7 +377,7 @@ class JWTVerifier:
                 self._log_verification_failure(
                     "iat_too_future",
                     f"Token issued too far in future: iat={iat}, now={now}, max_future={self._settings.jwt_max_future_iat_seconds}",
-                    trace_id=trace_id,
+                    request_id=request_id,
                     kid=kid,
                     algorithm=algorithm,
                     audience=audience,
@@ -385,7 +393,7 @@ class JWTVerifier:
                 self._log_verification_failure(
                     "token_not_yet_valid",
                     f"Token not yet valid: nbf={nbf}, now={now}, skew={self._settings.jwt_clock_skew_seconds}",
-                    trace_id=trace_id,
+                    request_id=request_id,
                     kid=kid,
                     algorithm=algorithm,
                     audience=audience,
@@ -414,8 +422,8 @@ class JWTVerifier:
 
     def _create_unauthorized_error(self, code: str, message: str, hint: Optional[str] = None) -> HTTPException:
         """创建统一格式的401错误响应。"""
-        trace_id = get_current_trace_id()
-        error = JWTError(status=401, code=code, message=message, trace_id=trace_id, hint=hint)
+        request_id = get_current_request_id()
+        error = JWTError(status=401, code=code, message=message, request_id=request_id, hint=hint)
         return HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=error.to_dict(),
@@ -423,7 +431,7 @@ class JWTVerifier:
 
     def _log_verification_success(
         self,
-        trace_id: Optional[str],
+        request_id: Optional[str],
         subject: str,
         audience: Optional[str],
         issuer: Optional[str],
@@ -435,7 +443,7 @@ class JWTVerifier:
         logger.info(
             "JWT verification successful",
             extra={
-                "trace_id": trace_id,
+                "request_id": request_id,
                 "subject": subject,
                 "audience": audience,
                 "issuer": issuer,
@@ -450,7 +458,7 @@ class JWTVerifier:
         self,
         code: str,
         reason: str,
-        trace_id: Optional[str] = None,
+        request_id: Optional[str] = None,
         subject: Optional[str] = None,
         audience: Optional[str] = None,
         issuer: Optional[str] = None,
@@ -461,7 +469,7 @@ class JWTVerifier:
         logger.warning(
             "JWT verification failed",
             extra={
-                "trace_id": trace_id,
+                "request_id": request_id,
                 "code": code,
                 "reason": reason,
                 "subject": subject,

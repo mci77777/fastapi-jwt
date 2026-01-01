@@ -236,7 +236,7 @@ python scripts/testing/api/test_api.py                 # API 测试
 所有请求按以下顺序经过中间件处理：
 
 1. **CORS** - 跨域资源共享
-2. **TraceID** - 请求追踪（Header: `x-trace-id`）
+2. **RequestID** - 请求追踪（Header: `X-Request-Id`）
 3. **PolicyGate** - 策略网关（限制匿名用户访问管理端点）
 4. **RateLimiter** - 限流控制（匿名用户 QPS=5，永久用户 QPS=10）
 

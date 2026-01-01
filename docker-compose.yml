@@ -47,7 +47,6 @@ services:
       # HTTP 配置
       - HTTP_TIMEOUT_SECONDS=10.0
       - SSE_HEARTBEAT_SECONDS=15.0
-      - TRACE_HEADER_NAME=x-trace-id
       
       # 限流配置
       - RATE_LIMIT_ENABLED=true
@@ -128,4 +127,3 @@ networks:
 volumes:
   prometheus-data:
   grafana-data:
-
