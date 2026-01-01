@@ -194,6 +194,21 @@ if (-not (Wait-PortListening -Port $BACKEND_PORT -Name "Backend" -MaxRetries 30)
     exit 1
 }
 
+# Step 5: SSOT sync (E2E -> Web env)
+# 如果存在 e2e/anon_jwt_sse/.env.local，则同步 Supabase 配置到 web/.env.development.local（gitignored）。
+try {
+    $e2eEnvPath = Join-Path $PSScriptRoot "e2e\\anon_jwt_sse\\.env.local"
+    if (Test-Path $e2eEnvPath) {
+        Write-Host ""
+        Write-Host "[SSOT] Sync E2E env -> Web env (optional)..." -ForegroundColor Cyan
+        Push-Location $PSScriptRoot
+        python scripts/dev/sync_e2e_env_to_web.py | Out-Host
+        Pop-Location
+    }
+} catch {
+    Write-Host "[SSOT] Sync skipped: $($_.Exception.Message)" -ForegroundColor DarkYellow
+}
+
 # Step 5: Start frontend
 Write-Host ""
 Write-Host "[Step 5/5] Starting frontend..." -ForegroundColor Cyan

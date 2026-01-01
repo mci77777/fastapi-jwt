@@ -54,5 +54,21 @@ echo "Run: scripts/monitoring/real_user_signup_login_sse_e2e.py"
   exit $?
 fi
 
+if [[ -z "${TEST_USER_EMAIL:-}" || -z "${TEST_USER_PASSWORD:-}" ]]; then
+  echo "Missing TEST_USER_EMAIL/TEST_USER_PASSWORD in $E2E_ENV_FILE"
+  echo "Fix options:"
+  echo "  1) Provide a real Supabase user email/password (recommended for local manual runs)"
+  echo "  2) Or provide SUPABASE_SERVICE_ROLE_KEY and rerun to auto-create a user"
+  exit 2
+fi
+
 echo "Run: scripts/monitoring/real_user_sse_e2e.py (reuse TEST_USER_EMAIL/TEST_USER_PASSWORD)"
+set +e
 PYTHONPATH="$ROOT_DIR" "$PY" scripts/monitoring/real_user_sse_e2e.py
+code=$?
+set -e
+if [[ $code -ne 0 ]]; then
+  echo "E2E failed (exit=$code). If you see 'Invalid login credentials', update TEST_USER_EMAIL/TEST_USER_PASSWORD,"
+  echo "or set SUPABASE_SERVICE_ROLE_KEY to enable auto user creation."
+fi
+exit $code
