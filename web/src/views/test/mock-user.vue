@@ -115,6 +115,7 @@
 import { ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import { request } from '@/utils'
+import { createMessage } from '@/api/aiModelSuite'
 
 defineOptions({ name: 'MockUserTest' })
 
@@ -200,30 +201,27 @@ async function handleSendMessage() {
   sseEvents.value = []
 
   try {
+    const requestId =
+      globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
     // 步骤 1: 创建消息
-    const createResponse = await request.post(
-      '/messages',
-      {
-        text: chatForm.value.message,
-        conversation_id: conversationId.value || null,
-        metadata: {
-          source: 'mock_user_ui',
-          test_type: 'manual',
-        },
+    const createResponse = await createMessage({
+      text: chatForm.value.message,
+      conversationId: conversationId.value || null,
+      metadata: {
+        source: 'mock_user_ui',
+        test_type: 'manual',
       },
-      {
-        headers: {
-          Authorization: `Bearer ${jwtToken.value}`,
-        },
-      }
-    )
+      requestId,
+      promptMode: 'server',
+    })
 
     messageId.value = createResponse.message_id
     conversationId.value = createResponse.conversation_id
     message.success(`消息创建成功，ID: ${messageId.value}`)
 
     // 步骤 2: 建立 SSE 连接
-    await streamSSEEvents(messageId.value, conversationId.value)
+    await streamSSEEvents(messageId.value, conversationId.value, requestId)
   } catch (error) {
     message.error('发送消息失败：' + (error.message || '未知错误'))
   } finally {
@@ -234,57 +232,101 @@ async function handleSendMessage() {
 /**
  * 流式接收 SSE 事件
  */
-async function streamSSEEvents(msgId, convId) {
+async function streamSSEEvents(msgId, convId, requestId) {
   const baseURL = import.meta.env.VITE_BASE_API || '/api/v1'
-  const url = convId ? `${baseURL}/messages/${msgId}/events?conversation_id=${convId}` : `${baseURL}/messages/${msgId}/events`
+  const normalizedBase = String(baseURL).replace(/\/+$/, '')
+  const url = convId
+    ? `${normalizedBase}/messages/${msgId}/events?conversation_id=${encodeURIComponent(convId)}`
+    : `${normalizedBase}/messages/${msgId}/events`
 
-  const eventSource = new EventSource(url, {
+  const response = await fetch(url, {
+    method: 'GET',
     headers: {
       Authorization: `Bearer ${jwtToken.value}`,
+      Accept: 'text/event-stream',
+      'X-Request-Id': requestId,
     },
   })
 
-  eventSource.onmessage = (event) => {
-    const data = JSON.parse(event.data)
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`SSE 连接失败：${response.status} ${text}`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('SSE 响应不支持流式读取')
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let currentEvent = 'message'
+  let dataLines = []
+
+  const flushEvent = () => {
+    if (!dataLines.length) return
+    const rawData = dataLines.join('\n')
+    dataLines = []
+
+    let parsed = null
+    try {
+      parsed = JSON.parse(rawData)
+    } catch {
+      parsed = rawData
+    }
+
+    const eventType = currentEvent || 'message'
     sseEvents.value.push({
-      event: event.type || 'message',
-      data: JSON.stringify(data, null, 2),
+      event: eventType,
+      data: typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2),
       time: new Date().toLocaleTimeString(),
-      type: 'info',
+      type: eventType === 'error' ? 'error' : eventType === 'completed' ? 'success' : 'info',
     })
 
-    // 提取 AI 响应内容
-    if (data.event === 'chunk' && data.data && data.data.content) {
-      aiResponse.value += data.data.content
+    if (eventType === 'content_delta' && parsed && typeof parsed === 'object' && parsed.delta) {
+      aiResponse.value += String(parsed.delta)
+    } else if (eventType === 'completed' && parsed && typeof parsed === 'object' && parsed.reply) {
+      aiResponse.value = String(parsed.reply)
+    } else if (eventType === 'error') {
+      const errMsg = parsed && typeof parsed === 'object' ? parsed.error : rawData
+      message.error(`SSE 错误：${errMsg || '未知错误'}`)
     }
   }
 
-  eventSource.addEventListener('done', (event) => {
-    sseEvents.value.push({
-      event: 'done',
-      data: event.data,
-      time: new Date().toLocaleTimeString(),
-      type: 'success',
-    })
-    eventSource.close()
-    message.success('SSE 流式接收完成')
-  })
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
 
-  eventSource.addEventListener('error', (event) => {
-    sseEvents.value.push({
-      event: 'error',
-      data: JSON.stringify(event, null, 2),
-      time: new Date().toLocaleTimeString(),
-      type: 'error',
-    })
-    eventSource.close()
-    message.error('SSE 连接错误')
-  })
+    buffer += decoder.decode(value, { stream: true })
 
-  eventSource.onerror = (error) => {
-    console.error('SSE Error:', error)
-    eventSource.close()
+    while (true) {
+      const idx = buffer.indexOf('\n')
+      if (idx < 0) break
+
+      let line = buffer.slice(0, idx)
+      buffer = buffer.slice(idx + 1)
+      if (line.endsWith('\r')) line = line.slice(0, -1)
+      line = line.trimEnd()
+
+      if (!line) {
+        flushEvent()
+        if (currentEvent === 'completed' || currentEvent === 'error') {
+          return
+        }
+        currentEvent = 'message'
+        continue
+      }
+
+      if (line.startsWith('event:')) {
+        currentEvent = line.slice('event:'.length).trim()
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice('data:'.length).trim())
+      }
+    }
   }
+
+  // 处理尾部残留
+  flushEvent()
 }
 </script>
 
