@@ -26,22 +26,11 @@ export const fetchPrompts = (params = {}) => request.get('/llm/prompts', { param
 export const fetchPromptTests = (promptId, params = {}) =>
   request.get(`/llm/prompts/${promptId}/tests`, { params })
 
-// JWT 测试相关（增加超时配置）
-export const simulateDialog = (data = {}) =>
-  request.post('/llm/tests/dialog', data, { timeout: 90000 }) // 90秒超时（大模型推理可能较慢）
-
-export const runLoadTest = (data = {}) => request.post('/llm/tests/load', data, { timeout: 60000 }) // 60秒超时（压测可能较慢）
-
-export const fetchLoadRun = (runId) => request.get(`/llm/tests/runs/${runId}`)
-
-// 邮件用户创建（调试用）
-export const createMailUser = (data = {}) => request.post('/llm/tests/create-mail-user', data)
-
 // 消息与对话相关
 /**
  * 创建消息会话（统一请求体构建）
  * @param {Object} options - 消息选项
- * @param {string} options.text - 消息文本（必需）
+ * @param {string} [options.text] - 用户消息文本（messages 不为空时可省略）
  * @param {string} [options.conversationId] - 会话 ID
  * @param {Object} [options.metadata] - 元数据
  * @param {('server'|'passthrough')} [options.promptMode='server'] - prompt 策略：使用后端 prompt 或透传 OpenAI 字段
@@ -65,16 +54,16 @@ export const createMessage = ({
   openai = {},
   requestId,
 } = {}) => {
-  // 输入验证
-  if (!text || typeof text !== 'string' || !text.trim()) {
-    return Promise.reject(new Error('消息文本不能为空'))
+  const hasText = typeof text === 'string' && !!text.trim()
+  const hasMessages = Array.isArray(openai?.messages) && openai.messages.length > 0
+  if (!hasText && !hasMessages) {
+    return Promise.reject(new Error('text 或 openai.messages 至少提供一个'))
   }
 
   const resolvedPromptMode = promptMode === 'passthrough' ? 'passthrough' : 'server'
 
   // 构建符合后端 schema 的请求体
   const payload = {
-    text: text.trim(),
     conversation_id: conversationId || null,
     metadata: {
       source: 'web_ui',
@@ -82,6 +71,8 @@ export const createMessage = ({
       ...metadata,
     },
   }
+
+  if (hasText) payload.text = text.trim()
 
   // prompt 策略：server=使用后端 prompt 注入；passthrough=仅透传 OpenAI 字段，不注入默认 prompt
   payload.skip_prompt = resolvedPromptMode === 'passthrough'

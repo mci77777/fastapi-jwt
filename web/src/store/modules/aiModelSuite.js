@@ -4,9 +4,6 @@ import {
   fetchModels,
   fetchMappings,
   fetchPrompts,
-  fetchLoadRun,
-  runLoadTest,
-  simulateDialog,
   saveMapping,
   activateMapping,
   updateModel,
@@ -23,9 +20,6 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
     mappingsLoading: false,
     prompts: [],
     promptsLoading: false,
-    latestRun: null,
-    latestRunSummary: null,
-    latestRunLoading: false,
     syncingEndpoints: new Set(),
     syncAllLoading: false,
     mailApiKey: localStorage.getItem('ai_suite_mail_api_key') || '',
@@ -133,32 +127,6 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
       if (!promptId) return
       await api.activateAIPrompt(promptId)
       await this.loadPrompts()
-    },
-    async simulateDialog(payload) {
-      return simulateDialog(payload)
-    },
-    async triggerLoadTest(payload) {
-      this.latestRunLoading = true
-      try {
-        const result = await runLoadTest(payload)
-        this.latestRun = result
-        this.latestRunSummary = result?.summary || null
-        return result
-      } finally {
-        this.latestRunLoading = false
-      }
-    },
-    async refreshRun(runId) {
-      if (!runId) return null
-      this.latestRunLoading = true
-      try {
-        const result = await fetchLoadRun(runId)
-        this.latestRun = result
-        this.latestRunSummary = result?.summary || null
-        return result
-      } finally {
-        this.latestRunLoading = false
-      }
     },
     setMailApiKey(key) {
       this.mailApiKey = key

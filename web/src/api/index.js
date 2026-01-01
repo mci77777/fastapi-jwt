@@ -1,7 +1,22 @@
 import { request } from '@/utils'
+import { supabaseSignInWithPassword } from '@/utils/supabase/auth'
 
 export default {
-  login: (data) => request.post('/base/access_token', data, { noNeedToken: true }),
+  login: async (data = {}) => {
+    const email = data.email ?? data.username
+    const password = data.password
+    const session = await supabaseSignInWithPassword({ email, password })
+    return {
+      code: 200,
+      msg: 'ok',
+      data: {
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+        expires_in: session.expires_in,
+        token_type: session.token_type,
+      },
+    }
+  },
   getUserInfo: () => request.get('/base/userinfo'),
   getUserMenu: () => request.get('/base/usermenu'),
   getUserApi: () => request.get('/base/userapi'),
@@ -59,9 +74,6 @@ export default {
     request.get(`/llm/prompts/${promptId}/tests`, { params }),
   // llm test
   testPrompt: (data = {}) => request.post('/llm/prompts/test', data),
-  simulateJwtDialog: (data = {}) => request.post('/llm/tests/dialog', data),
-  runJwtLoadTest: (data = {}) => request.post('/llm/tests/load', data),
-  getJwtRun: (runId) => request.get(`/llm/tests/runs/${runId}`),
   // depts
   getDepts: (params = {}) => request.get('/dept/list', { params }),
   createDept: (data = {}) => request.post('/dept/create', data),

@@ -15,11 +15,11 @@
         </h5>
         <div mt-30>
           <n-input
-            v-model:value="loginInfo.username"
+            v-model:value="loginInfo.email"
             autofocus
             class="h-50 items-center pl-10 text-16"
-            placeholder="admin"
-            :maxlength="20"
+            placeholder="email@example.com"
+            :maxlength="120"
           />
         </div>
         <div mt-30>
@@ -28,8 +28,8 @@
             class="h-50 items-center pl-10 text-16"
             type="password"
             show-password-on="mousedown"
-            placeholder="123456"
-            :maxlength="20"
+            placeholder="输入密码"
+            :maxlength="200"
             @keypress.enter="handleLogin"
           />
         </div>
@@ -53,7 +53,7 @@
 </template>
 
 <script setup>
-import { lStorage, setToken, setUserInfo } from '@/utils'
+import { lStorage, setRefreshToken, setToken, setUserInfo } from '@/utils'
 import bgImg from '@/assets/images/login_bg.webp'
 import api from '@/api'
 import { addDynamicRoutes } from '@/router'
@@ -66,7 +66,7 @@ const { t } = useI18n({ useScope: 'global' })
 const userStore = useUserStore()
 
 const loginInfo = ref({
-  username: '',
+  email: '',
   password: '',
 })
 
@@ -75,26 +75,27 @@ initLoginInfo()
 function initLoginInfo() {
   const localLoginInfo = lStorage.get('loginInfo')
   if (localLoginInfo) {
-    loginInfo.value.username = localLoginInfo.username || ''
+    loginInfo.value.email = localLoginInfo.email || localLoginInfo.username || ''
     loginInfo.value.password = localLoginInfo.password || ''
   }
 }
 
 const loading = ref(false)
 async function handleLogin() {
-  const { username, password } = loginInfo.value
-  if (!username || !password) {
+  const { email, password } = loginInfo.value
+  if (!email || !password) {
     $message.warning(t('views.login.message_input_username_password'))
     return
   }
   try {
     loading.value = true
     $message.loading(t('views.login.message_verifying'))
-    const res = await api.login({ username, password: password.toString() })
+    const res = await api.login({ email, password: password.toString() })
     $message.success(t('views.login.message_login_success'))
 
     // 1. 保存 token（包括过期时间）
     setToken(res.data.access_token)
+    if (res.data.refresh_token) setRefreshToken(res.data.refresh_token)
 
     // 2. 获取用户信息
     const userInfoRes = await api.getUserInfo()

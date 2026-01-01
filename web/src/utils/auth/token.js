@@ -1,6 +1,7 @@
 import { lStorage } from '@/utils'
 
 const TOKEN_CODE = 'access_token'
+const REFRESH_TOKEN_CODE = 'refresh_token'
 const USER_INFO_CODE = 'user_info'
 
 /**
@@ -90,6 +91,21 @@ export function setToken(token) {
 }
 
 /**
+ * 获取 refresh_token（不校验 exp，由 Supabase 负责管理其有效性）
+ */
+export function getRefreshToken() {
+  return lStorage.get(REFRESH_TOKEN_CODE)
+}
+
+/**
+ * 保存 refresh_token（建议存放在 *.local 环境下用于本地开发）
+ */
+export function setRefreshToken(token) {
+  if (!token) return
+  lStorage.set(REFRESH_TOKEN_CODE, token)
+}
+
+/**
  * 保存用户信息
  * @param {object} userInfo - 用户信息
  */
@@ -111,5 +127,6 @@ export function getUserInfo() {
  */
 export function removeToken() {
   lStorage.remove(TOKEN_CODE)
+  lStorage.remove(REFRESH_TOKEN_CODE)
   lStorage.remove(USER_INFO_CODE)
 }

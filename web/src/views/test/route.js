@@ -13,11 +13,11 @@ export default {
   },
   children: [
     {
-      name: 'Mock 用户测试',
-      path: 'mock-user',
-      component: () => import('./mock-user.vue'),
+      name: '真实用户 SSE 测试',
+      path: 'real-user-sse',
+      component: () => import('./real-user-sse.vue'),
       meta: {
-        title: 'Mock 用户测试',
+        title: '真实用户 SSE 测试',
         icon: 'mdi:account-cog',
         order: 1,
       },

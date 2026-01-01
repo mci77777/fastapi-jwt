@@ -1,5 +1,6 @@
-import { getToken, setToken } from '@/utils'
+import { getRefreshToken, getToken, removeToken, setRefreshToken, setToken } from '@/utils'
 import { resolveResError } from './helpers'
+import { supabaseRefreshSession } from '@/utils/supabase/auth'
 
 // Token 刷新状态管理
 let isRefreshing = false
@@ -50,34 +51,15 @@ async function refreshToken() {
 
   refreshPromise = (async () => {
     try {
-      const token = getToken()
-      if (!token) {
-        throw new Error('No token to refresh')
-      }
+      const refresh = getRefreshToken()
+      if (!refresh) throw new Error('No refresh_token found')
 
-      // 调用后端刷新端点
-      const response = await fetch('/api/v1/base/refresh_token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`Token refresh failed: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.code !== 200 || !data.data?.access_token) {
-        throw new Error('Invalid refresh response')
-      }
-
-      const newToken = data.data.access_token
+      const session = await supabaseRefreshSession(refresh)
+      const newToken = session.access_token
 
       // 保存新 Token
       setToken(newToken)
+      if (session.refresh_token) setRefreshToken(session.refresh_token)
 
       console.log('✅ Token 刷新成功')
 
@@ -85,9 +67,7 @@ async function refreshToken() {
     } catch (error) {
       console.error('❌ Token 刷新失败:', error)
       // 刷新失败，清除 Token 并重定向到登录页
-      localStorage.removeItem('ACCESS_TOKEN')
-      localStorage.removeItem('token')
-      localStorage.removeItem('userInfo')
+      removeToken()
       window.location.href = '/login'
       throw error
     } finally {
@@ -186,8 +166,7 @@ export async function resReject(error) {
   if (status === 401 || data?.code === 401) {
     try {
       // 清除本地存储
-      localStorage.removeItem('token')
-      localStorage.removeItem('userInfo')
+      removeToken()
 
       // 显示友好提示
       window.$message?.error('登录已过期，请重新登录')

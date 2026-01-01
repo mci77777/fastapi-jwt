@@ -1,14 +1,14 @@
 <template>
   <div class="mock-user-container">
-    <n-card title="Mock 用户测试 - JWT 与 AI 对话">
+    <n-card title="真实用户 SSE 测试 - JWT 与 AI 对话">
       <n-space vertical :size="20">
         <!-- 步骤 1: 获取 JWT Token -->
-        <n-card title="步骤 1: 获取 JWT Token" size="small">
+        <n-card title="步骤 1: 获取真实 Supabase JWT" size="small">
           <n-form ref="loginFormRef" :model="loginForm" label-placement="left" label-width="100">
             <n-form-item label="Email" path="email">
               <n-input
                 v-model:value="loginForm.email"
-                placeholder="输入真实 email 地址"
+                placeholder="输入真实 Supabase 用户 email"
                 @keyup.enter="handleGetToken"
               />
             </n-form-item>
@@ -16,7 +16,7 @@
               <n-input
                 v-model:value="loginForm.password"
                 type="password"
-                placeholder="输入密码"
+                placeholder="输入真实密码"
                 @keyup.enter="handleGetToken"
               />
             </n-form-item>
@@ -114,10 +114,11 @@
 <script setup>
 import { ref } from 'vue'
 import { useMessage } from 'naive-ui'
-import { request } from '@/utils'
+import { setRefreshToken, setToken } from '@/utils'
 import { createMessage } from '@/api/aiModelSuite'
+import api from '@/api'
 
-defineOptions({ name: 'MockUserTest' })
+defineOptions({ name: 'RealUserSseTest' })
 
 const message = useMessage()
 
@@ -156,19 +157,16 @@ async function handleGetToken() {
 
   gettingToken.value = true
   try {
-    // 调用后端登录接口
-    const response = await request.post(
-      '/base/access_token',
-      {
-        username: loginForm.value.email,
-        password: loginForm.value.password,
-      },
-      { noNeedToken: true }
-    )
+    const res = await api.login({
+      email: loginForm.value.email,
+      password: loginForm.value.password,
+    })
 
-    if (response.data && response.data.access_token) {
-      jwtToken.value = response.data.access_token
-      message.success('JWT Token 获取成功')
+    if (res?.data?.access_token) {
+      jwtToken.value = res.data.access_token
+      setToken(res.data.access_token)
+      if (res.data.refresh_token) setRefreshToken(res.data.refresh_token)
+      message.success('JWT Token 获取成功（已写入本地 token）')
     } else {
       message.error('JWT Token 获取失败：响应格式错误')
     }
@@ -209,7 +207,7 @@ async function handleSendMessage() {
       text: chatForm.value.message,
       conversationId: conversationId.value || null,
       metadata: {
-        source: 'mock_user_ui',
+        source: 'real_user_sse_ui',
         test_type: 'manual',
       },
       requestId,

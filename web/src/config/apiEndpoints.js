@@ -32,15 +32,6 @@ export const API_ENDPOINTS = [
 
   // ==================== 认证相关 ====================
   {
-    path: '/base/access_token',
-    method: 'POST',
-    type: 'http',
-    description: '获取 JWT Token',
-    category: 'auth',
-    requiresAuth: false,
-    skipCheck: true, // 需要凭证，跳过自动检测
-  },
-  {
     path: '/base/userinfo',
     method: 'GET',
     type: 'http',
