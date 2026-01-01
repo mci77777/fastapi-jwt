@@ -44,13 +44,33 @@ export const createMailUser = (data = {}) => request.post('/llm/tests/create-mai
  * @param {string} options.text - 消息文本（必需）
  * @param {string} [options.conversationId] - 会话 ID
  * @param {Object} [options.metadata] - 元数据
+ * @param {('server'|'passthrough')} [options.promptMode='server'] - prompt 策略：使用后端 prompt 或透传 OpenAI 字段
+ * @param {Object} [options.openai] - OpenAI 兼容字段（后端 SSOT）
+ * @param {string} [options.openai.model]
+ * @param {Array<Object>} [options.openai.messages]
+ * @param {string} [options.openai.system_prompt]
+ * @param {Array<any>} [options.openai.tools]
+ * @param {any} [options.openai.tool_choice]
+ * @param {number} [options.openai.temperature]
+ * @param {number} [options.openai.top_p]
+ * @param {number} [options.openai.max_tokens]
+ * @param {string} [options.requestId] - 透传请求追踪 Header：X-Request-Id（建议由调用方生成并用于 SSE 对账）
  * @returns {Promise<{message_id: string, conversation_id: string}>} 消息ID与会话ID
  */
-export const createMessage = ({ text, conversationId, metadata = {} }) => {
+export const createMessage = ({
+  text,
+  conversationId,
+  metadata = {},
+  promptMode = 'server',
+  openai = {},
+  requestId,
+} = {}) => {
   // 输入验证
   if (!text || typeof text !== 'string' || !text.trim()) {
     return Promise.reject(new Error('消息文本不能为空'))
   }
+
+  const resolvedPromptMode = promptMode === 'passthrough' ? 'passthrough' : 'server'
 
   // 构建符合后端 schema 的请求体
   const payload = {
@@ -63,7 +83,37 @@ export const createMessage = ({ text, conversationId, metadata = {} }) => {
     },
   }
 
-  return request.post('/messages', payload, { timeout: 30000 })
+  // prompt 策略：server=使用后端 prompt 注入；passthrough=仅透传 OpenAI 字段，不注入默认 prompt
+  payload.skip_prompt = resolvedPromptMode === 'passthrough'
+
+  // OpenAI 兼容字段（仅白名单字段进入 body 顶层；扩展信息仍应放 metadata）
+  if (openai && typeof openai === 'object') {
+    if (typeof openai.model === 'string' && openai.model.trim()) payload.model = openai.model.trim()
+    if (typeof openai.system_prompt === 'string' && openai.system_prompt.trim()) {
+      if (resolvedPromptMode === 'passthrough') payload.system_prompt = openai.system_prompt.trim()
+    }
+
+    if (Array.isArray(openai.messages)) {
+      payload.messages =
+        resolvedPromptMode === 'server'
+          ? openai.messages.filter((item) => item && item.role !== 'system')
+          : openai.messages
+    }
+
+    if (openai.tools !== undefined) payload.tools = openai.tools
+    if (openai.tool_choice !== undefined) payload.tool_choice = openai.tool_choice
+    if (openai.temperature !== undefined) payload.temperature = openai.temperature
+    if (openai.top_p !== undefined) payload.top_p = openai.top_p
+    if (openai.max_tokens !== undefined) payload.max_tokens = openai.max_tokens
+  }
+
+  const headers = {}
+  if (typeof requestId === 'string' && requestId.trim()) headers['X-Request-Id'] = requestId.trim()
+
+  return request.post('/messages', payload, {
+    timeout: 30000,
+    headers,
+  })
 }
 
 // API 端点连通性检测
