@@ -243,12 +243,18 @@ class JWTTestService:
         pass
 
     async def get_run(self, run_id: str) -> dict[str, Any]:
+        tests: list[dict[str, Any]] = []
+        try:
+            tests = await self._ai_service.list_prompt_tests_by_run(run_id, limit=1000)
+        except Exception:
+            tests = []
+
         # 优先检查活动运行
         if run_id in self._active_runs:
             active_summary = self._active_runs[run_id]
             return {
                 "summary": active_summary.to_dict(),
-                "tests": [],  # 不再记录测试详情
+                "tests": tests,
                 "is_running": True,
             }
 
@@ -259,7 +265,7 @@ class JWTTestService:
             return {}
         return {
             "summary": run,
-            "tests": [],  # 不再记录测试详情
+            "tests": tests,
             "is_running": False,
         }
 

@@ -47,7 +47,7 @@ class Loggin:
         # 拦截标准 logging 的日志并转发到 loguru
         logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 
-        # 可选：添加文件日志（用于按 trace_id 聚合排障/交接数据）
+        # 可选：添加文件日志（用于按 request_id 聚合排障/交接数据）
         if getattr(settings, "log_to_file", False):
             file_path = Path(getattr(settings, "log_file_path", "logs/app.log"))
             file_path.parent.mkdir(parents=True, exist_ok=True)

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     app_version: str = Field(default="0.1.0", alias="APP_VERSION")
     debug: bool = Field(default=False, alias="DEBUG")
 
-    # 日志落盘（用于按 trace_id 聚合最小交接数据）
+    # 日志落盘（用于按 request_id 聚合最小交接数据）
     log_to_file: bool = Field(default=False, alias="LOG_TO_FILE")
     log_file_path: str = Field(default="logs/app.log", alias="LOG_FILE_PATH")
 
