@@ -15,7 +15,7 @@
   - SUPABASE_ISSUER / SUPABASE_JWKS_URL（后端 JWT 校验）
   - JWT_AUDIENCE（默认 authenticated，可通过环境覆盖）
   - VITE_AUTH_MODE（默认 auto，可覆盖为 local/supabase）
-  - WEB_PORT/API_PORT（默认 8080/9999，可覆盖）
+  - WEB_PORT/API_PORT（默认 3101/9999，可覆盖）
 """
 
 from __future__ import annotations
@@ -104,7 +104,7 @@ def main() -> int:
         f"SUPABASE_JWKS_URL={jwks_url}",
         "JWT_AUDIENCE=authenticated",
         "",
-        "WEB_PORT=8080",
+        "WEB_PORT=3101",
         "API_PORT=9999",
         "",
         f"# Derived (informational): SUPABASE_PROJECT_REF={project_ref}",

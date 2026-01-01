@@ -26,7 +26,7 @@ export default defineConfig(({ command, mode }) => {
     plugins: createVitePlugins(viteEnv, isBuild),
     server: {
       host: '0.0.0.0',
-      port: VITE_PORT || 3101,
+      port: VITE_PORT || 3102,
       strictPort: true, // 如果端口被占用则直接退出,不尝试下一个端口
       open: true,
       proxy: VITE_USE_PROXY

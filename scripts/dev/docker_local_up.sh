@@ -12,5 +12,4 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 docker compose --env-file .env.docker.local -f docker-compose.local.yml up -d --build
-echo "OK. Web: http://localhost:${WEB_PORT:-8080}  API docs: http://localhost:${API_PORT:-9999}/docs"
-
+echo "OK. Web: http://localhost:${WEB_PORT:-3101}  API docs: http://localhost:${API_PORT:-9999}/docs"

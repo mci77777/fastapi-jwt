@@ -1,11 +1,11 @@
 # One-Click Dev Environment Startup
-# Auto start frontend (3101) and backend (9999)
+# Auto start frontend (3102) and backend (9999)
 # Auto-close and restart if ports are occupied
 # Clears Python cache before starting backend
 
 $ErrorActionPreference = 'Stop'
 $BACKEND_PORT = 9999
-$FRONTEND_PORT = 3101
+$FRONTEND_PORT = 3102
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
@@ -241,7 +241,7 @@ if (-not (Wait-PortListening -Port $FRONTEND_PORT -Name "Frontend" -MaxRetries 3
     Write-Host "Possible reasons:" -ForegroundColor Yellow
     Write-Host "  1. Check the frontend PowerShell window for error messages" -ForegroundColor Yellow
     Write-Host "  2. First run may take longer (installing node_modules)" -ForegroundColor Yellow
-    Write-Host "  3. Port 3101 may still be in use by another process" -ForegroundColor Yellow
+    Write-Host "  3. Port 3102 may still be in use by another process" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Try manually starting frontend with: cd web && pnpm dev" -ForegroundColor Cyan
     exit 1

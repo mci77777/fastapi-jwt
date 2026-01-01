@@ -16,13 +16,13 @@ https://api.gymbro.cloud/docs
 ```
 
 **自动完成**：
-- 检查并清理端口 3101（前端）和 9999（后端）
+- 检查并清理端口 3102（前端）和 9999（后端）
 - 清除 Python 缓存
 - 启动后端服务（新窗口）
 - 启动前端服务（新窗口）
 
 **访问地址**：
-- 前端：http://localhost:3101
+- 前端：http://localhost:3102
 - 后端 API 文档：http://localhost:9999/docs
 
 **默认账号**：
@@ -72,7 +72,7 @@ bash scripts/dev/run_local_real_user_e2e.sh
 ```
 
 访问：
-- Web：http://localhost:8080
+- Web：http://localhost:3101
 - API：http://localhost:9999/docs
 
 ### 手动启动（开发调试）
@@ -136,7 +136,7 @@ pnpm i
 pnpm dev
 ```
 
-**访问前端**：http://localhost:3101
+**访问前端**：http://localhost:3102
 
 **代理配置**：前端开发服务器会自动将 `/api/v1` 请求代理到 `http://127.0.0.1:9999`
 
@@ -204,7 +204,7 @@ python scripts/testing/api/test_api.py                 # API 测试
 #### 访问地址
 
 **开发环境**（使用 `start-dev.ps1` 启动）：
-- 前端应用：http://localhost:3101
+- 前端应用：http://localhost:3102
 - 后端 API 文档：http://localhost:9999/docs
 - 健康检查：http://localhost:9999/api/v1/healthz
 - Prometheus 指标：http://localhost:9999/api/v1/metrics

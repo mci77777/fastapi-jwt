@@ -51,7 +51,7 @@ start-dev.ps1
 ```bash
 # 一键启动（推荐）
 .\start-dev.ps1
-# → 自动启动前端 (3101) 和后端 (9999)
+# → 自动启动前端 (3102) 和后端 (9999)
 
 # 或手动启动：
 # 后端（终端 1）
@@ -60,7 +60,7 @@ python run.py  # 或 make start
 
 # 前端（终端 2）
 cd web && pnpm dev
-# → http://localhost:3101（代理 /api/v1 到后端 9999）
+# → http://localhost:3102（代理 /api/v1 到后端 9999）
 ```
 
 ### 测试
