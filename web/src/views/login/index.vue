@@ -75,8 +75,7 @@ initLoginInfo()
 function initLoginInfo() {
   const localLoginInfo = lStorage.get('loginInfo')
   if (localLoginInfo) {
-    const candidate = String(localLoginInfo.email || localLoginInfo.username || '').trim()
-    loginInfo.value.email = candidate.includes('@') ? candidate : ''
+    loginInfo.value.email = localLoginInfo.email || localLoginInfo.username || ''
     loginInfo.value.password = localLoginInfo.password || ''
   }
 }
@@ -89,15 +88,11 @@ async function handleLogin() {
     return
   }
 
-  const normalizedEmail = String(email).trim()
-  if (!normalizedEmail.includes('@')) {
-    window.$message?.error('请输入有效的邮箱（需包含 @），当前登录使用 Supabase Email/Password')
-    return
-  }
+  const normalizedIdentity = String(email).trim()
   try {
     loading.value = true
     $message.loading(t('views.login.message_verifying'))
-    const res = await api.login({ email: normalizedEmail, password: password.toString() })
+    const res = await api.login({ email: normalizedIdentity, password: password.toString() })
     $message.success(t('views.login.message_login_success'))
 
     // 1. 保存 token（包括过期时间）
@@ -105,7 +100,7 @@ async function handleLogin() {
     if (res.data.refresh_token) setRefreshToken(res.data.refresh_token)
 
     // 兼容：记住上次登录信息（email 不落明文密码）
-    lStorage.set('loginInfo', { email: normalizedEmail })
+    lStorage.set('loginInfo', { email: normalizedIdentity })
 
     // 2. 获取用户信息
     const userInfoRes = await api.getUserInfo()

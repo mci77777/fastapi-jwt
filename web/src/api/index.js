@@ -1,21 +1,46 @@
 import { request } from '@/utils'
 import { supabaseSignInWithPassword } from '@/utils/supabase/auth'
 
+function resolveAuthMode() {
+  return String(import.meta.env.VITE_AUTH_MODE || 'auto')
+    .trim()
+    .toLowerCase()
+}
+
+function isEmail(value) {
+  const v = String(value || '').trim()
+  return v.includes('@')
+}
+
 export default {
   login: async (data = {}) => {
-    const email = data.email ?? data.username
+    const identity = data.email ?? data.username
     const password = data.password
-    const session = await supabaseSignInWithPassword({ email, password })
-    return {
-      code: 200,
-      msg: 'ok',
-      data: {
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-        expires_in: session.expires_in,
-        token_type: session.token_type,
-      },
+
+    const mode = resolveAuthMode()
+    const useSupabase = mode === 'supabase' || (mode !== 'local' && isEmail(identity))
+
+    // 1) Supabase 登录（真实用户 email/password）
+    if (useSupabase) {
+      const session = await supabaseSignInWithPassword({ email: identity, password })
+      return {
+        code: 200,
+        msg: 'ok',
+        data: {
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          expires_in: session.expires_in,
+          token_type: session.token_type,
+        },
+      }
     }
+
+    // 2) 本地登录（兼容：admin/123456）
+    return request.post(
+      '/base/access_token',
+      { username: String(identity || '').trim(), password: String(password || '') },
+      { noNeedToken: true }
+    )
   },
   getUserInfo: () => request.get('/base/userinfo'),
   getUserMenu: () => request.get('/base/usermenu'),
