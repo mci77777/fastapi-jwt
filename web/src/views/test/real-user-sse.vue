@@ -51,14 +51,19 @@
               />
             </n-form-item>
             <n-form-item>
-              <n-button
-                type="primary"
-                :loading="sendingMessage"
-                :disabled="!jwtToken"
-                @click="handleSendMessage"
-              >
-                发送消息
-              </n-button>
+              <n-space>
+                <n-button
+                  type="primary"
+                  :loading="sendingMessage"
+                  :disabled="!jwtToken"
+                  @click="handleSendMessage"
+                >
+                  发送消息
+                </n-button>
+                <n-button secondary :disabled="!lastRequestId" @click="exportTraceJSON">
+                  导出 trace
+                </n-button>
+              </n-space>
             </n-form-item>
           </n-form>
 
@@ -136,7 +141,7 @@ const gettingToken = ref(false)
 // 对话表单
 const chatFormRef = ref(null)
 const chatForm = ref({
-  message: 'Hello, this is a test message from Mock User UI.',
+  message: 'Hello, this is a test message from Real User SSE UI.',
 })
 
 // AI 响应
@@ -145,6 +150,30 @@ const aiResponse = ref('')
 const sendingMessage = ref(false)
 const sseEvents = ref([])
 const conversationId = ref('')
+const lastRequestId = ref('')
+
+function exportTraceJSON() {
+  if (!lastRequestId.value) {
+    message.warning('暂无可导出的 request_id')
+    return
+  }
+  const trace = {
+    request_id: lastRequestId.value,
+    message_id: messageId.value,
+    conversation_id: conversationId.value,
+    created_at: new Date().toISOString(),
+    ai_response: aiResponse.value,
+    sse_events: sseEvents.value,
+  }
+  const blob = new Blob([JSON.stringify(trace, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `web_real_user_sse_trace_${lastRequestId.value}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+  message.success('已导出 trace')
+}
 
 /**
  * 获取 JWT Token
@@ -201,13 +230,15 @@ async function handleSendMessage() {
   try {
     const requestId =
       globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    lastRequestId.value = requestId
+    console.log(`request_id=${requestId} action=create_message`)
 
     // 步骤 1: 创建消息
     const createResponse = await createMessage({
       text: chatForm.value.message,
       conversationId: conversationId.value || null,
       metadata: {
-        source: 'real_user_sse_ui',
+        scenario: 'real_user_sse_ui',
         test_type: 'manual',
       },
       requestId,
@@ -217,6 +248,7 @@ async function handleSendMessage() {
     messageId.value = createResponse.message_id
     conversationId.value = createResponse.conversation_id
     message.success(`消息创建成功，ID: ${messageId.value}`)
+    console.log(`request_id=${requestId} message_id=${messageId.value} conversation_id=${conversationId.value}`)
 
     // 步骤 2: 建立 SSE 连接
     await streamSSEEvents(messageId.value, conversationId.value, requestId)
@@ -231,6 +263,7 @@ async function handleSendMessage() {
  * 流式接收 SSE 事件
  */
 async function streamSSEEvents(msgId, convId, requestId) {
+  console.log(`request_id=${requestId} action=stream_sse_start msg_id=${msgId}`)
   const baseURL = import.meta.env.VITE_BASE_API || '/api/v1'
   const normalizedBase = String(baseURL).replace(/\/+$/, '')
   const url = convId
@@ -288,6 +321,7 @@ async function streamSSEEvents(msgId, convId, requestId) {
     } else if (eventType === 'error') {
       const errMsg = parsed && typeof parsed === 'object' ? parsed.error : rawData
       message.error(`SSE 错误：${errMsg || '未知错误'}`)
+      console.log(`request_id=${requestId} action=stream_sse_end reason=error`)
     }
   }
 
@@ -309,6 +343,7 @@ async function streamSSEEvents(msgId, convId, requestId) {
       if (!line) {
         flushEvent()
         if (currentEvent === 'completed' || currentEvent === 'error') {
+          console.log(`request_id=${requestId} action=stream_sse_end reason=${currentEvent}`)
           return
         }
         currentEvent = 'message'
@@ -325,6 +360,7 @@ async function streamSSEEvents(msgId, convId, requestId) {
 
   // 处理尾部残留
   flushEvent()
+  console.log(`request_id=${requestId} action=stream_sse_end reason=eof`)
 }
 </script>
 
