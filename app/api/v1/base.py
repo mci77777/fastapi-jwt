@@ -55,6 +55,7 @@ def create_response(data: Any = None, code: int = 200, msg: str = "success") -> 
 
 
 class UpdatePasswordRequest(BaseModel):
+    id: Optional[str] = Field(default=None, description="兼容字段：用户ID（本地改密不使用）")
     old_password: str = Field(..., description="旧密码")
     new_password: str = Field(..., description="新密码")
     confirm_password: Optional[str] = Field(default=None, description="确认新密码（可选）")
