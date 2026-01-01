@@ -126,6 +126,14 @@ CREATE TABLE IF NOT EXISTS conversation_logs (
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_created ON conversation_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_user ON conversation_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_status ON conversation_logs(status);
+
+-- 本地 Dashboard 账号（仅用于本地 admin 登录与改密；不与 Supabase 用户混用）
+CREATE TABLE IF NOT EXISTS local_users (
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 

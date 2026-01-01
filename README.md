@@ -27,7 +27,7 @@ https://api.gymbro.cloud/docs
 
 **默认账号**：
 - 用户名：`admin`
-- 密码：`123456`
+- 密码：`123456`（可在「个人中心 → 修改密码」更新，持久化到 `db.sqlite3`）
 
 #### 方法二：Docker 部署（生产环境）
 
@@ -51,7 +51,7 @@ docker run -d --restart=always --name=vue-fastapi-admin -p 80:80 vue-fastapi-adm
 
 **默认账号**：
 - 用户名：`admin`
-- 密码：`123456`
+- 密码：`123456`（可在「个人中心 → 修改密码」更新，持久化到 `db.sqlite3`）
 
 #### 方法三：本地 Docker 打包启动（开发自测）
 

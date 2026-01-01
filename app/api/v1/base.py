@@ -1,5 +1,9 @@
 """基础认证端点（登录、用户信息等）。"""
 
+import base64
+import hashlib
+import hmac
+import secrets
 import time
 from typing import Any, Dict, Optional
 
@@ -8,6 +12,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser
+from app.core.middleware import get_current_request_id
+from app.db import get_sqlite_manager
 from app.settings.config import get_settings
 
 router = APIRouter(prefix="/base", tags=["base"])
@@ -41,7 +47,69 @@ class UserInfoResponse(BaseModel):
 
 def create_response(data: Any = None, code: int = 200, msg: str = "success") -> Dict[str, Any]:
     """创建统一的响应格式。"""
-    return {"code": code, "data": data, "msg": msg}
+    payload: Dict[str, Any] = {"code": code, "data": data, "msg": msg}
+    # 仅对“业务错误”（code!=200）补齐 request_id，便于排障与对账（SSOT：X-Request-Id）
+    if code != 200:
+        payload["request_id"] = get_current_request_id()
+    return payload
+
+
+class UpdatePasswordRequest(BaseModel):
+    old_password: str = Field(..., description="旧密码")
+    new_password: str = Field(..., description="新密码")
+    confirm_password: Optional[str] = Field(default=None, description="确认新密码（可选）")
+
+
+def _b64(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _b64d(text: str) -> bytes:
+    pad = "=" * ((4 - (len(text) % 4)) % 4)
+    return base64.urlsafe_b64decode((text + pad).encode("ascii"))
+
+
+def _hash_password(password: str) -> str:
+    # KISS：使用 stdlib scrypt（无需额外依赖），仅用于本地 admin 账号存储。
+    salt = secrets.token_bytes(16)
+    n, r, p = 2**14, 8, 1
+    key = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=n, r=r, p=p, dklen=32)
+    return f"scrypt${n}${r}${p}${_b64(salt)}${_b64(key)}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        algo, n, r, p, salt_b64, key_b64 = stored.split("$", 5)
+        if algo != "scrypt":
+            return False
+        salt = _b64d(salt_b64)
+        expected = _b64d(key_b64)
+        derived = hashlib.scrypt(
+            password.encode("utf-8"),
+            salt=salt,
+            n=int(n),
+            r=int(r),
+            p=int(p),
+            dklen=len(expected),
+        )
+        return hmac.compare_digest(derived, expected)
+    except Exception:
+        return False
+
+
+async def _get_or_seed_local_admin_password_hash(request: Request) -> str:
+    db = get_sqlite_manager(request.app)
+    row = await db.fetchone("SELECT password_hash FROM local_users WHERE username = ?", ("admin",))
+    if row and row.get("password_hash"):
+        return str(row["password_hash"])
+
+    # 首次启动：写入默认 admin/123456（可在 UI 里改密，持久化到 db.sqlite3）
+    password_hash = _hash_password("123456")
+    await db.execute(
+        "INSERT OR REPLACE INTO local_users(username, password_hash, updated_at) VALUES(?, ?, CURRENT_TIMESTAMP)",
+        ("admin", password_hash),
+    )
+    return password_hash
 
 
 def create_test_jwt_token(username: str, expire_hours: int = 24) -> str:
@@ -126,7 +194,7 @@ async def get_current_user_from_token(
 
 
 @router.post("/access_token", summary="用户登录")
-async def login(request: LoginRequest) -> Dict[str, Any]:
+async def login(http_request: Request, request: LoginRequest) -> Dict[str, Any]:
     """
     用户名密码登录接口。
 
@@ -139,12 +207,14 @@ async def login(request: LoginRequest) -> Dict[str, Any]:
     """
     username = (request.username or "").strip()
     password = (request.password or "").strip()
-    # 临时硬编码的测试账号
-    if username == "admin" and password == "123456":
-        # 创建真实的JWT token
-        test_token = create_test_jwt_token(username)
 
-        return create_response(data={"access_token": test_token, "token_type": "bearer"})
+    # Dashboard 本地账号：仅允许 admin（SSOT），密码可通过 /base/update_password 持久化更新。
+    if username == "admin":
+        password_hash = await _get_or_seed_local_admin_password_hash(http_request)
+        if _verify_password(password, password_hash):
+            test_token = create_test_jwt_token(username)
+            return create_response(data={"access_token": test_token, "token_type": "bearer"})
+        return create_response(code=401, msg="用户名或密码错误", data=None)
 
     # 认证失败
     return create_response(code=401, msg="用户名或密码错误", data=None)
@@ -338,7 +408,37 @@ async def get_user_api(current_user: AuthenticatedUser = Depends(get_current_use
 
 
 @router.post("/update_password", summary="更新密码")
-async def update_password(current_user: AuthenticatedUser = Depends(get_current_user_from_token)) -> Dict[str, Any]:
-    """更新当前用户密码。"""
-    # 临时实现，实际应该调用Supabase Auth API
-    return create_response(code=501, msg="密码更新功能暂未实现，请通过Supabase Auth进行密码管理", data=None)
+async def update_password(
+    http_request: Request,
+    payload: UpdatePasswordRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user_from_token),
+) -> Dict[str, Any]:
+    """更新当前用户密码。
+
+    说明：仅支持本地 Dashboard 账号 admin 的改密（不影响 Supabase 用户）。
+    """
+    user_metadata = current_user.claims.get("user_metadata") or {}
+    username = (user_metadata.get("username") or "").strip()
+    is_admin = bool(user_metadata.get("is_admin", False)) or username == "admin"
+    if not is_admin:
+        return create_response(code=403, msg="无权限修改密码", data=None)
+
+    old_password = (payload.old_password or "").strip()
+    new_password = (payload.new_password or "").strip()
+    if not old_password or not new_password:
+        return create_response(code=400, msg="密码不能为空", data=None)
+    if payload.confirm_password is not None and new_password != (payload.confirm_password or "").strip():
+        return create_response(code=400, msg="两次输入的新密码不一致", data=None)
+    if len(new_password) < 6:
+        return create_response(code=400, msg="新密码长度至少 6 位", data=None)
+
+    password_hash = await _get_or_seed_local_admin_password_hash(http_request)
+    if not _verify_password(old_password, password_hash):
+        return create_response(code=401, msg="旧密码不正确", data=None)
+
+    db = get_sqlite_manager(http_request.app)
+    await db.execute(
+        "UPDATE local_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
+        (_hash_password(new_password), "admin"),
+    )
+    return create_response(code=200, msg="密码更新成功", data={"username": "admin"})
