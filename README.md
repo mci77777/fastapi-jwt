@@ -65,6 +65,12 @@ python3 scripts/dev/generate_docker_local_env.py
 bash scripts/dev/docker_local_up.sh
 ```
 
+验证（真实用户 JWT + /messages + SSE，不做 mock；会产出脱敏 trace）：
+
+```sh
+bash scripts/dev/run_local_real_user_e2e.sh
+```
+
 访问：
 - Web：http://localhost:8080
 - API：http://localhost:9999/docs

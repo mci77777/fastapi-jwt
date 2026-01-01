@@ -86,10 +86,12 @@ export async function reqResolve(config) {
   }
 
   const token = getToken()
+  const refresh = getRefreshToken()
 
   if (token) {
     // 检查 Token 是否即将过期
-    if (shouldRefreshToken(token)) {
+    // SSOT：仅在存在 refresh_token 时才尝试 Supabase refresh，避免本地账号/测试 token 被误刷新导致掉线。
+    if (refresh && shouldRefreshToken(token)) {
       try {
         console.log('⏰ Token 即将过期，自动刷新...')
         const newToken = await refreshToken()

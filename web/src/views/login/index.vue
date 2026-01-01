@@ -18,7 +18,7 @@
             v-model:value="loginInfo.email"
             autofocus
             class="h-50 items-center pl-10 text-16"
-            placeholder="email@example.com"
+            placeholder="邮箱或用户名（本地：admin）"
             :maxlength="120"
           />
         </div>

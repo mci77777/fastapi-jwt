@@ -89,6 +89,9 @@ python scripts/verification/verify_jwks_cache.py
 
 # 3. 运行端到端冒烟测试
 python scripts/monitoring/smoke_test.py
+
+# 4. 真实用户 JWT + /messages + SSE（本地闭环；复用 e2e/anon_jwt_sse/.env.local，不打印密钥）
+bash scripts/dev/run_local_real_user_e2e.sh
 ```
 
 ### 开发测试
@@ -202,6 +205,8 @@ python scripts/utils/detect_table_schema.py
 | 脚本 | 功能 | 用途 |
 |------|------|------|
 | `smoke_test.py` | 冒烟测试 | 端到端冒烟测试（**SSOT**）|
+| `real_user_sse_e2e.py` | 真实用户 E2E | Supabase 登录 → /messages → SSE（对齐 Web OpenAI 字段） |
+| `real_user_signup_login_sse_e2e.py` | 每日真实用户 E2E | Admin 创建用户 → 登录 → /messages → SSE（CI 夜跑） |
 | `test_api_monitor.py` | API 监控测试 | API 监控和性能测试 |
 
 ### 工具脚本 (utils/)

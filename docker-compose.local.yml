@@ -9,6 +9,7 @@ services:
         # 前端构建期注入（静态产物）
         VITE_BASE_API: ${VITE_BASE_API:-/api/v1}
         VITE_API_URL: ${VITE_API_URL:-}
+        VITE_AUTH_MODE: ${VITE_AUTH_MODE:-auto}
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
     image: vue-fastapi-admin:local
@@ -34,4 +35,3 @@ services:
     volumes:
       - ./logs:/opt/vue-fastapi-admin/logs
       - ./db.sqlite3:/opt/vue-fastapi-admin/db.sqlite3
-

@@ -55,6 +55,7 @@ e2e/anon_jwt_sse/.env.local
 e2e/anon_jwt_sse/artifacts/*
 !e2e/anon_jwt_sse/artifacts/.gitkeep
 e2e/anon_jwt_sse/artifacts/anon_token_*.json
+e2e/real_user_sse/artifacts/*
 
 # ============ 前端 ============
 node_modules/

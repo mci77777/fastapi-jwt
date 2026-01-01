@@ -19,7 +19,13 @@ export default {
 
     const mode = resolveAuthMode()
     const normalizedIdentity = String(identity || '').trim()
-    const useSupabase = mode === 'supabase' || (mode !== 'local' && isEmail(normalizedIdentity))
+
+    // SSOT：是否走 Supabase 只由「输入是否为邮箱」决定，避免误配 VITE_AUTH_MODE=supabase 导致用户名也被发到 Supabase。
+    // - local：强制走本地 /base/access_token
+    // - supabase：仅当输入为邮箱时走 Supabase
+    // - auto：邮箱走 Supabase；否则走本地
+    const isEmailIdentity = isEmail(normalizedIdentity)
+    const useSupabase = mode !== 'local' && isEmailIdentity
 
     // 1) Supabase 登录（真实用户 email/password）
     if (useSupabase) {
@@ -34,6 +40,11 @@ export default {
           token_type: session.token_type,
         },
       }
+    }
+
+    if (mode === 'supabase' && !isEmailIdentity) {
+      // 兜底提示：Supabase 模式但输入不是邮箱时，仍然按本地登录处理（便于 dashboard 本地账号可用）。
+      // 这里不抛错，避免把用户锁死在无法登录的状态。
     }
 
     // 2) 本地登录（兼容：admin/123456）

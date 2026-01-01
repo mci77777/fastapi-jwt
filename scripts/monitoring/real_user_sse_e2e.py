@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -52,6 +53,14 @@ def _require_env(name: str) -> str:
     if not v:
         raise KeyError(name)
     return v
+
+
+def _require_env_any(*names: str) -> str:
+    for name in names:
+        v = (os.getenv(name) or "").strip()
+        if v:
+            return v
+    raise KeyError(names[0] if names else "ENV")
 
 
 def _as_bool(v: str) -> bool:
@@ -86,7 +95,21 @@ async def supabase_sign_in_password(*, supabase_url: str, anon_key: str, email: 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(url, headers=headers, json=payload)
         if resp.status_code >= 400:
-            raise RuntimeError(f"Supabase 登录失败：HTTP {resp.status_code}")
+            detail = ""
+            try:
+                data = resp.json()
+                detail = (
+                    data.get("msg")
+                    or data.get("message")
+                    or data.get("error_description")
+                    or data.get("error")
+                    or ""
+                )
+            except Exception:
+                detail = ""
+            detail = (str(detail).strip() if detail is not None else "").strip()
+            suffix = f" ({detail})" if detail else ""
+            raise RuntimeError(f"Supabase 登录失败：HTTP {resp.status_code}{suffix}")
         data = resp.json()
         token = data.get("access_token")
         if not token:
@@ -280,15 +303,16 @@ def _verify_sqlite_written(message_id: str, request_id: str) -> None:
 
 async def main() -> int:
     try:
-        supabase_url = _require_env("E2E_SUPABASE_URL")
-        supabase_anon_key = _require_env("E2E_SUPABASE_ANON_KEY")
-        email = _require_env("E2E_USER_EMAIL")
-        password = _require_env("E2E_USER_PASSWORD")
+        # SSOT：优先读取 E2E_*；兼容复用 `e2e/anon_jwt_sse/.env.local`（SUPABASE_* / TEST_USER_* / API_BASE）。
+        supabase_url = _require_env_any("E2E_SUPABASE_URL", "SUPABASE_URL")
+        supabase_anon_key = _require_env_any("E2E_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY")
+        email = _require_env_any("E2E_USER_EMAIL", "TEST_USER_EMAIL")
+        password = _require_env_any("E2E_USER_PASSWORD", "TEST_USER_PASSWORD")
     except KeyError as e:
         sys.stderr.write(f"Missing env: {e}\n")
         return 2
 
-    api_base = (os.getenv("E2E_API_BASE") or "http://127.0.0.1:9999/api/v1").strip()
+    api_base = (os.getenv("E2E_API_BASE") or os.getenv("API_BASE") or "http://127.0.0.1:9999/api/v1").strip()
     text = (os.getenv("E2E_MESSAGE_TEXT") or "hello").strip()
     prompt_mode = (os.getenv("E2E_PROMPT_MODE") or "server").strip().lower()
     prompt_mode = "passthrough" if prompt_mode == "passthrough" else "server"
@@ -336,7 +360,8 @@ async def main() -> int:
             "api_base": api_base,
             "prompt_mode": prompt_mode,
             "supabase_url": supabase_url,
-            "user_email": email,
+            # 避免泄露真实用户信息：用 key=email 让 trace 自动脱敏
+            "email": email,
         },
     )
     logger = TraceLogger(report, verbose=True)
