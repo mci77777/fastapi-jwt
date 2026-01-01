@@ -24,6 +24,7 @@ SENSITIVE_BODY_KEYS = {
     "api_key",
     "apikey",
     "authorization",
+    "email",
 }
 
 

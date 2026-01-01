@@ -1,0 +1,44 @@
+name: daily-real-user-e2e
+
+on:
+  schedule:
+    # 每天 03:15 UTC 运行（可按需调整）
+    - cron: "15 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  real-user-signup-login-sse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      E2E_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+      E2E_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+      E2E_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+      E2E_API_BASE: ${{ secrets.E2E_API_BASE }}
+      E2E_EMAIL_DOMAIN: ${{ secrets.E2E_EMAIL_DOMAIN }}
+      E2E_CLEANUP_USER: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps (minimal)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install httpx
+
+      - name: Run daily E2E (real user signup/login/sse)
+        run: |
+          python scripts/monitoring/real_user_signup_login_sse_e2e.py
+
+      - name: Upload artifacts (trace)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-user-e2e-trace
+          path: e2e/real_user_sse/artifacts/*.json
+          if-no-files-found: ignore
+
