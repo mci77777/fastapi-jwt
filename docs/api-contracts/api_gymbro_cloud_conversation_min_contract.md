@@ -75,7 +75,7 @@
   "status": 401,
   "code": "token_missing",
   "message": "Authorization token is required",
-  "trace_id": "<trace_id>",
+  "request_id": "<request_id>",
   "hint": "optional"
 }
 ```

@@ -5,7 +5,7 @@
 ## 🌙 E2E-ANON Nightly
 - 指标：`e2e_anon_success`、`e2e_anon_latency_ms`、`sse_conns_inflight`、`auth_jwks_refresh_err_total`。
 - 告警：夜跑连续失败 ≥ 2 次、SSE 并发超阈、JWT 刷新错误激增。
-- 排查：基于 Actions 日志获取 `X-Trace-Id` → 追踪 API/网关/数据库 → 校正策略或限流阈值 → 复跑工作流。
+- 排查：基于 Actions 日志获取 `X-Request-Id` → 追踪 API/网关/数据库 → 校正策略或限流阈值 → 复跑工作流。
 
 ## 🔁 GW-Auth 回滚
 - 触发：认证失败率 >5%、正常用户误杀 >10%、`/healthz` 异常、Prometheus 指标异常或用户投诉激增。
