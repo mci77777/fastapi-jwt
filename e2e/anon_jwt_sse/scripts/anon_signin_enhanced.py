@@ -40,18 +40,18 @@ class EnhancedAnonAuth:
         self.artifacts_dir = pathlib.Path(__file__).parent.parent / "artifacts"
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    async def get_token_via_edge_function(self, trace_id: Optional[str] = None) -> Dict[str, Any]:
+    async def get_token_via_edge_function(self, request_id: Optional[str] = None) -> Dict[str, Any]:
         """
         通过Edge Function获取匿名JWT token
         这是推荐的方式，基于docs/匿名用户获取JWT.md规范
         """
-        if not trace_id:
-            trace_id = f"edge-anon-{uuid.uuid4().hex[:8]}"
+        if not request_id:
+            request_id = f"edge-anon-{uuid.uuid4().hex[:8]}"
 
         edge_url = f"{self.supabase_url}/functions/v1/get-anon-token"
         headers: Dict[str, str] = {
             "Content-Type": "application/json",
-            "X-Trace-Id": trace_id,
+            "X-Request-Id": request_id,
             "User-Agent": "E2E-Enhanced-Client/1.0",
         }
 
@@ -62,7 +62,7 @@ class EnhancedAnonAuth:
 
         print("🔑 通过Edge Function获取匿名JWT...")
         print(f"📍 URL: {edge_url}")
-        print(f"🔍 Trace ID: {trace_id}")
+        print(f"🔍 Request ID: {request_id}")
 
         async with aiohttp.ClientSession() as session:
             try:
@@ -79,7 +79,7 @@ class EnhancedAnonAuth:
                         print(f"⏰ 过期时间: {data['expires_at']}")
 
                         # 保存token
-                        await self._save_token_data(data, "edge_function", trace_id)
+                        await self._save_token_data(data, "edge_function", request_id)
                         return data
 
                     elif response.status == 429:
@@ -92,7 +92,7 @@ class EnhancedAnonAuth:
                 print(f"❌ Edge Function方式失败: {e}")
                 raise
 
-    async def get_token_via_native_auth(self, trace_id: Optional[str] = None) -> Dict[str, Any]:
+    async def get_token_via_native_auth(self, request_id: Optional[str] = None) -> Dict[str, Any]:
         """
         通过Supabase原生匿名登录获取JWT token
         需要在Supabase Dashboard中启用匿名登录
@@ -100,14 +100,14 @@ class EnhancedAnonAuth:
         if not self.anon_key:
             raise ValueError("SUPABASE_ANON_KEY is required for native auth")
 
-        if not trace_id:
-            trace_id = f"native-anon-{uuid.uuid4().hex[:8]}"
+        if not request_id:
+            request_id = f"native-anon-{uuid.uuid4().hex[:8]}"
 
         auth_url = f"{self.supabase_url}/auth/v1/signup"
         headers: Dict[str, str] = {
             "apikey": self.anon_key,
             "Content-Type": "application/json",
-            "X-Trace-Id": trace_id,
+            "X-Request-Id": request_id,
         }
 
         # 对部分 Supabase 部署，附加 Authorization 有助于通过网关/代理校验
@@ -115,7 +115,7 @@ class EnhancedAnonAuth:
 
         print("🔑 通过原生匿名登录获取JWT...")
         print(f"📍 URL: {auth_url}")
-        print(f"🔍 Trace ID: {trace_id}")
+        print(f"🔍 Request ID: {request_id}")
 
         # 尝试匿名登录
         payload = {"options": {"anonymous": True}}
@@ -142,7 +142,7 @@ class EnhancedAnonAuth:
                         }
 
                         # 保存token
-                        await self._save_token_data(unified_data, "native_auth", trace_id)
+                        await self._save_token_data(unified_data, "native_auth", request_id)
                         return unified_data
 
                     elif response.status == 422:
@@ -158,7 +158,7 @@ class EnhancedAnonAuth:
                 print(f"❌ 原生认证方式失败: {e}")
                 raise
 
-    async def _save_token_data(self, token_data: Dict[str, Any], method: str, trace_id: str):
+    async def _save_token_data(self, token_data: Dict[str, Any], method: str, request_id: str):
         """保存token数据到artifacts目录"""
 
         # 保存完整数据
@@ -167,7 +167,7 @@ class EnhancedAnonAuth:
             json.dump(
                 {
                     "method": method,
-                    "trace_id": trace_id,
+                    "request_id": request_id,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "token_data": token_data,
                 },
@@ -199,7 +199,7 @@ class EnhancedAnonAuth:
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "X-Trace-Id": f"verify-{uuid.uuid4().hex[:8]}",
+            "X-Request-Id": f"verify-{uuid.uuid4().hex[:8]}",
         }
 
         # 测试多个端点

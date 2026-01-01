@@ -21,12 +21,12 @@ ART.mkdir(parents=True, exist_ok=True)
 
 
 async def one_stream(i: int):
-    trace = str(uuid.uuid4())
+    request_id = str(uuid.uuid4())
     url = f"{API}/api/v1/messages"
     async with aiohttp.ClientSession() as sess:
         async with sess.post(
             url,
-            headers={"Authorization": f"Bearer {TOK}", "Accept": "text/event-stream", "X-Trace-Id": trace},
+            headers={"Authorization": f"Bearer {TOK}", "Accept": "text/event-stream", "X-Request-Id": request_id},
             json={"messages": [{"role": "user", "content": f"hello #{i}"}]},
         ) as r:
             if i < 2:
@@ -40,7 +40,7 @@ async def one_stream(i: int):
             else:
                 # 第三条预期 429
                 assert r.status in (429, 403), f"expect 429/403, got {r.status}"
-    return trace
+    return request_id
 
 
 async def main():

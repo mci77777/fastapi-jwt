@@ -384,10 +384,10 @@ class AnonIntegrationValidator:
             self.add_test_result("限流机制测试", False, {"error": str(e)})
             return False
 
-    async def _make_api_request(self, trace_id: str) -> Dict[str, Any]:
+    async def _make_api_request(self, request_id: str) -> Dict[str, Any]:
         """发送API请求"""
         try:
-            headers = {"Content-Type": "application/json", "X-Trace-Id": trace_id}
+            headers = {"Content-Type": "application/json", "X-Request-Id": request_id}
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(

@@ -21,8 +21,8 @@
       "script": {
         "type": "text/javascript",
         "exec": [
-          "// 设置全局trace_id",
-          "pm.globals.set('trace_id', 'newman-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9));"
+          "// 设置全局request_id",
+          "pm.globals.set('request_id', 'newman-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9));"
         ]
       }
     }
@@ -61,8 +61,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-Trace-Id",
-                "value": "{{trace_id}}",
+                "key": "X-Request-Id",
+                "value": "{{request_id}}",
                 "type": "text"
               }
             ],
@@ -108,8 +108,8 @@
                 "type": "text"
               },
               {
-                "key": "X-Trace-Id",
-                "value": "{{trace_id}}",
+                "key": "X-Request-Id",
+                "value": "{{request_id}}",
                 "type": "text"
               }
             ],
@@ -148,9 +148,9 @@
                   "    pm.expect(jsonData).to.have.property('message');",
                   "});",
                   "",
-                  "pm.test('Contains trace_id', function () {",
+                  "pm.test('Contains request_id', function () {",
                   "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData).to.have.property('trace_id');",
+                  "    pm.expect(jsonData).to.have.property('request_id');",
                   "});"
                 ]
               }
@@ -160,8 +160,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-Trace-Id",
-                "value": "{{trace_id}}",
+                "key": "X-Request-Id",
+                "value": "{{request_id}}",
                 "type": "text"
               }
             ],
@@ -203,8 +203,8 @@
                 "type": "text"
               },
               {
-                "key": "X-Trace-Id",
-                "value": "{{trace_id}}",
+                "key": "X-Request-Id",
+                "value": "{{request_id}}",
                 "type": "text"
               }
             ],
@@ -250,8 +250,8 @@
                 "type": "text"
               },
               {
-                "key": "X-Trace-Id",
-                "value": "{{trace_id}}",
+                "key": "X-Request-Id",
+                "value": "{{request_id}}",
                 "type": "text"
               }
             ],
@@ -301,8 +301,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-Trace-Id",
-                "value": "{{trace_id}}-rapid",
+                "key": "X-Request-Id",
+                "value": "{{request_id}}-rapid",
                 "type": "text"
               }
             ],
@@ -344,8 +344,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-Trace-Id",
-                "value": "{{trace_id}}",
+                "key": "X-Request-Id",
+                "value": "{{request_id}}",
                 "type": "text"
               }
             ],
@@ -382,8 +382,8 @@
             "method": "DELETE",
             "header": [
               {
-                "key": "X-Trace-Id",
-                "value": "{{trace_id}}",
+                "key": "X-Request-Id",
+                "value": "{{request_id}}",
                 "type": "text"
               }
             ],

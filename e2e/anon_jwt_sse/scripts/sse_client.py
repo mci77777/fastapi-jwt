@@ -56,21 +56,21 @@ class SSEClient:
         self.api_base = api_base.rstrip("/")
         self.token = token
         self.events: List[SSEEvent] = []
-        self.trace_id = f"e2e-sse-{uuid.uuid4().hex[:8]}"
+        self.request_id = f"e2e-sse-{uuid.uuid4().hex[:8]}"
 
     async def create_message(self, text: str, conversation_id: Optional[str] = None, skip_prompt: bool = False) -> str:
         """创建消息并返回message_id"""
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
-            "X-Trace-Id": self.trace_id,
+            "X-Request-Id": self.request_id,
         }
 
         payload = {
             "text": text,
             "conversation_id": conversation_id,
             "skip_prompt": skip_prompt,
-            "metadata": {"source": "e2e_test", "test_type": "sse_client"},
+            "metadata": {"source": "e2e_test", "test_type": "sse_client", "request_id": self.request_id},
         }
 
         async with httpx.AsyncClient() as client:
@@ -90,13 +90,13 @@ class SSEClient:
             "Authorization": f"Bearer {self.token}",
             "Accept": "text/event-stream",
             "Cache-Control": "no-cache",
-            "X-Trace-Id": self.trace_id,
+            "X-Request-Id": self.request_id,
         }
 
         url = f"{self.api_base}/api/v1/messages/{message_id}/events"
 
         print(f"🌊 开始SSE流式接收: {url}")
-        print(f"🔍 Trace ID: {self.trace_id}")
+        print(f"🔍 Request ID: {self.request_id}")
 
         start_time = time.time()
         event_count = 0
@@ -126,7 +126,7 @@ class SSEClient:
                                 print(f"   数据: {json.dumps(event.parsed_data, ensure_ascii=False)[:100]}...")
 
                             # 检查是否为结束事件
-                            if current_event in ["done", "error", "complete"]:
+                            if current_event in ["completed", "error"]:
                                 print("🏁 检测到结束事件，停止接收")
                                 break
 
@@ -173,7 +173,7 @@ class SSEClient:
         log_file = artifacts_dir / "sse.log"
         with open(log_file, "w", encoding="utf-8") as f:
             f.write("# SSE事件日志\n")
-            f.write(f"# Trace ID: {self.trace_id}\n")
+            f.write(f"# Request ID: {self.request_id}\n")
             f.write(f"# 生成时间: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n")
             f.write(f"# 事件总数: {len(self.events)}\n\n")
 
@@ -206,7 +206,7 @@ class SSEClient:
 
         # 保存事件摘要
         summary = {
-            "trace_id": self.trace_id,
+            "request_id": self.request_id,
             "total_events": len(self.events),
             "event_types": list(set(event.event_type for event in self.events)),
             "first_event_time": first_event.timestamp if first_event else None,
@@ -293,22 +293,26 @@ async def main():
         app_ui_log = []
 
         for event in events:
-            if event.event_type == "delta" and event.parsed_data:
+            if event.event_type == "content_delta" and event.parsed_data:
                 # 模拟增量渲染
-                content = event.parsed_data.get("content", "")
+                content = event.parsed_data.get("delta", "")
                 if content:
                     app_ui_log.append(f"[DELTA] 渲染增量内容: {content[:50]}...")
-            elif event.event_type == "done" and event.parsed_data:
+            elif event.event_type == "completed" and event.parsed_data:
                 # 模拟最终渲染
-                final_content = event.parsed_data.get("final_content", "")
+                final_content = event.parsed_data.get("reply", "")
                 if final_content:
                     app_ui_log.append(f"[FINAL] 渲染最终内容: {final_content[:100]}...")
+            elif event.event_type == "error" and event.parsed_data:
+                err = event.parsed_data.get("error")
+                rid = event.parsed_data.get("request_id")
+                app_ui_log.append(f"[ERROR] request_id={rid} error={err}")
 
         # 保存App UI日志
         app_log_file = artifacts_dir / "app_ui.log"
         with open(app_log_file, "w", encoding="utf-8") as f:
             f.write("# App UI 消费日志\n")
-            f.write(f"# Trace ID: {client.trace_id}\n")
+            f.write(f"# Request ID: {client.request_id}\n")
             f.write(f"# 生成时间: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n\n")
             for log_entry in app_ui_log:
                 f.write(f"{log_entry}\n")

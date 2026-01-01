@@ -734,13 +734,13 @@ class AnonymousE2E:
             "conversation_id": None,
             "metadata": {
                 "source": "anon_e2e",
-                "trace_id": str(uuid.uuid4()),
+                "request_id": str(uuid.uuid4()),
             },
         }
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "X-Trace-Id": payload["metadata"]["trace_id"],
+            "X-Request-Id": payload["metadata"]["request_id"],
         }
 
         start = self._now_ms()
