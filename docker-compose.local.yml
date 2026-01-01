@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # 前端构建期注入（静态产物）
+        VITE_BASE_API: ${VITE_BASE_API:-/api/v1}
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    image: vue-fastapi-admin:local
+    container_name: vue-fastapi-admin-local
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+      - "${API_PORT:-9999}:9999"
+    environment:
+      # 后端 JWT 校验（最小可用）
+      - SUPABASE_JWKS_URL=${SUPABASE_JWKS_URL}
+      - SUPABASE_ISSUER=${SUPABASE_ISSUER}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:-authenticated}
+
+      # 常用开关
+      - ANON_ENABLED=true
+      - RATE_LIMIT_ENABLED=true
+      - POLICY_GATE_ENABLED=true
+
+      # 可选：日志落盘
+      - LOG_TO_FILE=${LOG_TO_FILE:-false}
+      - LOG_FILE_PATH=${LOG_FILE_PATH:-logs/app.log}
+    volumes:
+      - ./logs:/opt/vue-fastapi-admin/logs
+      - ./db.sqlite3:/opt/vue-fastapi-admin/db.sqlite3
+

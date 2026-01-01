@@ -1,5 +1,5 @@
 <template>
-  <div class="mock-user-container">
+  <div class="real-user-container">
     <n-card title="真实用户 SSE 测试 - JWT 与 AI 对话">
       <n-space vertical :size="20">
         <!-- 步骤 1: 获取 JWT Token -->
@@ -365,7 +365,7 @@ async function streamSSEEvents(msgId, convId, requestId) {
 </script>
 
 <style scoped>
-.mock-user-container {
+.real-user-container {
   padding: 20px;
   max-width: 1200px;
   margin: 0 auto;

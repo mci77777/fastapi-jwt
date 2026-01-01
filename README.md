@@ -53,6 +53,22 @@ docker run -d --restart=always --name=vue-fastapi-admin -p 80:80 vue-fastapi-adm
 - 用户名：`admin`
 - 密码：`123456`
 
+#### 方法三：本地 Docker 打包启动（开发自测）
+
+前置：你已经在 `e2e/anon_jwt_sse/.env.local` 配置了 `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `API_BASE`（SSOT）。
+
+```sh
+# 生成 .env.docker.local（不会输出密钥，且已被 gitignore）
+python3 scripts/dev/generate_docker_local_env.py
+
+# 一键构建并启动（需要本机 Docker Desktop / WSL 集成）
+bash scripts/dev/docker_local_up.sh
+```
+
+访问：
+- Web：http://localhost:8080
+- API：http://localhost:9999/docs
+
 ### 手动启动（开发调试）
 
 #### 环境要求

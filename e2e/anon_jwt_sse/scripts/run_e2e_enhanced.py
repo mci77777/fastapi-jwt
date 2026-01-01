@@ -4,7 +4,7 @@
 1. 调用 Supabase 邮箱注册 API 创建测试账号
 2. 使用注册信息登录换取 JWT
 3. 携带 JWT 调用 AI 消息接口发送 “hello”
-4. 订阅 SSE 事件直到收到 [DONE]
+4. 订阅 SSE 事件直到收到 completed/error
 5. 把链路中的请求、响应、事件统一记录到 JSON
 """
 from __future__ import annotations
@@ -51,8 +51,8 @@ class TraceReport:
     supabase_project_id: Optional[str] = None
     supabase_url: Optional[str] = None
     api_base_url: str = "http://localhost:9999/api/v1"
+    request_id: str = ""
     user_email: str = ""
-    user_password: str = ""
     steps: List[StepRecord] = field(default_factory=list)
 
     def add_step(self, step: StepRecord) -> None:
@@ -60,6 +60,7 @@ class TraceReport:
 
     def to_json(self) -> Dict[str, Any]:
         return {
+            "request_id": self.request_id,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "duration_seconds": (self.finished_at or time.time()) - self.started_at,
@@ -90,11 +91,13 @@ class AnonymousE2E:
         self.output_path = output_path
         self.timeout = timeout
         self.mail_api: Optional[MailApiClient] = None
+        self.request_id = str(uuid.uuid4())
         self.report = TraceReport(
             started_at=time.time(),
             supabase_project_id=os.getenv("SUPABASE_PROJECT_ID"),
             supabase_url=self.supabase_url,
             api_base_url=self.api_base_url,
+            request_id=self.request_id,
         )
 
     @staticmethod
@@ -123,6 +126,52 @@ class AnonymousE2E:
             if key in redacted:
                 redacted[key] = "<redacted>"
         return redacted
+
+    @staticmethod
+    def _mask_email(email: str) -> str:
+        if not email or "@" not in email:
+            return "<redacted>"
+        local, domain = email.split("@", 1)
+        if len(local) <= 2:
+            return f"{local[:1]}***@{domain}"
+        return f"{local[:2]}***@{domain}"
+
+    @staticmethod
+    def _safe_sse_event(event: str, data: Any) -> Dict[str, Any]:
+        if isinstance(data, dict):
+            if event == "content_delta":
+                delta = str(data.get("delta") or "")
+                return {
+                    "event": event,
+                    "data": {
+                        "message_id": data.get("message_id"),
+                        "delta_len": len(delta),
+                        "delta_preview": delta[:20],
+                        "request_id": data.get("request_id"),
+                    },
+                }
+            if event == "completed":
+                reply = str(data.get("reply") or "")
+                return {
+                    "event": event,
+                    "data": {
+                        "message_id": data.get("message_id"),
+                        "reply_len": len(reply),
+                        "reply_preview": reply[:40],
+                        "request_id": data.get("request_id"),
+                    },
+                }
+            if event == "error":
+                return {
+                    "event": event,
+                    "data": {
+                        "message_id": data.get("message_id"),
+                        "code": data.get("code"),
+                        "error": data.get("error"),
+                        "request_id": data.get("request_id"),
+                    },
+                }
+        return {"event": event, "data": data}
 
     @staticmethod
     def _extract_otp(text: str) -> Optional[str]:
@@ -734,13 +783,12 @@ class AnonymousE2E:
             "conversation_id": None,
             "metadata": {
                 "source": "anon_e2e",
-                "request_id": str(uuid.uuid4()),
             },
         }
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "X-Request-Id": payload["metadata"]["request_id"],
+            "X-Request-Id": self.request_id,
         }
 
         start = self._now_ms()
@@ -749,27 +797,50 @@ class AnonymousE2E:
 
         body = _safe_json(resp)
         message_id = body.get("message_id") if isinstance(body, dict) else None
+        conversation_id = body.get("conversation_id") if isinstance(body, dict) else None
 
         return StepRecord(
             name="api_create_message",
-            success=resp.status_code in (200, 202) and isinstance(message_id, str),
-            request={"url": url, "payload": payload},
+            success=resp.status_code in (200, 202) and isinstance(message_id, str) and isinstance(conversation_id, str),
+            request={"url": url, "headers": {"X-Request-Id": self.request_id}, "payload": payload},
             response={"status_code": resp.status_code, "body": body},
-            notes={"message_id": message_id},
+            notes={"message_id": message_id, "conversation_id": conversation_id},
             duration_ms=duration,
         )
 
-    async def _stream_events(self, client: httpx.AsyncClient, token: str, message_id: str) -> StepRecord:
+    async def _stream_events(self, client: httpx.AsyncClient, token: str, message_id: str, conversation_id: str) -> StepRecord:
         url = f"{self.api_base_url}/messages/{message_id}/events"
-        headers = {"Authorization": f"Bearer {token}", "Accept": "text/event-stream"}
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "text/event-stream",
+            "X-Request-Id": self.request_id,
+        }
 
-        events: List[Dict[str, Any]] = []
-        saw_done = False
+        frames: List[Dict[str, Any]] = []
+        final_event: Optional[Dict[str, Any]] = None
         status_code = None
         start = self._now_ms()
 
+        current_event: str = "message"
+        data_lines: List[str] = []
+
+        def flush() -> Optional[Dict[str, Any]]:
+            nonlocal data_lines, current_event
+            if not data_lines:
+                return None
+            raw = "\n".join(data_lines)
+            data_lines = []
+            parsed = _safe_parse_json(raw)
+            return {"event": current_event or "message", "data": parsed}
+
         try:
-            async with client.stream("GET", url, headers=headers, timeout=None) as resp:
+            async with client.stream(
+                "GET",
+                url,
+                headers=headers,
+                params={"conversation_id": conversation_id},
+                timeout=None,
+            ) as resp:
                 status_code = resp.status_code
 
                 if resp.status_code != 200:
@@ -777,21 +848,34 @@ class AnonymousE2E:
                     return StepRecord(
                         name="api_stream_events",
                         success=False,
-                        request={"url": url},
+                        request={
+                            "url": url,
+                            "headers": {"X-Request-Id": self.request_id},
+                            "params": {"conversation_id": conversation_id},
+                        },
                         response={"status_code": resp.status_code, "body": text.decode("utf-8", "ignore")},
                         duration_ms=self._now_ms() - start,
                     )
 
                 async for line in resp.aiter_lines():
-                    if not line.strip():
+                    if line is None:
                         continue
-                    if line.startswith("data:"):
-                        data_str = line[5:].strip()
-                        if data_str == "[DONE]":
-                            saw_done = True
-                            events.append({"event": "done"})
-                            break
-                        events.append({"event": "data", "payload": _safe_parse_json(data_str)})
+                    line = line.rstrip("\r")
+
+                    if line == "":
+                        evt = flush()
+                        if evt:
+                            frames.append(self._safe_sse_event(str(evt.get("event")), evt.get("data")))
+                            if evt.get("event") in ("completed", "error"):
+                                final_event = evt
+                                break
+                        current_event = "message"
+                        continue
+
+                    if line.startswith("event:"):
+                        current_event = line[len("event:") :].strip()
+                    elif line.startswith("data:"):
+                        data_lines.append(line[len("data:") :].strip())
         except Exception as exc:  # pragma: no cover
             return StepRecord(
                 name="api_stream_events",
@@ -803,11 +887,39 @@ class AnonymousE2E:
             )
 
         duration = self._now_ms() - start
+        final_name = final_event.get("event") if isinstance(final_event, dict) else None
+        ok = bool(final_event) and len(frames) > 0 and final_name == "completed"
+
+        notes: Dict[str, Any] = {
+            "frames": frames[:200],
+            "final_event": final_event,
+        }
+
+        # 对账：completed/error 的 request_id 必须与 create 的 X-Request-Id 一致
+        if isinstance(final_event, dict) and final_name in ("completed", "error"):
+            data = final_event.get("data")
+            if isinstance(data, dict) and data.get("request_id") and data.get("request_id") != self.request_id:
+                ok = False
+                notes["request_id_mismatch"] = True
+
+        # 强约束：出现 error 视为 E2E 失败（用于检测上游密钥/策略漂移）
+        if final_name == "error":
+            notes["final_error"] = True
+
         return StepRecord(
             name="api_stream_events",
-            success=len(events) > 0 and (saw_done or any(e.get("event") == "data" for e in events)),
-            request={"url": url},
-            response={"status_code": status_code, "events": events},
+            success=ok,
+            request={
+                "url": url,
+                "headers": {"X-Request-Id": self.request_id},
+                "params": {"conversation_id": conversation_id},
+            },
+            response={
+                "status_code": status_code,
+                "frames_count": len(frames),
+                "final_event": final_event,
+            },
+            notes=notes,
             duration_ms=duration,
         )
 
@@ -882,17 +994,16 @@ class AnonymousE2E:
                 email = mailbox.email
 
         password = f"Pwd-{uuid.uuid4().hex[:12]}"
-        self.report.user_email = email
-        self.report.user_password = password
+        self.report.user_email = self._mask_email(email)
 
-        print(f"[INFO] Starting anonymous E2E test; target API: {self.api_base_url}")
-        print(f"[INFO] Using temporary email: {email}")
+        print(f"request_id={self.request_id} action=start_anon_e2e api_base={self.api_base_url}")
+        print(f"request_id={self.request_id} temp_email={self._mask_email(email)}")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             # 注册
             signup_step = await self._register_user(client, email, password)
             self.report.add_step(signup_step)
-            print(f"[STEP] Signup status: {signup_step.response['status_code']}")
+            print(f"request_id={self.request_id} step=supabase_signup status={signup_step.response['status_code']}")
             if not signup_step.success:
                 return await self._finalize(1)
 
@@ -904,7 +1015,9 @@ class AnonymousE2E:
                         client, email=email, password=password
                     )
                     self.report.add_step(login_step)
-                    print(f"[STEP] Login(otp/adminlink) status: {login_step.response.get('verify_status_code')}")
+                    print(
+                        f"request_id={self.request_id} step=supabase_login_otp_adminlink status={login_step.response.get('verify_status_code')}"
+                    )
                     if not login_step.success:
                         return await self._finalize(1)
                 else:
@@ -916,14 +1029,14 @@ class AnonymousE2E:
                         otp_output_path=otp_output_path,
                     )
                     self.report.add_step(login_step)
-                    print(f"[STEP] Login(otp) status: {login_step.response.get('status_code')}")
+                    print(f"request_id={self.request_id} step=supabase_login_otp status={login_step.response.get('status_code')}")
                     if not login_step.success:
                         return await self._finalize(1)
             else:
                 # 登录换取 JWT（password grant）
                 login_step, token = await self._login_user(client, email, password)
                 self.report.add_step(login_step)
-                print(f"[STEP] Login status: {login_step.response['status_code']}")
+                print(f"request_id={self.request_id} step=supabase_login_password status={login_step.response['status_code']}")
                 if not login_step.success and mailbox and self._is_email_not_confirmed(login_step.response.get("body")):
                     confirm_step = await self._confirm_email_via_mail_api(
                         client,
@@ -940,7 +1053,9 @@ class AnonymousE2E:
                     login_step_retry, token_retry = await self._login_user(client, email, password)
                     login_step_retry.name = "supabase_login_retry"
                     self.report.add_step(login_step_retry)
-                    print(f"[STEP] Login(retry) status: {login_step_retry.response['status_code']}")
+                    print(
+                        f"request_id={self.request_id} step=supabase_login_password_retry status={login_step_retry.response['status_code']}"
+                    )
                     if not login_step_retry.success:
                         return await self._finalize(1)
                     token = token_retry
@@ -953,18 +1068,19 @@ class AnonymousE2E:
             # 发送消息
             message_step = await self._send_message(client, token)
             self.report.add_step(message_step)
-            print(f"[STEP] Message status: {message_step.response['status_code']}")
+            print(f"[STEP] Message status: {message_step.response['status_code']} request_id={self.request_id}")
             if not message_step.success:
                 return await self._finalize(1)
 
             message_id = message_step.notes.get("message_id")
-            if not message_id:
+            conversation_id = message_step.notes.get("conversation_id")
+            if not isinstance(message_id, str) or not isinstance(conversation_id, str):
                 return await self._finalize(1)
 
             # 监听 SSE
-            events_step = await self._stream_events(client, token, message_id)
+            events_step = await self._stream_events(client, token, message_id, conversation_id)
             self.report.add_step(events_step)
-            print(f"[STEP] SSE status: {events_step.response.get('status_code')}")
+            print(f"request_id={self.request_id} step=stream_events status={events_step.response.get('status_code')}")
             if not events_step.success:
                 return await self._finalize(1)
 

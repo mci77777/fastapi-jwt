@@ -1,6 +1,17 @@
 FROM node:20.19.4-alpine AS web
 
 WORKDIR /opt/vue-fastapi-admin
+
+# Vite 构建期注入（SSOT：VITE_* 必须在 build 时存在，静态产物运行时无法再读取）
+ARG VITE_BASE_API=/api/v1
+ARG VITE_API_URL=
+ARG VITE_SUPABASE_URL=
+ARG VITE_SUPABASE_ANON_KEY=
+ENV VITE_BASE_API=${VITE_BASE_API}
+ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+ENV VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+
 COPY /web ./web
 RUN cd /opt/vue-fastapi-admin/web && npm i --registry=https://registry.npmmirror.com && npm run build
 

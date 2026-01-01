@@ -58,8 +58,10 @@ class SSEClient:
         self.events: List[SSEEvent] = []
         self.request_id = f"e2e-sse-{uuid.uuid4().hex[:8]}"
 
-    async def create_message(self, text: str, conversation_id: Optional[str] = None, skip_prompt: bool = False) -> str:
-        """创建消息并返回message_id"""
+    async def create_message(
+        self, text: str, conversation_id: Optional[str] = None, skip_prompt: bool = False
+    ) -> tuple[str, Optional[str]]:
+        """创建消息并返回 (message_id, conversation_id)"""
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
@@ -70,7 +72,7 @@ class SSEClient:
             "text": text,
             "conversation_id": conversation_id,
             "skip_prompt": skip_prompt,
-            "metadata": {"source": "e2e_test", "test_type": "sse_client", "request_id": self.request_id},
+            "metadata": {"source": "e2e_test", "test_type": "sse_client"},
         }
 
         async with httpx.AsyncClient() as client:
@@ -82,9 +84,9 @@ class SSEClient:
                 raise Exception(f"创建消息失败: {response.status_code} - {response.text}")
 
             result = response.json()
-            return result["message_id"]
+            return result["message_id"], result.get("conversation_id")
 
-    async def stream_events(self, message_id: str, timeout: int = 30) -> List[SSEEvent]:
+    async def stream_events(self, message_id: str, conversation_id: Optional[str] = None, timeout: int = 30) -> List[SSEEvent]:
         """流式接收SSE事件"""
         headers = {
             "Authorization": f"Bearer {self.token}",
@@ -94,15 +96,15 @@ class SSEClient:
         }
 
         url = f"{self.api_base}/api/v1/messages/{message_id}/events"
+        params = {"conversation_id": conversation_id} if conversation_id else None
 
-        print(f"🌊 开始SSE流式接收: {url}")
-        print(f"🔍 Request ID: {self.request_id}")
+        print(f"request_id={self.request_id} action=sse_stream_start url={url}")
 
         start_time = time.time()
         event_count = 0
 
         async with httpx.AsyncClient() as client:
-            async with client.stream("GET", url, headers=headers, timeout=timeout) as response:
+            async with client.stream("GET", url, headers=headers, params=params, timeout=timeout) as response:
                 if response.status_code != 200:
                     raise Exception(f"SSE连接失败: {response.status_code} - {await response.aread()}")
 
@@ -121,13 +123,16 @@ class SSEClient:
                             self.events.append(event)
                             event_count += 1
 
-                            print(f"📨 接收事件 #{event_count}: {current_event}")
+                            print(f"request_id={self.request_id} action=sse_event_received idx={event_count} event={current_event}")
                             if event.parsed_data:
-                                print(f"   数据: {json.dumps(event.parsed_data, ensure_ascii=False)[:100]}...")
+                                print(
+                                    f"request_id={self.request_id} action=sse_event_data_preview event={current_event} "
+                                    f"preview={json.dumps(event.parsed_data, ensure_ascii=False)[:100]}"
+                                )
 
                             # 检查是否为结束事件
                             if current_event in ["completed", "error"]:
-                                print("🏁 检测到结束事件，停止接收")
+                                print(f"request_id={self.request_id} action=sse_stream_end event={current_event}")
                                 break
 
                         current_event = None
@@ -155,7 +160,7 @@ class SSEClient:
                     event_count += 1
 
         duration = time.time() - start_time
-        print(f"📊 SSE接收完成: 共{event_count}个事件，耗时{duration:.2f}秒")
+        print(f"request_id={self.request_id} action=sse_stream_finished events={event_count} duration_s={duration:.2f}")
 
         return self.events
 
@@ -269,12 +274,12 @@ async def main():
         # 步骤3: 创建消息
         print("\n📝 步骤3: 创建AI消息...")
         test_message = "Hello, this is an E2E test for anonymous JWT and SSE streaming."
-        message_id = await client.create_message(test_message, skip_prompt=skip_prompt)
-        print(f"✅ 消息创建成功，ID: {message_id}")
+        message_id, conversation_id = await client.create_message(test_message, skip_prompt=skip_prompt)
+        print(f"✅ 消息创建成功，ID: {message_id} conversation_id: {conversation_id or '--'}")
 
         # 步骤4: 流式接收事件
         print("\n🌊 步骤4: 开始SSE流式接收...")
-        events = await client.stream_events(message_id, timeout=sse_timeout)
+        events = await client.stream_events(message_id, conversation_id=conversation_id, timeout=sse_timeout)
 
         if not events:
             print("⚠️ 警告: 未接收到任何SSE事件")
