@@ -18,11 +18,12 @@ export default {
     const password = data.password
 
     const mode = resolveAuthMode()
-    const useSupabase = mode === 'supabase' || (mode !== 'local' && isEmail(identity))
+    const normalizedIdentity = String(identity || '').trim()
+    const useSupabase = mode === 'supabase' || (mode !== 'local' && isEmail(normalizedIdentity))
 
     // 1) Supabase 登录（真实用户 email/password）
     if (useSupabase) {
-      const session = await supabaseSignInWithPassword({ email: identity, password })
+      const session = await supabaseSignInWithPassword({ email: normalizedIdentity, password })
       return {
         code: 200,
         msg: 'ok',
@@ -38,7 +39,7 @@ export default {
     // 2) 本地登录（兼容：admin/123456）
     return request.post(
       '/base/access_token',
-      { username: String(identity || '').trim(), password: String(password || '') },
+      { username: normalizedIdentity, password: String(password || '').trim() },
       { noNeedToken: true }
     )
   },

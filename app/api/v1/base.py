@@ -137,10 +137,12 @@ async def login(request: LoginRequest) -> Dict[str, Any]:
     - admin/123456 返回测试JWT token
     - 其他用户名密码返回401
     """
+    username = (request.username or "").strip()
+    password = (request.password or "").strip()
     # 临时硬编码的测试账号
-    if request.username == "admin" and request.password == "123456":
+    if username == "admin" and password == "123456":
         # 创建真实的JWT token
-        test_token = create_test_jwt_token(request.username)
+        test_token = create_test_jwt_token(username)
 
         return create_response(data={"access_token": test_token, "token_type": "bearer"})
 
