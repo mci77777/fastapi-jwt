@@ -85,30 +85,35 @@
         </n-card>
 
         <!-- 步骤 2: AI 对话测试 -->
-        <n-card title="步骤 2: AI 对话测试" size="small">
-          <n-form ref="chatFormRef" :model="chatForm" label-placement="left" label-width="100">
-            <n-form-item label="API（端点）" path="endpoint_id">
-              <n-select
-                v-model:value="chatForm.endpoint_id"
-                :options="endpointSelectOptions"
-                :loading="modelsLoading"
-                filterable
-                clearable
-                placeholder="选择一个已配置的 AI 端点"
-                :disabled="sendingMessage"
-              />
-            </n-form-item>
-            <n-form-item label="模型" path="model">
-              <n-select
-                v-model:value="chatForm.model"
-                :options="modelSelectOptions"
-                :loading="modelsLoading"
-                filterable
-                clearable
-                placeholder="选择模型（可选）"
-                :disabled="sendingMessage"
-              />
-            </n-form-item>
+	        <n-card title="步骤 2: AI 对话测试" size="small">
+	          <n-form ref="chatFormRef" :model="chatForm" label-placement="left" label-width="100">
+	            <n-form-item label="API（端点）" path="endpoint_id">
+	              <n-select
+	                v-model:value="chatForm.endpoint_id"
+	                :options="endpointSelectOptions"
+	                :loading="modelsLoading"
+	                filterable
+	                clearable
+	                placeholder="选择一个已配置的 AI 端点"
+	                :disabled="sendingMessage"
+	              />
+	            </n-form-item>
+	            <n-form-item label="模型" path="model">
+	              <n-space align="center" wrap>
+	                <n-select
+	                  v-model:value="chatForm.model"
+	                  :options="modelSelectOptions"
+	                  :loading="modelsLoading"
+	                  filterable
+	                  clearable
+	                  placeholder="选择模型（可选）"
+	                  :disabled="sendingMessage"
+	                  style="min-width: 320px"
+	                />
+	                <n-switch v-model:value="chatForm.only_configured_model" :disabled="sendingMessage" />
+	                <n-text depth="3">仅显示端点配置模型（推荐）</n-text>
+	              </n-space>
+	            </n-form-item>
 
             <n-divider style="margin: 8px 0" />
 
@@ -451,6 +456,7 @@ const chatFormRef = ref(null)
 const chatForm = ref({
   endpoint_id: null,
   model: '',
+  only_configured_model: true,
   prompt_mode: 'server',
   skip_prompt: false,
   system_prompt: '',
@@ -503,14 +509,23 @@ function buildModelCandidatesForEndpoint(endpointId) {
   if (!endpointId) return aiSuiteStore.modelCandidates || []
   const endpoint = (models.value || []).find((item) => item && item.id === endpointId)
   if (!endpoint) return aiSuiteStore.modelCandidates || []
-  const candidateSet = new Set()
-  if (Array.isArray(endpoint.model_list)) {
-    endpoint.model_list.forEach((m) => {
-      if (m) candidateSet.add(String(m))
-    })
+  const candidates = []
+  const pushUnique = (val) => {
+    const text = typeof val === 'string' ? val.trim() : String(val || '').trim()
+    if (!text) return
+    if (!candidates.includes(text)) candidates.push(text)
   }
-  if (endpoint.model) candidateSet.add(String(endpoint.model))
-  return Array.from(candidateSet).filter(Boolean).sort()
+
+  // 你的“映射模型”在端点配置的 `model` 字段里；供应商 /v1/models 列表只用于排障。
+  if (chatForm.value.only_configured_model && endpoint.model) {
+    pushUnique(endpoint.model)
+    return candidates
+  }
+
+  // 允许展开供应商模型：仍优先把端点配置 model 放在首位，避免误选。
+  if (endpoint.model) pushUnique(endpoint.model)
+  if (Array.isArray(endpoint.model_list)) endpoint.model_list.forEach((m) => pushUnique(m))
+  return candidates
 }
 
 const modelSelectOptions = computed(() => {
@@ -741,7 +756,8 @@ async function handleGetAnonToken(forceNew) {
 onMounted(() => {
   tryResumeAnonToken()
   loadMailUsers()
-  aiSuiteStore.loadModels({ page_size: 100, refresh_missing_models: true }).then(() => {
+  // JWT 对话测试的模型 SSOT：优先使用端点配置的 `model`（映射模型）；不强制拉取供应商 /v1/models。
+  aiSuiteStore.loadModels({ page_size: 100, refresh_missing_models: false }).then(() => {
     if (!chatForm.value.endpoint_id && endpointSelectOptions.value.length) {
       chatForm.value.endpoint_id = endpointSelectOptions.value[0].value
     }
