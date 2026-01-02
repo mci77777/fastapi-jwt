@@ -12,3 +12,6 @@
 - `e2e/anon_jwt_sse/`：脚本、Postman 集合、SQL 断言与 README。
 - `.env.local` 未入库的环境变量样例。
 - 运行指南：`pnpm i && pnpm run e2e:anon` 完成一键验证。
+
+## 📌 任务列表
+- `docs/task/2026-01-02_exercise-library-seed-sync.md`：官方动作库种子版本化 + 增量更新 API（客户端每日一次拉取检测）
