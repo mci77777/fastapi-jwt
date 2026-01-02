@@ -28,6 +28,7 @@ export const fetchPromptTests = (promptId, params = {}) =>
 
 // JWT 测试相关
 export const createMailUser = (data = {}) => request.post('/llm/tests/create-mail-user', data)
+export const createAnonToken = (data = {}) => request.post('/llm/tests/anon-token', data)
 
 // 消息与对话相关
 /**

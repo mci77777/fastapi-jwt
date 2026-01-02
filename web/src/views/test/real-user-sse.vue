@@ -139,7 +139,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useMessage } from 'naive-ui'
-import { createMailUser, createMessage } from '@/api/aiModelSuite'
+import { createAnonToken, createMailUser, createMessage } from '@/api/aiModelSuite'
 import api from '@/api'
 import { useAiModelSuiteStore } from '@/store'
 import { supabaseRefreshSession, supabaseSignInAnonymously } from '@/utils/supabase/auth'
@@ -325,12 +325,36 @@ async function handleGetAnonToken(forceNew) {
     const cachedDay = localStorage.getItem(ANON_CACHE_DAY_KEY)
     const cachedRefresh = localStorage.getItem(ANON_CACHE_REFRESH_KEY)
 
+    // 1) 优先走后端（线上不依赖 VITE_SUPABASE_* 配置；需要后端 SUPABASE_ANON_KEY）
+    try {
+      const res = await createAnonToken({
+        refresh_token: !forceNew && cachedDay === today ? cachedRefresh || null : null,
+        force_new: !!forceNew,
+      })
+      const data = res?.data
+      if (data?.access_token) {
+        localStorage.setItem(ANON_CACHE_DAY_KEY, today)
+        if (data.refresh_token) localStorage.setItem(ANON_CACHE_REFRESH_KEY, String(data.refresh_token))
+        applyJwtSession({
+          access_token: String(data.access_token),
+          mode: 'anonymous',
+          meta: { username: 'anon', email: '' },
+        })
+        message.success(forceNew ? '已重新生成匿名用户' : '匿名 JWT 获取成功')
+        return
+      }
+    } catch {
+      // 回退到前端直连 Supabase（本地开发可用）
+    }
+
+    // 2) 前端直连 Supabase（需要 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY）
     if (!forceNew && cachedDay === today && cachedRefresh) {
       try {
         const refreshed = await supabaseRefreshSession(cachedRefresh)
+        localStorage.setItem(ANON_CACHE_DAY_KEY, today)
+        if (refreshed.refresh_token) localStorage.setItem(ANON_CACHE_REFRESH_KEY, refreshed.refresh_token)
         applyJwtSession({
           access_token: refreshed.access_token,
-          refresh_token: refreshed.refresh_token || cachedRefresh,
           mode: 'anonymous',
           meta: { username: 'anon', email: '' },
         })
@@ -346,7 +370,6 @@ async function handleGetAnonToken(forceNew) {
     if (session.refresh_token) localStorage.setItem(ANON_CACHE_REFRESH_KEY, session.refresh_token)
     applyJwtSession({
       access_token: session.access_token,
-      refresh_token: session.refresh_token || null,
       mode: 'anonymous',
       meta: { username: 'anon', email: '' },
     })

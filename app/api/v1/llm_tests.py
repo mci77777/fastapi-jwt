@@ -59,6 +59,13 @@ class CreateMailUserRequest(BaseModel):
     email_domain: Optional[str] = Field(default=None, description="未配置 Mail API 时的兜底域名（默认 example.com）")
 
 
+class CreateAnonTokenRequest(BaseModel):
+    """生成/复用匿名 JWT（供 Web JWT 测试页使用）。"""
+
+    refresh_token: Optional[str] = Field(default=None, description="可选：用于当日复用的 refresh_token")
+    force_new: bool = Field(default=False, description="是否强制新建匿名用户")
+
+
 def _resolve_supabase_base_url(settings: Any) -> str:
     """解析 Supabase base URL（SSOT：优先 SUPABASE_URL，其次 SUPABASE_PROJECT_ID）。"""
     url = getattr(settings, "supabase_url", None)
@@ -175,36 +182,29 @@ async def create_mail_user(
     password = secrets.token_urlsafe(18)
 
     email_address: str
-    try:
-        if api_key:
+    note_extra: dict[str, Any] = {}
+    domain = (payload.email_domain or "example.com").strip() or "example.com"
+    email_local = f"{username}+{int(time.time())}"
+    email_address = f"{email_local}@{domain}"
+    if api_key:
+        try:
             from app.services.mail_auth_service import MailAuthService
 
             ms = MailAuthService(api_key=api_key)
             config = await ms.get_config()
             domains = config.get("domains") if isinstance(config, dict) else None
-            if not isinstance(domains, list) or not domains:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=create_response(code=502, msg="mail_api_no_domains", request_id=request_id),
-                )
-            # 为避免重复/冲突，邮箱本地部分附加时间戳，但 user_metadata.username 保持稳定（便于观测与对账）
-            email_name = f"{username}-{int(time.time())}"
-            email_data = await ms.generate_email(domain=str(domains[0]), name=email_name)
-            email_address = str(email_data.get("address") or "").strip()
-            if not email_address or "@" not in email_address:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=create_response(code=502, msg="mail_api_invalid_email", request_id=request_id),
-                )
-        else:
-            domain = (payload.email_domain or "example.com").strip() or "example.com"
-            email_local = f"{username}+{int(time.time())}"
-            email_address = f"{email_local}@{domain}"
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=create_response(code=502, msg="mail_api_error", request_id=request_id),
-        ) from exc
+            if isinstance(domains, list) and domains:
+                email_name = f"{username}-{int(time.time())}"
+                email_data = await ms.generate_email(domain=str(domains[0]), name=email_name)
+                addr = str(email_data.get("address") or "").strip()
+                if addr and "@" in addr:
+                    email_address = addr
+                else:
+                    note_extra["mail_api_fallback"] = "invalid_email"
+            else:
+                note_extra["mail_api_fallback"] = "no_domains"
+        except Exception:
+            note_extra["mail_api_fallback"] = "mail_api_error"
 
     headers_service = {
         "apikey": service_key,
@@ -295,6 +295,96 @@ async def create_mail_user(
                 "refresh_token": session.get("refresh_token") if isinstance(session, dict) else None,
                 "expires_in": session.get("expires_in") if isinstance(session, dict) else None,
                 "token_type": session.get("token_type") if isinstance(session, dict) else "bearer",
+                **note_extra,
+            },
+        )
+
+
+@router.post("/tests/anon-token")
+async def create_anon_token(
+    payload: CreateAnonTokenRequest,
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """生成或复用匿名 JWT（真实 Supabase Auth 签发）。"""
+
+    if current_user.is_anonymous:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=create_response(code=403, msg="anonymous_user_not_allowed", request_id=get_current_request_id()),
+        )
+
+    from app.settings.config import get_settings
+
+    settings = get_settings()
+    request_id = get_current_request_id()
+
+    supabase_url = _resolve_supabase_base_url(settings)
+    anon_key = getattr(settings, "supabase_anon_key", None)
+    if not isinstance(anon_key, str) or not anon_key.strip():
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=create_response(code=500, msg="supabase_anon_key_missing", request_id=request_id),
+        )
+    anon_key = anon_key.strip()
+
+    headers = {
+        "apikey": anon_key,
+        "Authorization": f"Bearer {anon_key}",
+        "Content-Type": "application/json",
+        "X-Request-Id": request_id,
+    }
+
+    async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
+        refresh_token = (payload.refresh_token or "").strip()
+        if refresh_token and not payload.force_new:
+            refresh_url = f"{supabase_url}/auth/v1/token?grant_type=refresh_token"
+            resp = await client.post(refresh_url, headers=headers, json={"refresh_token": refresh_token})
+            if resp.status_code == 200:
+                data = resp.json()
+                access_token = data.get("access_token") if isinstance(data, dict) else None
+                if isinstance(access_token, str) and access_token:
+                    return create_response(
+                        data={
+                            "mode": "anonymous",
+                            "access_token": access_token,
+                            "refresh_token": data.get("refresh_token") if isinstance(data, dict) else refresh_token,
+                            "expires_in": data.get("expires_in") if isinstance(data, dict) else None,
+                            "token_type": data.get("token_type") if isinstance(data, dict) else "bearer",
+                            "note": "refreshed",
+                        }
+                    )
+
+        signup_url = f"{supabase_url}/auth/v1/signup"
+        resp = await client.post(signup_url, headers=headers, json={"options": {"anonymous": True}})
+        if resp.status_code >= 400:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=create_response(
+                    code=502,
+                    msg="supabase_anon_signup_failed",
+                    request_id=request_id,
+                    upstream_status=resp.status_code,
+                ),
+            )
+
+        data = resp.json()
+        access_token = data.get("access_token") if isinstance(data, dict) else None
+        if not isinstance(access_token, str) or not access_token:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=create_response(code=502, msg="supabase_missing_access_token", request_id=request_id),
+            )
+
+        return create_response(
+            data={
+                "mode": "anonymous",
+                "access_token": access_token,
+                "refresh_token": data.get("refresh_token") if isinstance(data, dict) else None,
+                "expires_in": data.get("expires_in") if isinstance(data, dict) else None,
+                "token_type": data.get("token_type") if isinstance(data, dict) else "bearer",
+                "user": data.get("user") if isinstance(data, dict) else None,
+                "note": "created",
             }
         )
 
