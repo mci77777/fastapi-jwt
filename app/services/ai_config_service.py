@@ -276,6 +276,58 @@ class AIConfigService:
                 logger.exception("自动同步 Supabase 失败 endpoint_id=%s", endpoint["id"])
         return endpoint
 
+    async def ensure_env_default_endpoint(self) -> Optional[dict[str, Any]]:
+        """当本地无可用端点时，使用环境变量注入一个最小可用默认端点（用于本地 Docker/E2E）。"""
+
+        row = await self._db.fetchone("SELECT COUNT(1) AS cnt FROM ai_endpoints WHERE is_active = 1")
+        count = int(row["cnt"]) if row and row.get("cnt") is not None else 0
+        if count > 0:
+            return None
+
+        api_key = (self._settings.ai_api_key or "").strip()
+        model = (self._settings.ai_model or "").strip()
+        provider_raw = (self._settings.ai_provider or "").strip()
+        provider = provider_raw.lower()
+        base_url = str(self._settings.ai_api_base_url or "").strip()
+
+        if not api_key or not model:
+            return None
+
+        if not base_url:
+            # 兼容历史配置：AI_PROVIDER 可能被当作 OpenAI 兼容上游 base_url 填写
+            if provider_raw.startswith("http://") or provider_raw.startswith("https://"):
+                base_url = provider_raw
+                provider = "openai"
+            elif provider in ("openai",):
+                base_url = "https://api.openai.com"
+            elif provider in ("anthropic", "claude"):
+                base_url = "https://api.anthropic.com"
+            else:
+                return None
+
+        endpoint = await self.create_endpoint(
+            {
+                "name": f"env-default-{provider or 'ai'}",
+                "base_url": base_url,
+                "model": model,
+                "description": "Auto-seeded from env for local E2E",
+                "api_key": api_key,
+                "timeout": int(self._settings.http_timeout_seconds),
+                "is_active": True,
+                "is_default": True,
+                "status": "unknown",
+            },
+            auto_sync=False,
+        )
+        logger.info(
+            "Seeded env default ai endpoint name=%s base_url=%s model=%s api_key=%s",
+            endpoint.get("name"),
+            endpoint.get("base_url"),
+            endpoint.get("model"),
+            _mask_api_key(api_key),
+        )
+        return endpoint
+
     async def update_endpoint(self, endpoint_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         existing = await self.get_endpoint(endpoint_id)
 

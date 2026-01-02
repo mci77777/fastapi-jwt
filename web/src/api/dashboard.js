@@ -138,14 +138,22 @@ export function updateStatsConfig(data = {}) {
  * @returns {string} WebSocket URL
  */
 export function createWebSocketUrl(token) {
+  const rawBaseApi = import.meta.env.VITE_BASE_API || '/api/v1'
+  const baseApi = String(rawBaseApi || '').trim().replace(/\/+$/, '')
+
+  const tokenParam = encodeURIComponent(String(token || ''))
+
+  // SSOT：WS 与 HTTP 走同一份 base api，避免本地 Docker(3101)/dev(3102)/生产(https) 端口漂移。
+  // - baseApi 为相对路径（/api/v1）：使用当前 origin
+  // - baseApi 为绝对 URL（https://api.xxx/api/v1）：跟随其 host 与协议（https->wss, http->ws）
+  if (/^https?:\/\//i.test(baseApi)) {
+    const wsBase = baseApi.replace(/^https:/i, 'wss:').replace(/^http:/i, 'ws:')
+    return `${wsBase}/ws/dashboard?token=${tokenParam}`
+  }
+
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  // 使用当前页面的 host（例如 localhost:3101）
-  // 但是 WebSocket 需要连接到后端服务器（localhost:9999）
-  // 在开发环境中，Vite 代理会将 /api/v1 转发到 localhost:9999
-  // 所以 WebSocket 应该直接连接到 localhost:9999
-  const wsHost = window.location.hostname
-  const wsPort = 9999 // 后端服务器端口
-  return `${wsProtocol}//${wsHost}:${wsPort}/api/v1/ws/dashboard?token=${token}`
+  const origin = `${wsProtocol}//${window.location.host}`
+  return `${origin}${baseApi}/ws/dashboard?token=${tokenParam}`
 }
 
 /**

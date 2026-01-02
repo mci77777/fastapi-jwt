@@ -123,9 +123,11 @@ async function handleLogin() {
       router.push('/dashboard')
     }
   } catch (e) {
-    const message = e?.message || e?.error?.message || e?.error || '登录失败'
-    console.error('login error', e)
-    window.$message?.error(String(message), { keepAliveOnHover: true })
+    const requestId = e?.request_id || e?.error?.request_id
+    const message = e?.message || e?.error?.message || e?.error?.msg || e?.error || '登录失败'
+    console.error(`request_id=${requestId || 'unknown'} action=login_error`, e)
+    const suffix = requestId ? `（request_id=${requestId}）` : ''
+    window.$message?.error(String(message) + suffix, { keepAliveOnHover: true })
   }
   loading.value = false
 }

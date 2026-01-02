@@ -6,10 +6,12 @@ cd "$ROOT_DIR"
 
 python3 scripts/dev/generate_docker_local_env.py
 
-DB_PATH="$ROOT_DIR/db.sqlite3"
-# docker bind mount：宿主路径不存在会被创建为目录，导致“目录挂载到文件”启动失败
+DB_DIR="$ROOT_DIR/db"
+DB_PATH="$DB_DIR/db.sqlite3"
+# docker bind mount：确保 db 文件存在；并使用目录挂载，避免 WAL/-shm 文件丢失导致状态不落盘
+mkdir -p "$DB_DIR"
 if [[ -d "$DB_PATH" ]]; then
-  echo "Invalid db.sqlite3: it's a directory. Remove it and rerun (e.g. rm -rf db.sqlite3)."
+  echo "Invalid db/db.sqlite3: it's a directory. Remove it and rerun (e.g. rm -rf db/db.sqlite3)."
   exit 2
 fi
 if [[ ! -e "$DB_PATH" ]]; then
@@ -21,5 +23,5 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 2
 fi
 
-docker compose --env-file .env.docker.local -f docker-compose.local.yml up -d --build
+docker compose --env-file .env.docker.local -f docker-compose.local.yml up -d --build --force-recreate --remove-orphans
 echo "OK. Web: http://localhost:${WEB_PORT:-3101}  API docs: http://localhost:${API_PORT:-9999}/docs"

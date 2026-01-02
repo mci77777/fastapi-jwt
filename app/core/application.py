@@ -32,11 +32,16 @@ async def lifespan(app: FastAPI):
     """暂留钩子，后续可在此注册连接池等资源。"""
 
     settings = get_settings()
-    sqlite_manager = SQLiteManager(Path("db.sqlite3"))
+    sqlite_manager = SQLiteManager(Path(settings.sqlite_db_path))
     await sqlite_manager.init()
     app.state.sqlite_manager = sqlite_manager
     storage_dir = Path("storage") / "ai_runtime"
     app.state.ai_config_service = AIConfigService(sqlite_manager, settings, storage_dir)
+    # 本地最小闭环：若没有任何 active endpoint，则用环境变量注入一个默认端点，避免 E2E/SSE 直接报 no_active_ai_endpoint。
+    try:
+        await app.state.ai_config_service.ensure_env_default_endpoint()
+    except Exception:
+        pass
     app.state.endpoint_monitor = EndpointMonitor(app.state.ai_config_service)
     # 预热一次端点连通性（非阻塞），避免 Dashboard 首屏长期显示 unknown/0。
     try:

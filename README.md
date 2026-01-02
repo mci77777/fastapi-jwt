@@ -27,7 +27,7 @@ https://api.gymbro.cloud/docs
 
 **默认账号**：
 - 用户名：`admin`
-- 密码：`123456`（可在「个人中心 → 修改密码」更新，持久化到 `db.sqlite3`）
+- 密码：`123456`（可在「个人中心 → 修改密码」更新，持久化到 SQLite：Docker 本地为 `db/db.sqlite3`，非 Docker 为 `db.sqlite3`）
 
 #### 方法二：Docker 部署（生产环境）
 
@@ -51,7 +51,7 @@ docker run -d --restart=always --name=vue-fastapi-admin -p 80:80 vue-fastapi-adm
 
 **默认账号**：
 - 用户名：`admin`
-- 密码：`123456`（可在「个人中心 → 修改密码」更新，持久化到 `db.sqlite3`）
+- 密码：`123456`（可在「个人中心 → 修改密码」更新，持久化到 SQLite：Docker 本地为 `db/db.sqlite3`，非 Docker 为 `db.sqlite3`）
 
 #### 方法三：本地 Docker 打包启动（开发自测）
 
@@ -63,6 +63,12 @@ python3 scripts/dev/generate_docker_local_env.py
 
 # 一键构建并启动（需要本机 Docker Desktop / WSL 集成）
 bash scripts/dev/docker_local_up.sh
+```
+
+如需“完整重建”（重置为可登录的干净状态，默认会清空 Docker 本地 SQLite）：
+
+```sh
+bash scripts/dev/docker_local_reset.sh
 ```
 
 验证（真实用户 JWT + /messages + SSE，不做 mock；会产出脱敏 trace）：

@@ -5,10 +5,27 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 E2E_ENV_FILE="${E2E_ENV_PATH:-e2e/anon_jwt_sse/.env.local}"
+ROOT_ENV_FILE="${ROOT_ENV_PATH:-$ROOT_DIR/.env}"
 
 if [[ ! -f "$E2E_ENV_FILE" ]]; then
   echo "Missing env file: $E2E_ENV_FILE"
   exit 2
+fi
+
+# 先加载根目录 .env（包含 service role 等敏感配置），再加载 e2e/.env.local 覆盖（SSOT：本地 E2E 配置优先）
+if [[ -f "$ROOT_ENV_FILE" ]]; then
+  while IFS= read -r raw_line || [[ -n "${raw_line:-}" ]]; do
+    line="${raw_line%$'\r'}"
+    [[ -z "$line" ]] && continue
+    [[ "$line" == \#* ]] && continue
+    if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+      key="${line%%=*}"
+      val="${line#*=}"
+      if [[ "$val" =~ ^\".*\"$ ]]; then val="${val:1:${#val}-2}"; fi
+      if [[ "$val" =~ ^\'.*\'$ ]]; then val="${val:1:${#val}-2}"; fi
+      export "$key=$val"
+    fi
+  done <"$ROOT_ENV_FILE"
 fi
 
 while IFS= read -r raw_line || [[ -n "${raw_line:-}" ]]; do
@@ -29,6 +46,7 @@ API_BASE_LOCAL="${E2E_API_BASE_LOCAL:-http://127.0.0.1:${API_PORT:-9999}/api/v1}
 export E2E_API_BASE="$API_BASE_LOCAL"
 
 echo "E2E env: $E2E_ENV_FILE (keys loaded; values not printed)"
+echo "Root env: $(basename "$ROOT_ENV_FILE") (keys loaded; values not printed)"
 echo "E2E target: $E2E_API_BASE"
 
 VENV_DIR="${E2E_VENV_DIR:-.venv-e2e}"

@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Vue FastAPI Admin 主服务
   # 生产环境部署：Nginx (80) → FastAPI (9999)
-  # 开发环境请使用 start-dev.ps1 启动（前端 3101，后端 9999）
+  # 开发环境请使用 start-dev.ps1 启动（前端 3102，后端 9999）
   app:
     build:
       context: .

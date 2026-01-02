@@ -6,6 +6,31 @@ import { supabaseRefreshSession } from '@/utils/supabase/auth'
 let isRefreshing = false
 let refreshPromise = null
 
+function readHeader(headers, name) {
+  if (!headers) return undefined
+  if (typeof headers.get === 'function') return headers.get(name)
+  return headers[name] ?? headers[String(name).toLowerCase()]
+}
+
+function writeHeader(headers, name, value) {
+  if (!headers) return
+  if (typeof headers.set === 'function') {
+    headers.set(name, value)
+    return
+  }
+  headers[name] = value
+}
+
+function getOrCreateRequestId(headers) {
+  const existing = readHeader(headers, 'X-Request-Id') || readHeader(headers, 'x-request-id')
+  if (existing) return String(existing)
+
+  return (
+    globalThis.crypto?.randomUUID?.() ||
+    `web-${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`
+  )
+}
+
 /**
  * 检查 Token 是否即将过期
  * @param {string} token - JWT token
@@ -82,11 +107,17 @@ async function refreshToken() {
 export async function reqResolve(config) {
   // 处理不需要token的请求
   if (config.noNeedToken) {
+    // SSOT：统一透传请求追踪 Header（X-Request-Id）。
+    config.headers = config.headers || {}
+    writeHeader(config.headers, 'X-Request-Id', getOrCreateRequestId(config.headers))
     return config
   }
 
   const token = getToken()
   const refresh = getRefreshToken()
+
+  config.headers = config.headers || {}
+  writeHeader(config.headers, 'X-Request-Id', getOrCreateRequestId(config.headers))
 
   if (token) {
     // 检查 Token 是否即将过期
@@ -96,19 +127,23 @@ export async function reqResolve(config) {
         console.log('⏰ Token 即将过期，自动刷新...')
         const newToken = await refreshToken()
         // 使用新 Token
-        config.headers.Authorization = `Bearer ${newToken}`
+        writeHeader(config.headers, 'Authorization', `Bearer ${newToken}`)
       } catch (error) {
         // 刷新失败，使用旧 Token（可能会导致 401）
-        config.headers.Authorization = `Bearer ${token}`
+        writeHeader(config.headers, 'Authorization', `Bearer ${token}`)
       }
     } else {
       // 使用 Bearer token 格式，符合后端的认证要求
-      config.headers.Authorization = `Bearer ${token}`
+      writeHeader(config.headers, 'Authorization', `Bearer ${token}`)
     }
 
-    console.log(`📤 请求 ${config.url} 已注入 Authorization header`)
+    console.log(
+      `request_id=${readHeader(config.headers, 'X-Request-Id')} action=http_request_auth url=${config.url}`
+    )
   } else {
-    console.warn(`⚠️ 请求 ${config.url} 没有有效的 token`)
+    console.warn(
+      `request_id=${readHeader(config.headers, 'X-Request-Id')} action=http_request_no_token url=${config.url}`
+    )
   }
 
   if (
@@ -129,6 +164,7 @@ export function reqReject(error) {
 
 export function resResolve(response) {
   const { data, status, statusText } = response
+  const requestId = response?.headers?.['x-request-id'] || data?.request_id
 
   if (data === null || data === undefined) {
     return Promise.resolve(data)
@@ -148,8 +184,9 @@ export function resResolve(response) {
     const code = data?.code ?? status
     /** 根据code处理对应的操作，并返回处理后的message */
     const message = resolveResError(code, data?.msg ?? statusText)
-    window.$message?.error(message, { keepAliveOnHover: true })
-    return Promise.reject({ code, message, error: data || response })
+    const suffix = requestId ? `（request_id=${requestId}）` : ''
+    window.$message?.error(message + suffix, { keepAliveOnHover: true })
+    return Promise.reject({ code, message, request_id: requestId, error: data || response })
   }
   return Promise.resolve(data)
 }
@@ -160,9 +197,10 @@ export async function resReject(error) {
     /** 根据code处理对应的操作，并返回处理后的message */
     const message = resolveResError(code, error.message)
     window.$message?.error(message)
-    return Promise.reject({ code, message, error })
+    return Promise.reject({ code, message, request_id: undefined, error })
   }
   const { data, status } = error.response
+  const requestId = error?.response?.headers?.['x-request-id'] || data?.request_id
 
   // 修复：检查 HTTP 状态码 401（Token 过期）
   if (status === 401 || data?.code === 401) {
@@ -171,23 +209,24 @@ export async function resReject(error) {
       removeToken()
 
       // 显示友好提示
-      window.$message?.error('登录已过期，请重新登录')
+      window.$message?.error(requestId ? `登录已过期，请重新登录（request_id=${requestId}）` : '登录已过期，请重新登录')
 
       // 重定向到登录页
       window.location.href = '/login'
 
       // 阻止后续错误处理
-      return Promise.reject({ code: 401, message: 'Token expired', error: data })
+      return Promise.reject({ code: 401, message: 'Token expired', request_id: requestId, error: data })
     } catch (err) {
       console.error('Token 过期处理失败:', err)
       // 即使出错也要重定向到登录页
       window.location.href = '/login'
-      return Promise.reject({ code: 401, message: 'Token expired', error: data })
+      return Promise.reject({ code: 401, message: 'Token expired', request_id: requestId, error: data })
     }
   }
   // 后端返回的response数据
   const code = data?.code ?? status
   const message = resolveResError(code, data?.msg ?? error.message)
-  window.$message?.error(message, { keepAliveOnHover: true })
-  return Promise.reject({ code, message, error: error.response?.data || error.response })
+  const suffix = requestId ? `（request_id=${requestId}）` : ''
+  window.$message?.error(message + suffix, { keepAliveOnHover: true })
+  return Promise.reject({ code, message, request_id: requestId, error: error.response?.data || error.response })
 }
