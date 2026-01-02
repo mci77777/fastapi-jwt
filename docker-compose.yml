@@ -13,6 +13,8 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"  # 生产环境：Nginx 端口
+      - "3101:80"  # FRP：web.gymbro.cloud 入口（历史端口兼容）
+      - "9999:9999"  # FRP：api.gymbro.cloud 直连后端（历史端口兼容）
     environment:
       # 应用基本配置
       - APP_NAME=GymBro API

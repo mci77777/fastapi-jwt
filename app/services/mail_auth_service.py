@@ -31,6 +31,35 @@ class MailAuthService:
             raise ValueError("MAIL_API_KEY not configured")
         return {"X-API-Key": self.api_key, "Content-Type": "application/json"}
 
+    @staticmethod
+    def _extract_domains(config: Dict[str, Any]) -> list[str]:
+        domains: list[str] = []
+
+        raw_list = config.get("domains")
+        if isinstance(raw_list, list):
+            domains.extend([str(x).strip() for x in raw_list if str(x).strip()])
+
+        raw_csv = (
+            config.get("emailDomains")
+            or config.get("email_domains")
+            or config.get("availableDomains")
+            or config.get("available_domains")
+        )
+        if isinstance(raw_csv, str) and raw_csv.strip():
+            domains.extend([x.strip() for x in raw_csv.split(",") if x.strip()])
+        elif isinstance(raw_csv, list):
+            domains.extend([str(x).strip() for x in raw_csv if str(x).strip()])
+
+        # 去重并保持顺序
+        seen: set[str] = set()
+        result: list[str] = []
+        for d in domains:
+            if d in seen:
+                continue
+            seen.add(d)
+            result.append(d)
+        return result
+
     async def get_config(self) -> Dict[str, Any]:
         """获取 Mail API 配置（可用域名等）。"""
         url = f"{self.api_base}/api/config"
@@ -49,7 +78,7 @@ class MailAuthService:
         """生成临时邮箱。"""
         if not domain:
             config = await self.get_config()
-            domains = config.get("domains", [])
+            domains = self._extract_domains(config)
             if not domains:
                 raise ValueError("No available domains from Mail API")
             domain = domains[0]
