@@ -98,20 +98,35 @@
 	                :disabled="sendingMessage"
 	              />
 	            </n-form-item>
+	            <n-form-item label="模型来源" path="model_source">
+	              <n-space align="center" wrap>
+	                <n-select
+	                  v-model:value="chatForm.model_source"
+	                  :options="modelSourceOptions"
+	                  placeholder="选择模型来源"
+	                  :disabled="sendingMessage"
+	                  style="min-width: 260px"
+	                />
+	                <n-button tertiary :loading="mappingsLoading" :disabled="sendingMessage" @click="loadMappings">
+	                  刷新映射
+	                </n-button>
+	              </n-space>
+	            </n-form-item>
 	            <n-form-item label="模型" path="model">
 	              <n-space align="center" wrap>
 	                <n-select
 	                  v-model:value="chatForm.model"
 	                  :options="modelSelectOptions"
-	                  :loading="modelsLoading"
+	                  :loading="chatForm.model_source === 'mapping' ? mappingsLoading : modelsLoading"
 	                  filterable
 	                  clearable
 	                  placeholder="选择模型（可选）"
 	                  :disabled="sendingMessage"
 	                  style="min-width: 320px"
 	                />
-	                <n-switch v-model:value="chatForm.only_configured_model" :disabled="sendingMessage" />
-	                <n-text depth="3">仅显示端点配置模型（推荐）</n-text>
+	                <n-text v-if="chatForm.model_source === 'mapping'" depth="3">
+	                  发送的是映射 key（如 global:global），后端会解析为真实模型
+	                </n-text>
 	              </n-space>
 	            </n-form-item>
 
@@ -302,7 +317,7 @@ defineOptions({ name: 'RealUserSseTest' })
 
 const message = useMessage()
 const aiSuiteStore = useAiModelSuiteStore()
-const { modelsLoading, models } = storeToRefs(aiSuiteStore)
+const { modelsLoading, models, mappingsLoading, mappings } = storeToRefs(aiSuiteStore)
 
 // 登录表单
 const loginFormRef = ref(null)
@@ -455,8 +470,8 @@ watch(
 const chatFormRef = ref(null)
 const chatForm = ref({
   endpoint_id: null,
+  model_source: 'mapping',
   model: '',
-  only_configured_model: true,
   prompt_mode: 'server',
   skip_prompt: false,
   system_prompt: '',
@@ -470,6 +485,11 @@ const chatForm = ref({
 })
 
 const endpointSelectOptions = computed(() => aiSuiteStore.endpointOptions || [])
+const modelSourceOptions = [
+  { label: '映射模型（model-groups）', value: 'mapping' },
+  { label: '端点配置模型（endpoint.model）', value: 'endpoint' },
+  { label: '供应商模型列表（endpoint.model_list）', value: 'vendor' },
+]
 const promptModeOptions = [
   { label: 'server（默认：后端组装/注入）', value: 'server' },
   { label: 'passthrough（透传 OpenAI 字段）', value: 'passthrough' },
@@ -516,25 +536,61 @@ function buildModelCandidatesForEndpoint(endpointId) {
     if (!candidates.includes(text)) candidates.push(text)
   }
 
-  // 你的“映射模型”在端点配置的 `model` 字段里；供应商 /v1/models 列表只用于排障。
-  if (chatForm.value.only_configured_model && endpoint.model) {
-    pushUnique(endpoint.model)
+  const source = chatForm.value.model_source
+  if (source === 'endpoint') {
+    if (endpoint.model) pushUnique(endpoint.model)
     return candidates
   }
 
-  // 允许展开供应商模型：仍优先把端点配置 model 放在首位，避免误选。
-  if (endpoint.model) pushUnique(endpoint.model)
-  if (Array.isArray(endpoint.model_list)) endpoint.model_list.forEach((m) => pushUnique(m))
+  if (source === 'vendor') {
+    // 供应商模型列表只用于排障：仍优先把端点配置 model 放在首位，避免误选。
+    if (endpoint.model) pushUnique(endpoint.model)
+    if (Array.isArray(endpoint.model_list)) endpoint.model_list.forEach((m) => pushUnique(m))
+    return candidates
+  }
+
   return candidates
 }
 
-const modelSelectOptions = computed(() => {
+async function loadMappings() {
+  try {
+    await aiSuiteStore.loadMappings()
+  } catch (error) {
+    message.error(formatApiError('加载映射模型失败', error))
+  }
+}
+
+const mappingSelectOptions = computed(() => {
+  const items = Array.isArray(mappings.value) ? mappings.value : []
+  const active = items.filter((m) => m && m.is_active !== false)
+  return active.map((m) => {
+    const id = typeof m.id === 'string' && m.id ? m.id : `${m.scope_type}:${m.scope_key}`
+    const name = m.name ? String(m.name) : id
+    const target =
+      (typeof m.default_model === 'string' && m.default_model.trim() ? m.default_model.trim() : '') ||
+      (Array.isArray(m.candidates) && typeof m.candidates[0] === 'string' ? String(m.candidates[0]) : '')
+    const suffix = target ? ` → ${target}` : ''
+    return { label: `${name} (${id})${suffix}`, value: id }
+  })
+})
+
+const endpointModelSelectOptions = computed(() => {
   const candidates = buildModelCandidatesForEndpoint(chatForm.value.endpoint_id)
   return candidates.map((m) => ({ label: m, value: m }))
 })
 
+const modelSelectOptions = computed(() => {
+  if (chatForm.value.model_source === 'mapping') return mappingSelectOptions.value
+  return endpointModelSelectOptions.value
+})
+
+function getModelCandidateValues() {
+  const opts = Array.isArray(modelSelectOptions.value) ? modelSelectOptions.value : []
+  return opts.map((o) => o?.value).filter((v) => typeof v === 'string' && v)
+}
+
 function ensureChatFormModelValid(endpointId) {
-  const candidates = buildModelCandidatesForEndpoint(endpointId)
+  const candidates = getModelCandidateValues()
   if (!candidates.length) return
   const current = String(chatForm.value.model || '').trim()
   if (!current || !candidates.includes(current)) {
@@ -757,7 +813,10 @@ onMounted(() => {
   tryResumeAnonToken()
   loadMailUsers()
   // JWT 对话测试的模型 SSOT：优先使用端点配置的 `model`（映射模型）；不强制拉取供应商 /v1/models。
-  aiSuiteStore.loadModels({ page_size: 100, refresh_missing_models: false }).then(() => {
+  Promise.all([
+    loadMappings(),
+    aiSuiteStore.loadModels({ page_size: 100, refresh_missing_models: false }),
+  ]).then(() => {
     if (!chatForm.value.endpoint_id && endpointSelectOptions.value.length) {
       chatForm.value.endpoint_id = endpointSelectOptions.value[0].value
     }
@@ -769,6 +828,13 @@ watch(
   () => chatForm.value.endpoint_id,
   (endpointId) => {
     ensureChatFormModelValid(endpointId)
+  }
+)
+
+watch(
+  () => [chatForm.value.model_source, mappings.value],
+  () => {
+    ensureChatFormModelValid(chatForm.value.endpoint_id)
   }
 )
 
@@ -807,6 +873,7 @@ async function handleSendMessage() {
         test_type: 'manual',
         endpoint_id: chatForm.value.endpoint_id || null,
         requested_model: chatForm.value.model || null,
+        requested_model_source: chatForm.value.model_source || null,
         prompt_mode: promptMode,
         skip_prompt: skipPrompt,
       },

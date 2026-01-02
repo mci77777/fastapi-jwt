@@ -515,8 +515,12 @@ class AIService:
 
         raw_model = openai_req.get("model")
         resolved_model = raw_model
+        mapping_hit = False
         if isinstance(raw_model, str) and raw_model.strip():
-            resolved_model = await self._resolve_mapped_model_name(raw_model.strip())
+            raw_str = raw_model.strip()
+            resolved_model = await self._resolve_mapped_model_name(raw_str)
+            if isinstance(resolved_model, str) and resolved_model.strip() and resolved_model.strip() != raw_str:
+                mapping_hit = True
 
         endpoints, _ = await self._ai_config_service.list_endpoints(only_active=True, page=1, page_size=200)
         candidates = [item for item in endpoints if item.get("is_active") and item.get("has_api_key")]
@@ -548,8 +552,15 @@ class AIService:
                 selected_endpoint = by_list or selected_endpoint
             else:
                 # 指定 endpoint 时：若该 endpoint 有显式 model_list，则做最小校验（避免误以为生效）。
+                # 但当用户传入的是“映射模型 key”时，最终真实模型可能无法通过 /v1/models 枚举到；
+                # 此时不应误拦截（仍由上游调用返回错误来兜底）。
                 model_list = selected_endpoint.get("model_list")
-                if isinstance(model_list, list) and model_list and resolved_model not in model_list:
+                if (
+                    isinstance(model_list, list)
+                    and model_list
+                    and resolved_model not in model_list
+                    and not mapping_hit
+                ):
                     raise ProviderError("model_not_supported_by_endpoint")
 
         provider_name = self._infer_provider(selected_endpoint)
@@ -562,8 +573,8 @@ class AIService:
             if not fallback_model:
                 model_list = selected_endpoint.get("model_list") or []
                 fallback_model = model_list[0] if model_list else None
-            if fallback_model:
-                openai_req["model"] = fallback_model
+            if isinstance(fallback_model, str) and fallback_model.strip():
+                openai_req["model"] = await self._resolve_mapped_model_name(fallback_model.strip())
 
         return selected_endpoint, openai_req.get("model"), provider_name
 
@@ -577,7 +588,7 @@ class AIService:
         for mapping in mappings:
             if not mapping.get("is_active", True):
                 continue
-            if mapping.get("name") == name or mapping.get("scope_key") == name:
+            if mapping.get("id") == name or mapping.get("name") == name or mapping.get("scope_key") == name:
                 default_model = mapping.get("default_model")
                 if isinstance(default_model, str) and default_model.strip():
                     return default_model.strip()
