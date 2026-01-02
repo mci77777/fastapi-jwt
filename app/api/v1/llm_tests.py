@@ -17,6 +17,10 @@ from .llm_common import create_response, get_jwt_test_service, get_service
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 
+# Cloudflare 会对 5xx（尤其 502/503）返回 HTML 错误页，导致前端拿不到 JSON 的 request_id/hint。
+# 这里用 424 Failed Dependency 表达“上游依赖不可用”，同时保留 payload.code 作为机器可读错误码。
+UPSTREAM_FAILED_STATUS = status.HTTP_424_FAILED_DEPENDENCY
+
 
 class PromptTestRequest(BaseModel):
     """Prompt 测试请求体。"""
@@ -195,7 +199,7 @@ async def create_mail_user(
 
     if not api_key:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=create_response(
                 code=500,
                 msg="mail_api_key_missing",
@@ -234,7 +238,7 @@ async def create_mail_user(
         email_address = str(email_data.get("address") or "").strip()
         if not email_address or "@" not in email_address:
             raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
+                status_code=UPSTREAM_FAILED_STATUS,
                 detail=create_response(
                     code=502,
                     msg="mail_api_invalid_email",
@@ -252,7 +256,7 @@ async def create_mail_user(
         if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
             upstream_status = exc.response.status_code
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
+            status_code=UPSTREAM_FAILED_STATUS,
             detail=create_response(
                 code=502,
                 msg="mail_api_error",
@@ -294,7 +298,7 @@ async def create_mail_user(
         )
         if resp.status_code >= 400:
             raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
+                status_code=UPSTREAM_FAILED_STATUS,
                 detail=create_response(
                     code=502,
                     msg="supabase_admin_create_user_failed",
@@ -326,7 +330,7 @@ async def create_mail_user(
                 except Exception:
                     pass
             raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
+                status_code=UPSTREAM_FAILED_STATUS,
                 detail=create_response(
                     code=502,
                     msg="supabase_token_exchange_failed",
@@ -341,7 +345,7 @@ async def create_mail_user(
         access_token = session.get("access_token") if isinstance(session, dict) else None
         if not isinstance(access_token, str) or not access_token:
             raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
+                status_code=UPSTREAM_FAILED_STATUS,
                 detail=create_response(
                     code=502,
                     msg="supabase_missing_access_token",
@@ -436,7 +440,7 @@ async def create_anon_token(
         resp = await client.post(signup_url, headers=headers, json={"options": {"anonymous": True}})
         if resp.status_code >= 400:
             raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
+                status_code=UPSTREAM_FAILED_STATUS,
                 detail=create_response(
                     code=502,
                     msg="supabase_anon_signup_failed",
@@ -450,7 +454,7 @@ async def create_anon_token(
         access_token = data.get("access_token") if isinstance(data, dict) else None
         if not isinstance(access_token, str) or not access_token:
             raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
+                status_code=UPSTREAM_FAILED_STATUS,
                 detail=create_response(
                     code=502,
                     msg="supabase_missing_access_token",
