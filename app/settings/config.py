@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     force_https: bool = Field(default=False, alias="FORCE_HTTPS")
 
     supabase_project_id: Optional[str] = Field(default=None, alias="SUPABASE_PROJECT_ID")
+    supabase_url: Optional[AnyHttpUrl] = Field(default=None, alias="SUPABASE_URL")
+    supabase_anon_key: Optional[str] = Field(default=None, alias="SUPABASE_ANON_KEY")
     supabase_jwks_url: Optional[AnyHttpUrl] = Field(default=None, alias="SUPABASE_JWKS_URL")
     supabase_jwk: Optional[str] = Field(default=None, alias="SUPABASE_JWK")
     supabase_issuer: Optional[AnyHttpUrl] = Field(default=None, alias="SUPABASE_ISSUER")

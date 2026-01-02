@@ -117,3 +117,36 @@ export async function supabaseRefreshSession(refreshToken) {
   }
 }
 
+/**
+ * Supabase Auth - Anonymous Sign-in
+ * Docs: POST /auth/v1/signup  body: { "options": { "anonymous": true } }
+ */
+export async function supabaseSignInAnonymously() {
+  const { supabaseUrl, supabaseAnonKey } = getSupabaseConfig()
+  const url = `${supabaseUrl}/auth/v1/signup`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: buildSupabaseAuthHeaders(supabaseAnonKey),
+    body: JSON.stringify({ options: { anonymous: true } }),
+  })
+
+  if (!res.ok) {
+    throw new Error(`Supabase 匿名登录失败：${await parseSupabaseError(res)}`)
+  }
+
+  const data = await res.json()
+  const accessToken = data?.access_token
+  if (!accessToken) {
+    throw new Error('Supabase 匿名登录响应缺少 access_token')
+  }
+
+  return {
+    access_token: accessToken,
+    refresh_token: data?.refresh_token || null,
+    expires_in: data?.expires_in ?? null,
+    token_type: data?.token_type ?? null,
+    user: data?.user ?? null,
+    session: data?.session ?? null,
+  }
+}

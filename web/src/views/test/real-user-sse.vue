@@ -4,6 +4,18 @@
       <n-space vertical :size="20">
         <!-- 步骤 1: 获取 JWT Token -->
         <n-card title="步骤 1: 获取真实 Supabase JWT" size="small">
+          <n-space style="margin-bottom: 12px">
+            <n-button type="primary" :loading="creatingTestUser" @click="handleCreateTestUser">
+              一键生成测试用户（gymbro-test-01）
+            </n-button>
+            <n-button secondary :loading="gettingAnonToken" @click="handleGetAnonToken(false)">
+              获取匿名 JWT（当日复用）
+            </n-button>
+            <n-button tertiary :loading="gettingAnonToken" @click="handleGetAnonToken(true)">
+              重新生成匿名用户
+            </n-button>
+          </n-space>
+
           <n-form ref="loginFormRef" :model="loginForm" label-placement="left" label-width="100">
             <n-form-item label="Email" path="email">
               <n-input
@@ -32,6 +44,14 @@
 
           <!-- Token 显示 -->
           <n-alert v-if="jwtToken" type="success" title="JWT Token 获取成功" closable>
+            <div style="margin-bottom: 8px">
+              <n-space>
+                <n-tag size="small" :type="tokenMode === 'anonymous' ? 'warning' : 'info'">
+                  {{ tokenModeLabel }}
+                </n-tag>
+                <n-text v-if="tokenMeta.email" depth="3"> {{ tokenMeta.email }} </n-text>
+              </n-space>
+            </div>
             <n-text code style="word-break: break-all; font-size: 12px">
               {{ jwtToken }}
             </n-text>
@@ -117,15 +137,17 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useMessage } from 'naive-ui'
-import { setRefreshToken, setToken } from '@/utils'
-import { createMessage } from '@/api/aiModelSuite'
+import { createMailUser, createMessage } from '@/api/aiModelSuite'
 import api from '@/api'
+import { useAiModelSuiteStore } from '@/store'
+import { supabaseRefreshSession, supabaseSignInAnonymously } from '@/utils/supabase/auth'
 
 defineOptions({ name: 'RealUserSseTest' })
 
 const message = useMessage()
+const aiStore = useAiModelSuiteStore()
 
 // 登录表单
 const loginFormRef = ref(null)
@@ -136,7 +158,54 @@ const loginForm = ref({
 
 // JWT Token
 const jwtToken = ref('')
+const tokenMode = ref('')
+const tokenMeta = ref({ email: '', username: '', user_id: '' })
 const gettingToken = ref(false)
+const creatingTestUser = ref(false)
+const gettingAnonToken = ref(false)
+
+const ANON_CACHE_DAY_KEY = 'jwt_test_anon_day'
+const ANON_CACHE_REFRESH_KEY = 'jwt_test_anon_refresh_token'
+
+function getLocalDateKey() {
+  // 形如 2026-01-02（按本地时区）
+  return new Date().toLocaleDateString('sv-SE')
+}
+
+function applyJwtSession({ access_token, refresh_token, mode, meta } = {}) {
+  if (typeof access_token === 'string' && access_token) jwtToken.value = access_token
+  if (typeof mode === 'string') tokenMode.value = mode
+  tokenMeta.value = {
+    email: meta?.email || '',
+    username: meta?.username || '',
+    user_id: meta?.user_id || '',
+  }
+}
+
+const tokenModeLabel = computed(() => {
+  if (tokenMode.value === 'anonymous') return '匿名（当日复用）'
+  if (tokenMode.value === 'permanent') return '测试用户（永久）'
+  if (tokenMode.value === 'mock') return 'Mock（非真实JWT）'
+  if (tokenMode.value === 'manual') return '手动登录'
+  return '未知'
+})
+
+async function tryResumeAnonToken() {
+  const today = getLocalDateKey()
+  const cachedDay = localStorage.getItem(ANON_CACHE_DAY_KEY)
+  const cachedRefresh = localStorage.getItem(ANON_CACHE_REFRESH_KEY)
+  if (cachedDay !== today || !cachedRefresh) return
+  try {
+    const refreshed = await supabaseRefreshSession(cachedRefresh)
+    applyJwtSession({
+      access_token: refreshed.access_token,
+      mode: 'anonymous',
+      meta: { username: 'anon', email: '' },
+    })
+  } catch {
+    // 静默失败：仅在用户点击按钮时才重新生成
+  }
+}
 
 // 对话表单
 const chatFormRef = ref(null)
@@ -192,10 +261,13 @@ async function handleGetToken() {
     })
 
     if (res?.data?.access_token) {
-      jwtToken.value = res.data.access_token
-      setToken(res.data.access_token)
-      if (res.data.refresh_token) setRefreshToken(res.data.refresh_token)
-      message.success('JWT Token 获取成功（已写入本地 token）')
+      applyJwtSession({
+        access_token: res.data.access_token,
+        refresh_token: res.data.refresh_token || null,
+        mode: 'manual',
+        meta: { email: loginForm.value.email, username: loginForm.value.email.split('@')[0] },
+      })
+      message.success('JWT Token 获取成功')
     } else {
       message.error('JWT Token 获取失败：响应格式错误')
     }
@@ -213,6 +285,82 @@ function handleCopyToken() {
   navigator.clipboard.writeText(jwtToken.value)
   message.success('Token 已复制到剪贴板')
 }
+
+async function handleCreateTestUser() {
+  creatingTestUser.value = true
+  try {
+    const res = await createMailUser({
+      mail_api_key: aiStore.mailApiKey || null,
+      username_prefix: 'gymbro-test-01',
+    })
+    const data = res?.data
+    if (!data?.access_token) {
+      message.error('生成失败：响应缺少 access_token')
+      return
+    }
+
+    // 仅用于展示（不污染全局登录态）：把生成的邮箱/密码回填到表单，方便复制或重登
+    if (data.email) loginForm.value.email = String(data.email)
+    if (data.password) loginForm.value.password = String(data.password)
+
+    applyJwtSession({
+      access_token: String(data.access_token),
+      refresh_token: data.refresh_token || null,
+      mode: String(data.mode || 'permanent'),
+      meta: { email: data.email, username: data.username, user_id: data.user_id },
+    })
+
+    message.success('测试用户已生成并获取 JWT')
+  } catch (error) {
+    message.error('生成测试用户失败：' + (error.message || '未知错误'))
+  } finally {
+    creatingTestUser.value = false
+  }
+}
+
+async function handleGetAnonToken(forceNew) {
+  gettingAnonToken.value = true
+  try {
+    const today = getLocalDateKey()
+    const cachedDay = localStorage.getItem(ANON_CACHE_DAY_KEY)
+    const cachedRefresh = localStorage.getItem(ANON_CACHE_REFRESH_KEY)
+
+    if (!forceNew && cachedDay === today && cachedRefresh) {
+      try {
+        const refreshed = await supabaseRefreshSession(cachedRefresh)
+        applyJwtSession({
+          access_token: refreshed.access_token,
+          refresh_token: refreshed.refresh_token || cachedRefresh,
+          mode: 'anonymous',
+          meta: { username: 'anon', email: '' },
+        })
+        message.success('已复用当日匿名用户（refresh）')
+        return
+      } catch {
+        // refresh 失败则回退重新生成
+      }
+    }
+
+    const session = await supabaseSignInAnonymously()
+    localStorage.setItem(ANON_CACHE_DAY_KEY, today)
+    if (session.refresh_token) localStorage.setItem(ANON_CACHE_REFRESH_KEY, session.refresh_token)
+    applyJwtSession({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token || null,
+      mode: 'anonymous',
+      meta: { username: 'anon', email: '' },
+    })
+    message.success(forceNew ? '已重新生成匿名用户' : '匿名 JWT 获取成功')
+  } catch (error) {
+    message.error('匿名 JWT 获取失败：' + (error.message || '未知错误'))
+  } finally {
+    gettingAnonToken.value = false
+  }
+}
+
+onMounted(() => {
+  tryResumeAnonToken()
+})
 
 /**
  * 发送消息并接收 SSE 响应
@@ -243,6 +391,7 @@ async function handleSendMessage() {
       },
       requestId,
       promptMode: 'server',
+      accessToken: jwtToken.value,
     })
 
     messageId.value = createResponse.message_id

@@ -119,6 +119,15 @@ export async function reqResolve(config) {
   config.headers = config.headers || {}
   writeHeader(config.headers, 'X-Request-Id', getOrCreateRequestId(config.headers))
 
+  // 允许调用方显式覆盖 Authorization（用于 JWT 测试等场景，避免污染全局登录态）
+  const explicitAuth = readHeader(config.headers, 'Authorization') || readHeader(config.headers, 'authorization')
+  if (explicitAuth) {
+    console.log(
+      `request_id=${readHeader(config.headers, 'X-Request-Id')} action=http_request_auth_override url=${config.url}`
+    )
+    return config
+  }
+
   if (token) {
     // 检查 Token 是否即将过期
     // SSOT：仅在存在 refresh_token 时才尝试 Supabase refresh，避免本地账号/测试 token 被误刷新导致掉线。

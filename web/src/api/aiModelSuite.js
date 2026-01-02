@@ -26,6 +26,9 @@ export const fetchPrompts = (params = {}) => request.get('/llm/prompts', { param
 export const fetchPromptTests = (promptId, params = {}) =>
   request.get(`/llm/prompts/${promptId}/tests`, { params })
 
+// JWT 测试相关
+export const createMailUser = (data = {}) => request.post('/llm/tests/create-mail-user', data)
+
 // 消息与对话相关
 /**
  * 创建消息会话（统一请求体构建）
@@ -44,6 +47,7 @@ export const fetchPromptTests = (promptId, params = {}) =>
  * @param {number} [options.openai.top_p]
  * @param {number} [options.openai.max_tokens]
  * @param {string} [options.requestId] - 透传请求追踪 Header：X-Request-Id（建议由调用方生成并用于 SSE 对账）
+ * @param {string} [options.accessToken] - 覆盖 Authorization（用于 JWT 测试页，不污染全局登录态）
  * @returns {Promise<{message_id: string, conversation_id: string}>} 消息ID与会话ID
  */
 export const createMessage = ({
@@ -53,6 +57,7 @@ export const createMessage = ({
   promptMode = 'server',
   openai = {},
   requestId,
+  accessToken,
 } = {}) => {
   const hasText = typeof text === 'string' && !!text.trim()
   const hasMessages = Array.isArray(openai?.messages) && openai.messages.length > 0
@@ -100,6 +105,7 @@ export const createMessage = ({
 
   const headers = {}
   if (typeof requestId === 'string' && requestId.trim()) headers['X-Request-Id'] = requestId.trim()
+  if (typeof accessToken === 'string' && accessToken.trim()) headers['Authorization'] = `Bearer ${accessToken.trim()}`
 
   return request.post('/messages', payload, {
     timeout: 30000,
