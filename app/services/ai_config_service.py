@@ -781,7 +781,16 @@ class AIConfigService:
                     now,
                 ],
             )
-            merged.append(await self.get_endpoint_by_supabase_id(supabase_id))
+            merged_endpoint = await self.get_endpoint_by_supabase_id(supabase_id)
+            merged.append(merged_endpoint)
+
+            # Supabase ai_model 不存 model_list：同步后自动做一次连通性检测以拉取 /v1/models 并落盘 model_list，
+            # 否则前端只能展示单个默认 model，难以进行真实对话测试。
+            try:
+                if not merged_endpoint.get("model_list"):
+                    await self.refresh_endpoint_status(int(merged_endpoint["id"]))
+            except Exception:  # pragma: no cover
+                logger.exception("同步后刷新端点状态失败 endpoint_id=%s", merged_endpoint.get("id"))
 
         if delete_missing:
             if seen_remote_ids:

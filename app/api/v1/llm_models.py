@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -56,6 +57,7 @@ async def list_ai_models(
     request: Request,
     keyword: Optional[str] = Query(default=None, description="关键词"),  # noqa: B008
     only_active: Optional[bool] = Query(default=None, description="是否仅活跃"),  # noqa: B008
+    refresh_missing_models: bool = Query(default=False, description="是否刷新缺失的 model_list（会触发 /v1/models 探测）"),  # noqa: B008
     page: int = Query(default=1, ge=1),  # noqa: B008
     page_size: int = Query(default=20, ge=1, le=100),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
@@ -67,6 +69,46 @@ async def list_ai_models(
         page=page,
         page_size=page_size,
     )
+
+    # /ai/jwt 需要可选模型：当端点来自 Supabase pull 时，model_list 默认为空（Supabase 不存此字段）。
+    # 这里按需刷新缺失项并落盘，避免用户每次刷新只剩 “1 个默认模型”。
+    if refresh_missing_models and items:
+        to_refresh = [
+            endpoint
+            for endpoint in items
+            if endpoint
+            and not (endpoint.get("model_list") or [])
+            and endpoint.get("has_api_key")
+            and endpoint.get("is_active")
+        ]
+        # KISS：限制并发与数量，避免一次页面加载阻塞太久
+        to_refresh = to_refresh[:10]
+        sem = asyncio.Semaphore(5)
+
+        async def _refresh_one(endpoint_id: int) -> None:
+            async with sem:
+                try:
+                    await service.refresh_endpoint_status(endpoint_id)
+                except Exception:
+                    # 不中断列表返回：失败信息会写入 last_error/status
+                    return
+
+        tasks = []
+        for ep in to_refresh:
+            try:
+                tasks.append(asyncio.create_task(_refresh_one(int(ep["id"]))))
+            except Exception:
+                continue
+
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+            items, total = await service.list_endpoints(
+                keyword=keyword,
+                only_active=only_active,
+                page=page,
+                page_size=page_size,
+            )
+
     return create_response(
         data=items,
         total=total,

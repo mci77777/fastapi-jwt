@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     app_version: str = Field(default="0.1.0", alias="APP_VERSION")
     debug: bool = Field(default=False, alias="DEBUG")
 
-    # SQLite 路径（SSOT：用于 Docker bind mount 目录，避免 WAL 文件丢失导致状态不落盘）
-    sqlite_db_path: str = Field(default="db.sqlite3", alias="SQLITE_DB_PATH")
+    # SQLite 路径（SSOT：默认写入 data/，配合 docker-compose bind mount 持久化端点/测试用户等运行态数据）
+    sqlite_db_path: str = Field(default="data/db.sqlite3", alias="SQLITE_DB_PATH")
 
     # 日志落盘（用于按 request_id 聚合最小交接数据）
     log_to_file: bool = Field(default=False, alias="LOG_TO_FILE")

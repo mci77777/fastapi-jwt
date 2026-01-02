@@ -32,7 +32,17 @@ async def lifespan(app: FastAPI):
     """暂留钩子，后续可在此注册连接池等资源。"""
 
     settings = get_settings()
-    sqlite_manager = SQLiteManager(Path(settings.sqlite_db_path))
+    db_path = Path(settings.sqlite_db_path)
+    legacy_path = Path("db.sqlite3")
+    if db_path != legacy_path and legacy_path.exists() and not db_path.exists():
+        try:
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            legacy_path.replace(db_path)
+        except Exception:
+            # 兜底：迁移失败不阻断启动（新库会自动初始化）
+            pass
+
+    sqlite_manager = SQLiteManager(db_path)
     await sqlite_manager.init()
     app.state.sqlite_manager = sqlite_manager
     storage_dir = Path("storage") / "ai_runtime"

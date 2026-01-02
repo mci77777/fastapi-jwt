@@ -586,7 +586,7 @@ async function handleGetAnonToken(forceNew) {
 onMounted(() => {
   tryResumeAnonToken()
   loadMailUsers()
-  aiSuiteStore.loadModels().then(() => {
+  aiSuiteStore.loadModels({ page_size: 100, refresh_missing_models: true }).then(() => {
     if (!chatForm.value.endpoint_id && endpointSelectOptions.value.length) {
       chatForm.value.endpoint_id = endpointSelectOptions.value[0].value
     }
