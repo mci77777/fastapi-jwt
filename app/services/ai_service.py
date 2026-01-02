@@ -290,27 +290,6 @@ class AIService:
         endpoint_id = _parse_optional_int(selected_endpoint.get("id"))
         return reply_text, selected_model, request_payload, response_payload, upstream_request_id, endpoint_id
 
-
-def _parse_optional_int(value: Any) -> Optional[int]:
-    if value in (None, ""):
-        return None
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        stripped = value.strip()
-        if not stripped:
-            return None
-        try:
-            return int(stripped)
-        except Exception:
-            return None
-    try:
-        return int(value)
-    except Exception:
-        return None
-
     async def _call_openai_completion_settings(self, message: AIMessageInput) -> str:
         text = (message.text or "").strip()
         if not text:
@@ -829,3 +808,24 @@ def _parse_optional_int(value: Any) -> Optional[int]:
             )
         except Exception as exc:
             logger.warning("Failed to record AI request stats request_id=%s error=%s", get_current_request_id(), exc)
+
+
+def _parse_optional_int(value: Any) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return int(stripped)
+        except Exception:
+            return None
+    try:
+        return int(value)
+    except Exception:
+        return None

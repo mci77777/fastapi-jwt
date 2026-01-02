@@ -77,6 +77,12 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _anon_day_label() -> str:
+    # SSOT：按 UTC 天做“当日复用”，避免跨时区部署产生歧义。
+    day = datetime.now(timezone.utc).date().isoformat()
+    return f"anon-{day}"
+
+
 async def _persist_mail_test_user(
     request: Request,
     *,
@@ -728,18 +734,7 @@ async def create_anon_token(
     request_id = get_current_request_id()
 
     supabase_url = _resolve_supabase_base_url(settings)
-    anon_key = getattr(settings, "supabase_anon_key", None)
-    if not isinstance(anon_key, str) or not anon_key.strip():
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=create_response(
-                code=500,
-                msg="supabase_anon_key_missing",
-                message="supabase_anon_key_missing",
-                request_id=request_id,
-            ),
-        )
-    anon_key = anon_key.strip()
+    anon_key = _resolve_supabase_anon_key(settings)
 
     headers = {
         "apikey": anon_key,
@@ -749,7 +744,26 @@ async def create_anon_token(
     }
 
     async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
-        refresh_token = (payload.refresh_token or "").strip()
+        db = get_sqlite_manager(request.app)
+        today_label = _anon_day_label()
+
+        existing = await db.fetchone(
+            """
+            SELECT id, refresh_token, supabase_user_id
+            FROM llm_test_users
+            WHERE kind = 'anonymous' AND label = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (today_label,),
+        )
+
+        # 迁移兼容：允许前端仍传 refresh_token，但后端持久化为 SSOT。
+        refresh_token = ((existing or {}).get("refresh_token") or "").strip()
+        payload_refresh = (payload.refresh_token or "").strip()
+        if payload_refresh and not refresh_token:
+            refresh_token = payload_refresh
+
         if refresh_token and not payload.force_new:
             refresh_url = f"{supabase_url}/auth/v1/token?grant_type=refresh_token"
             resp = await client.post(refresh_url, headers=headers, json={"refresh_token": refresh_token})
@@ -757,14 +771,47 @@ async def create_anon_token(
                 data = resp.json()
                 access_token = data.get("access_token") if isinstance(data, dict) else None
                 if isinstance(access_token, str) and access_token:
+                    new_refresh = data.get("refresh_token") if isinstance(data, dict) else refresh_token
+                    # 当日复用：更新本地记录（不新增匿名用户）
+                    if existing and existing.get("id"):
+                        await db.execute(
+                            """
+                            UPDATE llm_test_users
+                            SET refresh_token = ?, last_used_at = ?, last_refreshed_at = ?
+                            WHERE id = ?
+                            """,
+                            (
+                                str(new_refresh or refresh_token),
+                                _utc_now_iso(),
+                                _utc_now_iso(),
+                                int(existing["id"]),
+                            ),
+                        )
+                    else:
+                        await db.execute(
+                            """
+                            INSERT INTO llm_test_users
+                              (kind, label, username, supabase_user_id, refresh_token, meta_json, last_used_at, last_refreshed_at)
+                            VALUES
+                              ('anonymous', ?, 'anon', ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                today_label,
+                                (existing or {}).get("supabase_user_id"),
+                                str(new_refresh or refresh_token),
+                                '{"note":"refreshed"}',
+                                _utc_now_iso(),
+                                _utc_now_iso(),
+                            ),
+                        )
                     return create_response(
                         data={
                             "mode": "anonymous",
                             "access_token": access_token,
-                            "refresh_token": data.get("refresh_token") if isinstance(data, dict) else refresh_token,
+                            "refresh_token": new_refresh if isinstance(new_refresh, str) else refresh_token,
                             "expires_in": data.get("expires_in") if isinstance(data, dict) else None,
                             "token_type": data.get("token_type") if isinstance(data, dict) else "bearer",
-                            "note": "refreshed",
+                            "note": "refreshed_today",
                         }
                     )
 
@@ -795,15 +842,54 @@ async def create_anon_token(
                 ),
             )
 
+        created_refresh = data.get("refresh_token") if isinstance(data, dict) else None
+        user_id = None
+        if isinstance(data, dict):
+            user = data.get("user")
+            if isinstance(user, dict):
+                user_id = user.get("id")
+
+        # 持久化当日匿名用户：优先更新当日记录，避免无限创建。
+        if existing and existing.get("id"):
+            await db.execute(
+                """
+                UPDATE llm_test_users
+                SET refresh_token = ?, supabase_user_id = ?, username = 'anon', last_used_at = ?, last_refreshed_at = NULL
+                WHERE id = ?
+                """,
+                (
+                    str(created_refresh or ""),
+                    user_id,
+                    _utc_now_iso(),
+                    int(existing["id"]),
+                ),
+            )
+        else:
+            await db.execute(
+                """
+                INSERT INTO llm_test_users
+                  (kind, label, username, supabase_user_id, refresh_token, meta_json, last_used_at)
+                VALUES
+                  ('anonymous', ?, 'anon', ?, ?, ?, ?)
+                """,
+                (
+                    today_label,
+                    user_id,
+                    str(created_refresh or ""),
+                    '{"note":"created"}',
+                    _utc_now_iso(),
+                ),
+            )
+
         return create_response(
             data={
                 "mode": "anonymous",
                 "access_token": access_token,
-                "refresh_token": data.get("refresh_token") if isinstance(data, dict) else None,
+                "refresh_token": created_refresh if isinstance(created_refresh, str) and created_refresh else None,
                 "expires_in": data.get("expires_in") if isinstance(data, dict) else None,
                 "token_type": data.get("token_type") if isinstance(data, dict) else "bearer",
                 "user": data.get("user") if isinstance(data, dict) else None,
-                "note": "created",
+                "note": "created_today",
             }
         )
 
