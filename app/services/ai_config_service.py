@@ -832,15 +832,23 @@ class AIConfigService:
     # --------------------------------------------------------------------- #
     def _format_prompt_row(self, row: dict[str, Any]) -> dict[str, Any]:
         tools = _safe_json_loads(row.get("tools_json"))
+        prompt_type = row.get("prompt_type")
+        if not isinstance(prompt_type, str) or not prompt_type.strip():
+            prompt_type = "tools" if tools else "system"
         return {
             "id": row["id"],
             "supabase_id": row.get("supabase_id"),
             "name": row["name"],
             "content": row["content"],
+            # 兼容：历史字段 system_prompt（content 为 SSOT）
+            "system_prompt": row["content"],
             "version": row.get("version"),
             "category": row.get("category"),
             "description": row.get("description"),
             "tools_json": tools,
+            # 兼容：部分客户端使用 tools 字段
+            "tools": tools,
+            "prompt_type": prompt_type,
             "is_active": bool(row.get("is_active")),
             "created_at": row.get("created_at"),
             "updated_at": row.get("updated_at"),
@@ -851,6 +859,7 @@ class AIConfigService:
         *,
         keyword: Optional[str] = None,
         only_active: Optional[bool] = None,
+        prompt_type: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -863,6 +872,9 @@ class AIConfigService:
         if only_active is not None:
             clauses.append("is_active = ?")
             params.append(1 if only_active else 0)
+        if prompt_type:
+            clauses.append("prompt_type = ?")
+            params.append(prompt_type)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         total_row = await self._db.fetchone(f"SELECT COUNT(1) AS count FROM ai_prompts {where}", params)
         total_count = int(total_row["count"]) if total_row and "count" in total_row else 0
@@ -880,14 +892,23 @@ class AIConfigService:
 
     async def create_prompt(self, payload: dict[str, Any], *, auto_sync: bool = False) -> dict[str, Any]:
         now = _utc_now()
+        prompt_type = payload.get("prompt_type")
+        if not isinstance(prompt_type, str) or not prompt_type.strip():
+            tools_value = payload.get("tools_json")
+            prompt_type = "tools" if tools_value else "system"
+        prompt_type = "tools" if str(prompt_type).strip() == "tools" else "system"
+
         if payload.get("is_active"):
-            await self._db.execute("UPDATE ai_prompts SET is_active = 0 WHERE is_active = 1")
+            await self._db.execute(
+                "UPDATE ai_prompts SET is_active = 0 WHERE is_active = 1 AND prompt_type = ?",
+                [prompt_type],
+            )
         await self._db.execute(
             """
             INSERT INTO ai_prompts (
                 name, content, version, category, description, tools_json,
-                is_active, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                prompt_type, is_active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 payload["name"],
@@ -896,6 +917,7 @@ class AIConfigService:
                 payload.get("category"),
                 payload.get("description"),
                 _safe_json_dumps(payload.get("tools_json")),
+                prompt_type,
                 1 if payload.get("is_active") else 0,
                 now,
                 now,
@@ -916,6 +938,7 @@ class AIConfigService:
         existing = await self.get_prompt(prompt_id)
         updates: list[str] = []
         params: list[Any] = []
+        existing_type = existing.get("prompt_type") if isinstance(existing.get("prompt_type"), str) else None
 
         def add(field: str, value: Any) -> None:
             updates.append(f"{field} = ?")
@@ -933,11 +956,20 @@ class AIConfigService:
             add("description", payload["description"])
         if "tools_json" in payload:
             add("tools_json", _safe_json_dumps(payload["tools_json"]))
+            if "prompt_type" not in payload:
+                payload["prompt_type"] = "tools" if payload.get("tools_json") else "system"
+        if "prompt_type" in payload:
+            resolved_type = "tools" if str(payload.get("prompt_type")).strip() == "tools" else "system"
+            add("prompt_type", resolved_type)
         if "is_active" in payload:
             if payload["is_active"]:
+                resolved_type = payload.get("prompt_type")
+                if not isinstance(resolved_type, str) or not resolved_type.strip():
+                    resolved_type = existing_type or "system"
+                resolved_type = "tools" if str(resolved_type).strip() == "tools" else "system"
                 await self._db.execute(
-                    "UPDATE ai_prompts SET is_active = 0 WHERE is_active = 1 AND id != ?",
-                    [prompt_id],
+                    "UPDATE ai_prompts SET is_active = 0 WHERE is_active = 1 AND id != ? AND prompt_type = ?",
+                    [prompt_id, resolved_type],
                 )
             add("is_active", 1 if payload["is_active"] else 0)
 
@@ -967,7 +999,14 @@ class AIConfigService:
                 logger.warning("删除 Supabase Prompt 失败 prompt_id=%s error=%s", prompt_id, exc)
 
     async def activate_prompt(self, prompt_id: int) -> dict[str, Any]:
-        await self._db.execute("UPDATE ai_prompts SET is_active = 0 WHERE is_active = 1 AND id != ?", [prompt_id])
+        prompt = await self.get_prompt(prompt_id)
+        resolved_type = prompt.get("prompt_type")
+        resolved_type = "tools" if str(resolved_type).strip() == "tools" else "system"
+
+        await self._db.execute(
+            "UPDATE ai_prompts SET is_active = 0 WHERE is_active = 1 AND id != ? AND prompt_type = ?",
+            [prompt_id, resolved_type],
+        )
         await self._db.execute(
             "UPDATE ai_prompts SET is_active = 1, updated_at = ? WHERE id = ?",
             [_utc_now(), prompt_id],
@@ -1202,6 +1241,29 @@ class AIConfigService:
         model: Optional[str] = None,
     ) -> dict[str, Any]:
         prompt = await self.get_prompt(prompt_id)
+        prompt_type = prompt.get("prompt_type")
+        prompt_type = "tools" if str(prompt_type).strip() == "tools" else "system"
+
+        system_prompt_text: Optional[str] = None
+        tools_prompt_text: Optional[str] = None
+        tools_json: Any = None
+
+        if prompt_type == "system":
+            system_prompt_text = str(prompt.get("content") or "").strip() or None
+            active_tools, _ = await self.list_prompts(only_active=True, prompt_type="tools", page=1, page_size=1)
+            if active_tools:
+                tools_prompt_text = str(active_tools[0].get("content") or "").strip() or None
+                tools_json = active_tools[0].get("tools_json")
+        else:
+            tools_prompt_text = str(prompt.get("content") or "").strip() or None
+            tools_json = prompt.get("tools_json")
+            active_system, _ = await self.list_prompts(only_active=True, prompt_type="system", page=1, page_size=1)
+            if active_system:
+                system_prompt_text = str(active_system[0].get("content") or "").strip() or None
+
+        system_message_parts = [part for part in (system_prompt_text, tools_prompt_text) if part]
+        system_message = "\n\n".join(system_message_parts) if system_message_parts else None
+
         endpoint = await self.get_endpoint(endpoint_id)
         api_key = await self._get_api_key(endpoint_id)
         if not api_key:
@@ -1214,13 +1276,22 @@ class AIConfigService:
         if not selected_model:
             selected_model = "gpt-4o-mini"
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": selected_model,
             "messages": [
-                {"role": "system", "content": prompt["content"]},
+                {"role": "system", "content": system_message or "You are GymBro's AI assistant."},
                 {"role": "user", "content": message},
             ],
         }
+        tools_payload: Optional[list[Any]] = None
+        if isinstance(tools_json, dict):
+            raw = tools_json.get("tools")
+            if isinstance(raw, list) and raw:
+                tools_payload = raw
+        elif isinstance(tools_json, list) and tools_json:
+            tools_payload = tools_json
+        if tools_payload is not None:
+            payload["tools"] = tools_payload
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",

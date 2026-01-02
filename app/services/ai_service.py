@@ -367,6 +367,8 @@ class AIService:
                     final_messages.insert(0, {"role": "system", "content": default_prompt})
 
         resolved_tools = await self._resolve_tools(tools)
+        if resolved_tools is None:
+            resolved_tools = await self._get_active_prompt_tools()
 
         payload: dict[str, Any] = {
             "model": model,
@@ -403,13 +405,54 @@ class AIService:
         if self._ai_config_service is None:
             return None
         try:
-            prompts, _ = await self._ai_config_service.list_prompts(only_active=True, page=1, page_size=1)
+            system_prompts, _ = await self._ai_config_service.list_prompts(
+                only_active=True,
+                prompt_type="system",
+                page=1,
+                page_size=1,
+            )
+            tools_prompts, _ = await self._ai_config_service.list_prompts(
+                only_active=True,
+                prompt_type="tools",
+                page=1,
+                page_size=1,
+            )
+        except Exception:
+            return None
+        parts: list[str] = []
+        if system_prompts:
+            content = system_prompts[0].get("content")
+            if content:
+                parts.append(str(content).strip())
+        if tools_prompts:
+            content = tools_prompts[0].get("content")
+            if content:
+                parts.append(str(content).strip())
+        return "\n\n".join([item for item in parts if item]) if parts else None
+
+    async def _get_active_prompt_tools(self) -> Optional[list[Any]]:
+        if self._ai_config_service is None:
+            return None
+        try:
+            prompts, _ = await self._ai_config_service.list_prompts(
+                only_active=True,
+                prompt_type="tools",
+                page=1,
+                page_size=1,
+            )
         except Exception:
             return None
         if not prompts:
             return None
-        content = prompts[0].get("content")
-        return str(content) if content else None
+        tools_json = prompts[0].get("tools_json")
+        if isinstance(tools_json, dict):
+            raw = tools_json.get("tools")
+            if isinstance(raw, list) and raw:
+                return raw
+            return None
+        if isinstance(tools_json, list) and tools_json:
+            return tools_json
+        return None
 
     async def _resolve_tools(self, tools_value: Any) -> Optional[list[Any]]:
         if tools_value is None:
@@ -426,7 +469,12 @@ class AIService:
         wanted = {name.strip() for name in names if name and name.strip()}
         if not wanted or self._ai_config_service is None:
             return []
-        prompts, _ = await self._ai_config_service.list_prompts(only_active=True, page=1, page_size=1)
+        prompts, _ = await self._ai_config_service.list_prompts(
+            only_active=True,
+            prompt_type="tools",
+            page=1,
+            page_size=1,
+        )
         if not prompts:
             return []
         tools_json = prompts[0].get("tools_json")

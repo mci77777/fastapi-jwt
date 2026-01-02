@@ -6,7 +6,7 @@ import json
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.auth import AuthenticatedUser, get_current_user
 
@@ -21,12 +21,38 @@ class PromptBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: Optional[str] = Field(None, min_length=1, max_length=120)
-    content: Optional[str] = Field(None, min_length=1)
+    # 兼容：历史字段 system_prompt -> content（content 为 SSOT）
+    content: Optional[str] = Field(
+        None,
+        min_length=1,
+        validation_alias=AliasChoices("content", "system_prompt"),
+    )
     version: Optional[str] = Field(None, max_length=50)
     category: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = Field(None, max_length=255)
-    tools_json: Optional[Any] = None
+    # system/tools（用于支持分别激活与组装）
+    prompt_type: Optional[str] = Field(None, max_length=20)
+    # 兼容：部分客户端使用 tools 字段
+    tools_json: Optional[Any] = Field(None, validation_alias=AliasChoices("tools_json", "tools"))
     is_active: Optional[bool] = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def forbid_conflicting_aliases(cls, values: Any) -> Any:
+        if not isinstance(values, dict):
+            return values
+
+        content = values.get("content")
+        system_prompt = values.get("system_prompt")
+        if content and system_prompt and str(content).strip() != str(system_prompt).strip():
+            raise ValueError("content 与 system_prompt 不一致，请只传其中一个字段")
+
+        tools_json = values.get("tools_json")
+        tools = values.get("tools")
+        if tools_json is not None and tools is not None and tools_json != tools:
+            raise ValueError("tools_json 与 tools 不一致，请只传其中一个字段")
+
+        return values
 
     @field_validator("tools_json")
     @classmethod
@@ -50,7 +76,7 @@ class PromptCreate(PromptBase):
     """创建 Prompt 请求体。"""
 
     name: str
-    content: str
+    content: str = Field(..., min_length=1, validation_alias=AliasChoices("content", "system_prompt"))
     auto_sync: bool = False
 
 
@@ -65,6 +91,7 @@ async def list_prompts(
     request: Request,
     keyword: Optional[str] = Query(default=None),  # noqa: B008
     only_active: Optional[bool] = Query(default=None),  # noqa: B008
+    prompt_type: Optional[str] = Query(default=None),  # noqa: B008
     page: int = Query(default=1, ge=1),  # noqa: B008
     page_size: int = Query(default=20, ge=1, le=100),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
@@ -73,6 +100,7 @@ async def list_prompts(
     items, total = await service.list_prompts(
         keyword=keyword,
         only_active=only_active,
+        prompt_type=prompt_type,
         page=page,
         page_size=page_size,
     )

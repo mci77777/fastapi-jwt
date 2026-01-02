@@ -5,7 +5,7 @@
       <n-tabs v-model:value="activeTab" type="segment" size="small">
         <n-tab-pane name="system" tab="System Prompts">
           <n-select
-            v-model:value="selectedPromptId"
+            v-model:value="selectedSystemPromptId"
             :options="systemPromptOptions"
             :loading="loading"
             placeholder="选择 System Prompt"
@@ -14,7 +14,7 @@
         </n-tab-pane>
         <n-tab-pane name="tools" tab="Tools Prompts">
           <n-select
-            v-model:value="selectedPromptId"
+            v-model:value="selectedToolsPromptId"
             :options="toolsPromptOptions"
             :loading="loading"
             placeholder="选择 Tools Prompt"
@@ -56,9 +56,10 @@ const emit = defineEmits(['change'])
 const store = useAiModelSuiteStore()
 const { prompts, promptsLoading } = storeToRefs(store)
 
-const selectedPromptId = ref(null)
 const activeTab = ref('system')
 const loading = computed(() => promptsLoading.value)
+const selectedSystemPromptId = ref(null)
+const selectedToolsPromptId = ref(null)
 
 /**
  * 判断 Prompt 类型（基于 tools_json 字段）
@@ -67,6 +68,9 @@ const loading = computed(() => promptsLoading.value)
  */
 function getPromptType(prompt) {
   if (!prompt) return null
+  if (prompt.prompt_type === 'system' || prompt.prompt_type === 'tools') {
+    return prompt.prompt_type
+  }
   if (prompt.tools_json && Object.keys(prompt.tools_json).length > 0) {
     return 'tools'
   }
@@ -94,7 +98,8 @@ const toolsPromptOptions = computed(() => {
 })
 
 const currentPrompt = computed(() => {
-  return prompts.value.find((p) => p.id === selectedPromptId.value)
+  const id = activeTab.value === 'tools' ? selectedToolsPromptId.value : selectedSystemPromptId.value
+  return prompts.value.find((p) => p.id === id)
 })
 
 const promptType = computed(() => {
@@ -106,25 +111,28 @@ async function handlePromptChange(promptId) {
 
   try {
     await store.activatePrompt(promptId)
-    emit('change', promptId)
+    emit('change', {
+      system_prompt_id: selectedSystemPromptId.value,
+      tools_prompt_id: selectedToolsPromptId.value,
+    })
     window.$message?.success('Prompt 已切换')
   } catch (error) {
     window.$message?.error('Prompt 切换失败')
-    // 回滚到之前的选择
-    const activePrompt = prompts.value.find((p) => p.is_active)
-    if (activePrompt) {
-      selectedPromptId.value = activePrompt.id
-    }
+    // 回滚到之前的选择（按类型）
+    const activeSystem = prompts.value.find((p) => p.is_active && getPromptType(p) === 'system')
+    const activeTools = prompts.value.find((p) => p.is_active && getPromptType(p) === 'tools')
+    selectedSystemPromptId.value = activeSystem ? activeSystem.id : null
+    selectedToolsPromptId.value = activeTools ? activeTools.id : null
   }
 }
 
 onMounted(async () => {
   try {
     await store.loadPrompts()
-    const activePrompt = prompts.value.find((p) => p.is_active)
-    if (activePrompt) {
-      selectedPromptId.value = activePrompt.id
-    }
+    const activeSystem = prompts.value.find((p) => p.is_active && getPromptType(p) === 'system')
+    const activeTools = prompts.value.find((p) => p.is_active && getPromptType(p) === 'tools')
+    selectedSystemPromptId.value = activeSystem ? activeSystem.id : null
+    selectedToolsPromptId.value = activeTools ? activeTools.id : null
   } catch (error) {
     window.$message?.error('加载 Prompt 列表失败')
   }

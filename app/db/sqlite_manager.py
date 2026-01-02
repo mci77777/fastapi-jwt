@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS ai_prompts (
     category TEXT,
     description TEXT,
     tools_json TEXT,
+    prompt_type TEXT DEFAULT 'system',
     is_active INTEGER DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -199,10 +200,24 @@ class SQLiteManager:
                     "version": "ALTER TABLE ai_prompts ADD COLUMN version TEXT",
                     "description": "ALTER TABLE ai_prompts ADD COLUMN description TEXT",
                     "tools_json": "ALTER TABLE ai_prompts ADD COLUMN tools_json TEXT",
+                    "prompt_type": "ALTER TABLE ai_prompts ADD COLUMN prompt_type TEXT DEFAULT 'system'",
                     "supabase_id": "ALTER TABLE ai_prompts ADD COLUMN supabase_id INTEGER",
                     "last_synced_at": "ALTER TABLE ai_prompts ADD COLUMN last_synced_at TEXT",
                 },
             )
+            # 兼容：历史上没有 prompt_type 字段时，用 tools_json 是否非空推断 Tools Prompt。
+            try:
+                await self._conn.execute(
+                    """
+                    UPDATE ai_prompts
+                    SET prompt_type = 'tools'
+                    WHERE (prompt_type IS NULL OR TRIM(prompt_type) = '' OR prompt_type = 'system')
+                      AND tools_json IS NOT NULL
+                      AND TRIM(tools_json) NOT IN ('', 'null', '[]', '{}')
+                    """,
+                )
+            except Exception:
+                pass
             await self._conn.commit()
 
     @staticmethod
