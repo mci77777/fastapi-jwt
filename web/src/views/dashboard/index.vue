@@ -216,7 +216,7 @@ async function loadDashboardStats() {
 
     stats.value[0].value = data.daily_active_users || 0
     stats.value[1].value = data.ai_requests?.total || 0
-    stats.value[2].value = data.token_usage || '--'
+    stats.value[2].value = data.token_usage ?? '--'
     stats.value[3].value = `${data.api_connectivity?.healthy_endpoints || 0}/${
       data.api_connectivity?.total_endpoints || 0
     }`
@@ -322,7 +322,7 @@ function handleWebSocketMessage(data) {
 
     stats.value[0].value = statsData.daily_active_users || 0
     stats.value[1].value = statsData.ai_requests?.total || 0
-    stats.value[2].value = statsData.token_usage || '--'
+    stats.value[2].value = statsData.token_usage ?? '--'
     stats.value[3].value = `${statsData.api_connectivity?.healthy_endpoints || 0}/${
       statsData.api_connectivity?.total_endpoints || 0
     }`

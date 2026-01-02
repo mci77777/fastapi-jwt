@@ -51,7 +51,8 @@ def _normalize_api_base(raw: str) -> str:
 
 
 def _derive_jwks_url(supabase_url: str) -> str:
-    return supabase_url.rstrip("/") + "/.well-known/jwks.json"
+    # Supabase 官方 JWKS：/auth/v1/.well-known/jwks.json
+    return supabase_url.rstrip("/") + "/auth/v1/.well-known/jwks.json"
 
 
 def _derive_project_ref(supabase_url: str) -> Optional[str]:

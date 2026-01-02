@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
+import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -157,7 +160,13 @@ class SQLiteManager:
         self._conn = await aiosqlite.connect(self._db_path)
         self._conn.row_factory = aiosqlite.Row
         async with self._lock:
-            await self._conn.executescript(INIT_SCRIPT)
+            try:
+                await self._conn.executescript(INIT_SCRIPT)
+            except sqlite3.DatabaseError as exc:
+                if not self._looks_like_corruption(exc):
+                    raise
+                await self._recover_from_corruption()
+                await self._conn.executescript(INIT_SCRIPT)
             await self._ensure_columns(
                 "ai_endpoints",
                 {
@@ -183,6 +192,53 @@ class SQLiteManager:
                 },
             )
             await self._conn.commit()
+
+    @staticmethod
+    def _looks_like_corruption(exc: BaseException) -> bool:
+        msg = str(exc).lower()
+        markers = (
+            "database disk image is malformed",
+            "malformed database schema",
+            "file is not a database",
+        )
+        return any(marker in msg for marker in markers)
+
+    async def _recover_from_corruption(self) -> None:
+        # 备份旧 db（尽力而为），清理 -wal/-shm，truncate 后重连并初始化表结构。
+        try:
+            if self._conn is not None:
+                await self._conn.close()
+        finally:
+            self._conn = None
+
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup = self._db_path.with_name(f"{self._db_path.name}.corrupt-{ts}")
+        wal = self._db_path.with_name(f"{self._db_path.name}-wal")
+        shm = self._db_path.with_name(f"{self._db_path.name}-shm")
+
+        # bind mount 的文件在容器内可能无法 rename（EXDEV/busy），用 copy + truncate 保证可恢复。
+        try:
+            if self._db_path.exists() and self._db_path.is_file():
+                shutil.copyfile(self._db_path, backup)
+        except Exception:
+            pass
+
+        for sidecar in (wal, shm):
+            try:
+                if sidecar.exists():
+                    sidecar.unlink()
+            except Exception:
+                pass
+
+        try:
+            if self._db_path.exists() and self._db_path.is_file():
+                self._db_path.write_bytes(b"")
+        except Exception:
+            pass
+
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn = await aiosqlite.connect(self._db_path)
+        self._conn.row_factory = aiosqlite.Row
 
     async def close(self) -> None:
         if self._conn is None:
