@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.services.ai_config_service import AIConfigService
@@ -101,3 +102,16 @@ class EndpointMonitor:
             "last_run_at": self._last_run_iso,
             "last_error": self._last_error,
         }
+
+    async def run_once_now(self) -> None:
+        """立即执行一次端点检测（不启动后台循环）。
+
+        用于：
+        - 服务启动时预热（让 Dashboard 首屏有可用的连通性数据）
+        - 监控未开启时的按需探针
+        """
+
+        async with self._lock:
+            await self._run_once()
+            if not self._last_run_iso:
+                self._last_run_iso = datetime.now(timezone.utc).replace(microsecond=0).isoformat()

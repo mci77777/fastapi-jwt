@@ -60,8 +60,12 @@
         <template v-else-if="stat.id === 3">
           <!-- Token 使用量详情 -->
           <div class="detail-item">
-            <span class="detail-label">功能状态</span>
-            <span class="detail-value">即将上线</span>
+            <span class="detail-label">统计周期</span>
+            <span class="detail-value">最近 24 小时</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">数据来源</span>
+            <span class="detail-value">对话日志 response_payload.usage</span>
           </div>
         </template>
 
@@ -69,23 +73,23 @@
           <!-- API 连通性详情 -->
           <div class="detail-item">
             <span class="detail-label">检测方式</span>
-            <span class="detail-value">定时健康检查</span>
+            <span class="detail-value">/v1/models 探针（启动时预热 + 可开启定时监控）</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">检测间隔</span>
-            <span class="detail-value">每 5 分钟</span>
+            <span class="detail-value">可配置（默认 60 秒/轮）</span>
           </div>
         </template>
 
         <template v-else-if="stat.id === 5">
           <!-- JWT 可获取性详情 -->
           <div class="detail-item">
-            <span class="detail-label">统计周期</span>
-            <span class="detail-value">最近 24 小时</span>
+            <span class="detail-label">检测方式</span>
+            <span class="detail-value">JWKS 探针（SUPABASE_JWKS_URL）</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">数据来源</span>
-            <span class="detail-value">Prometheus 指标</span>
+            <span class="detail-value">JWKS 探针 + JWT 验证指标（辅助）</span>
           </div>
         </template>
       </div>

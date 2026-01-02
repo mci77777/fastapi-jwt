@@ -64,7 +64,7 @@ const stats = ref([
     value: '--',
     trend: 0,
     color: '#f0a020',
-    detail: 'Token 消耗总量（后续追加）',
+    detail: 'Token 消耗总量（从对话响应 usage 汇总）',
   },
   {
     id: 4,
@@ -73,7 +73,7 @@ const stats = ref([
     value: '0/0',
     trend: 0,
     color: '#00bcd4',
-    detail: 'API 供应商在线状态',
+    detail: 'AI 供应商在线状态（/v1/models 探针）',
   },
   {
     id: 5,
@@ -82,7 +82,7 @@ const stats = ref([
     value: '0%',
     trend: 0,
     color: '#8a2be2',
-    detail: 'JWT 验证成功率',
+    detail: 'JWKS 连通性（辅以验证统计）',
   },
 ])
 

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
+import httpx
+
 from app.core.metrics import auth_requests_total
 from app.db.sqlite_manager import SQLiteManager
 from app.services.monitor_service import EndpointMonitor
+from app.settings.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +36,7 @@ class MetricsCollector:
         return {
             "daily_active_users": await self._get_daily_active_users(time_window),
             "ai_requests": await self._get_ai_requests(time_window),
-            "token_usage": None,  # 后续追加
+            "token_usage": await self._get_token_usage(time_window),
             "api_connectivity": await self._get_api_connectivity(),
             "jwt_availability": await self._get_jwt_availability(),
         }
@@ -96,8 +100,14 @@ class MetricsCollector:
         Returns:
             包含健康端点数、总端点数、连通率的字典
         """
-        # 复用 EndpointMonitor 的状态快照
+        # 复用 EndpointMonitor 的状态快照；若从未检测过，则按需跑一次以填充状态（不启动后台循环）
         snapshot = self._monitor.snapshot()
+        if not snapshot.get("last_run_at") and not snapshot.get("is_running"):
+            try:
+                await self._monitor.run_once_now()
+            except Exception:
+                pass
+            snapshot = self._monitor.snapshot()
 
         # 查询所有端点状态
         endpoints = await self._db.fetchall(
@@ -117,59 +127,107 @@ class MetricsCollector:
             "last_check": snapshot["last_run_at"],
         }
 
-    async def _get_jwt_availability(self) -> Dict[str, Any]:
-        """查询 JWT 可获取性（从 Prometheus 指标计算）。
+    async def _get_token_usage(self, time_window: str) -> int:
+        """统计 Token 使用量（从 conversation_logs.response_payload 解析 usage）。
 
-        Returns:
-            包含成功率、总请求数、成功请求数的字典
+        - OpenAI：usage.total_tokens
+        - Claude：usage.input_tokens + usage.output_tokens（如存在）
         """
-        # 从 Prometheus Counter 获取数据
+        start_time = self._calculate_start_time(time_window)
+        rows = await self._db.fetchall(
+            """
+            SELECT response_payload
+            FROM conversation_logs
+            WHERE status = 'success' AND date(created_at) >= ?
+        """,
+            [start_time.date().isoformat()],
+        )
+
+        total_tokens = 0
+        for row in rows:
+            raw = row.get("response_payload")
+            if not raw or not isinstance(raw, str):
+                continue
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                continue
+            if not isinstance(payload, dict):
+                continue
+
+            usage = payload.get("usage")
+            if not isinstance(usage, dict):
+                continue
+
+            if isinstance(usage.get("total_tokens"), int):
+                total_tokens += int(usage["total_tokens"])
+                continue
+
+            input_tokens = usage.get("input_tokens")
+            output_tokens = usage.get("output_tokens")
+            if isinstance(input_tokens, int) or isinstance(output_tokens, int):
+                total_tokens += int(input_tokens or 0) + int(output_tokens or 0)
+
+        return int(total_tokens)
+
+    async def _get_jwt_availability(self) -> Dict[str, Any]:
+        """查询 JWT 连通性（SSOT：JWKS 可用性 + 可选验证统计）。"""
+
+        settings = get_settings()
+        jwks_url = str(settings.supabase_jwks_url) if settings.supabase_jwks_url else ""
+
+        probe_ok = False
+        probe_error: str | None = None
+        if jwks_url:
+            try:
+                async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
+                    resp = await client.get(jwks_url)
+                    resp.raise_for_status()
+                    data = resp.json()
+                probe_ok = isinstance(data, dict) and isinstance(data.get("keys"), list) and len(data.get("keys") or []) > 0
+                if not probe_ok:
+                    probe_error = "jwks_invalid_payload"
+            except Exception as exc:
+                probe_error = str(exc)[:200]
+        else:
+            probe_error = "jwks_url_missing"
+
+        # Prometheus：JWT 验证成功率（修复：Counter 会导出 *_created 时间戳，必须忽略）
+        verification_total = 0.0
+        verification_success = 0.0
         try:
-            # 获取所有 auth_requests_total 指标
-            total = 0
-            success = 0
-
-            # 使用 collect() 方法获取指标数据（正确的 Prometheus API）
-            metrics_list = list(auth_requests_total.collect())
-            logger.debug(
-                "[metrics] auth_requests_total.collect() returned %d metrics",
-                len(metrics_list),
-            )
-
-            for metric in metrics_list:
-                logger.debug(
-                    "[metrics] name=%s type=%s samples=%d",
-                    metric.name,
-                    metric.type,
-                    len(metric.samples),
-                )
+            for metric in list(auth_requests_total.collect()):
                 for sample in metric.samples:
-                    logger.debug(
-                        "[metrics] sample=%s labels=%s value=%s",
-                        sample.name,
-                        sample.labels,
-                        sample.value,
-                    )
-                    # sample.name: 指标名称（Counter 会自动添加 _total 后缀）
-                    # sample.labels: 标签字典 {"status": "success", "user_type": "permanent"}
-                    # sample.value: 指标值
-                    # 注意：Prometheus Counter 的 sample.name 会自动添加 _total 后缀
-                    # 例如：auth_requests_total{status="success",user_type="permanent"}
-                    total += sample.value
+                    if not sample.name.endswith("_total"):
+                        continue
+                    if not isinstance(sample.labels, dict) or "status" not in sample.labels:
+                        continue
+                    verification_total += float(sample.value or 0.0)
                     if sample.labels.get("status") == "success":
-                        success += sample.value
+                        verification_success += float(sample.value or 0.0)
+        except Exception:
+            pass
 
-            logger.debug("[metrics] JWT availability total=%s success=%s", total, success)
-            success_rate = (success / total * 100) if total > 0 else 0
+        verification_success_rate = (
+            round((verification_success / verification_total) * 100.0, 2) if verification_total > 0 else 0.0
+        )
 
-            return {
-                "success_rate": round(success_rate, 2),
-                "total_requests": int(total),
-                "successful_requests": int(success),
-            }
-        except Exception as exc:
-            logger.warning("Failed to get JWT availability metrics: %s", exc)
-            return {"success_rate": 0, "total_requests": 0, "successful_requests": 0}
+        return {
+            # Dashboard 卡片使用的成功率：以 JWKS 探针为准（更贴近“JWT 连通性”）
+            "success_rate": 100.0 if probe_ok else 0.0,
+            "jwks_probe": {
+                "configured": bool(jwks_url),
+                "jwks_url": jwks_url or None,
+                "ok": probe_ok,
+                "error": probe_error,
+            },
+            # 兼容：保留 JWT 验证统计（用于趋势/排障）
+            "verification": {
+                "total_requests": int(verification_total),
+                "successful_requests": int(verification_success),
+                "success_rate": verification_success_rate,
+            },
+        }
 
     def _calculate_start_time(self, time_window: str) -> datetime:
         """计算时间窗口的起始时间。

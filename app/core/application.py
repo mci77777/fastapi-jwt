@@ -38,6 +38,11 @@ async def lifespan(app: FastAPI):
     storage_dir = Path("storage") / "ai_runtime"
     app.state.ai_config_service = AIConfigService(sqlite_manager, settings, storage_dir)
     app.state.endpoint_monitor = EndpointMonitor(app.state.ai_config_service)
+    # 预热一次端点连通性（不启动后台循环），避免 Dashboard 首屏长期显示 unknown/0。
+    try:
+        await app.state.endpoint_monitor.run_once_now()
+    except Exception:
+        pass
     app.state.model_mapping_service = ModelMappingService(app.state.ai_config_service, storage_dir)
     app.state.jwt_test_service = JWTTestService(app.state.ai_config_service, settings, storage_dir)
 
