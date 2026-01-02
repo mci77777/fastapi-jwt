@@ -329,6 +329,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.rate_limiter = get_rate_limiter()
 
+    @staticmethod
+    def _is_sse_event_stream_request(request: Request) -> bool:
+        # SSE 事件流是长连接：浏览器/代理可能会重连，若参与 QPS 会被误杀（429）。
+        # 并发限制由 app/core/sse_guard.py 负责；这里仅豁免限流计数。
+        if request.method.upper() != "GET":
+            return False
+        path = request.url.path or ""
+        return path.startswith("/api/v1/messages/") and path.endswith("/events")
+
     async def dispatch(self, request: Request, call_next) -> Response:
         # 全局开关：允许在测试/回滚时禁用限流
         if not getattr(self.rate_limiter.settings, "rate_limit_enabled", True):
@@ -336,6 +345,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # 检查是否为白名单路径（免限流）
         if request.url.path in self.WHITELIST_PATHS:
+            return await call_next(request)
+
+        # SSE 事件流豁免限流（避免对话测试因 429 反复重连导致雪崩）
+        if self._is_sse_event_stream_request(request):
             return await call_next(request)
 
         # 获取客户端信息

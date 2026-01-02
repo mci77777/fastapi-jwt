@@ -289,8 +289,26 @@ async function tryResumeAnonToken() {
   const today = getLocalDateKey()
   const cachedDay = localStorage.getItem(ANON_CACHE_DAY_KEY)
   const cachedRefresh = localStorage.getItem(ANON_CACHE_REFRESH_KEY)
-  if (cachedDay !== today || !cachedRefresh) return
+  if (cachedDay !== today) return
   try {
+    // 1) 优先走后端（当日匿名用户已持久化在服务端）
+    try {
+      const res = await createAnonToken({ force_new: false })
+      const data = res?.data
+      if (data?.access_token) {
+        applyJwtSession({
+          access_token: String(data.access_token),
+          mode: 'anonymous',
+          meta: { username: 'anon', email: '' },
+        })
+        return
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2) 回退到前端直连 Supabase（本地开发可用）
+    if (!cachedRefresh) return
     const refreshed = await supabaseRefreshSession(cachedRefresh)
     applyJwtSession({
       access_token: refreshed.access_token,
@@ -530,13 +548,13 @@ async function handleGetAnonToken(forceNew) {
     // 1) 优先走后端（线上不依赖 VITE_SUPABASE_* 配置；需要后端 SUPABASE_ANON_KEY）
     try {
       const res = await createAnonToken({
-        refresh_token: !forceNew && cachedDay === today ? cachedRefresh || null : null,
         force_new: !!forceNew,
       })
       const data = res?.data
       if (data?.access_token) {
         localStorage.setItem(ANON_CACHE_DAY_KEY, today)
-        if (data.refresh_token) localStorage.setItem(ANON_CACHE_REFRESH_KEY, String(data.refresh_token))
+        // SSOT：后端已持久化当日匿名用户；浏览器侧不再缓存 refresh_token（仅保留本地直连 Supabase 的回退逻辑）。
+        localStorage.removeItem(ANON_CACHE_REFRESH_KEY)
         applyJwtSession({
           access_token: String(data.access_token),
           mode: 'anonymous',
