@@ -29,6 +29,9 @@ export const fetchPromptTests = (promptId, params = {}) =>
 // JWT 测试相关
 export const createMailUser = (data = {}) => request.post('/llm/tests/create-mail-user', data)
 export const createAnonToken = (data = {}) => request.post('/llm/tests/anon-token', data)
+export const listMailUsers = (params = {}) => request.get('/llm/tests/mail-users', { params })
+export const refreshMailUserToken = (testUserId, data = {}) =>
+  request.post(`/llm/tests/mail-users/${testUserId}/refresh`, data)
 
 // 消息与对话相关
 /**

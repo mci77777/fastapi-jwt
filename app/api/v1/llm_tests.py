@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 import time
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field, conint
 
 from app.auth import AuthenticatedUser, get_current_user
 from app.core.middleware import get_current_request_id
+from app.db import get_sqlite_manager
 
 from .llm_common import create_response, get_jwt_test_service, get_service
 
@@ -61,6 +63,7 @@ class CreateMailUserRequest(BaseModel):
     mail_api_key: Optional[str] = None
     username_prefix: str = "gymbro-test-01"
     email_domain: Optional[str] = Field(default=None, description="未配置 Mail API 时的兜底域名（默认 example.com）")
+    force_new: bool = Field(default=False, description="是否强制新建（默认优先复用本地已保存用户并 refresh）")
 
 
 class CreateAnonTokenRequest(BaseModel):
@@ -68,6 +71,120 @@ class CreateAnonTokenRequest(BaseModel):
 
     refresh_token: Optional[str] = Field(default=None, description="可选：用于当日复用的 refresh_token")
     force_new: bool = Field(default=False, description="是否强制新建匿名用户")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+async def _persist_mail_test_user(
+    request: Request,
+    *,
+    label: str,
+    email: str,
+    username: str,
+    supabase_user_id: str | None,
+    password: str | None,
+    refresh_token: str | None,
+    meta: dict[str, Any] | None = None,
+    touch_used: bool = True,
+    touch_refreshed: bool = False,
+) -> int:
+    db = get_sqlite_manager(request.app)
+    meta_json = None
+    if isinstance(meta, dict) and meta:
+        import json
+
+        meta_json = json.dumps(meta, ensure_ascii=False)
+
+    used_at = _utc_now_iso() if touch_used else None
+    refreshed_at = _utc_now_iso() if touch_refreshed else None
+
+    await db.execute(
+        """
+        INSERT INTO llm_test_users
+          (kind, label, email, username, supabase_user_id, password, refresh_token, meta_json, last_used_at, last_refreshed_at)
+        VALUES
+          ('mail', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(email) DO UPDATE SET
+          label = excluded.label,
+          username = excluded.username,
+          supabase_user_id = excluded.supabase_user_id,
+          password = excluded.password,
+          refresh_token = excluded.refresh_token,
+          meta_json = excluded.meta_json,
+          last_used_at = COALESCE(excluded.last_used_at, llm_test_users.last_used_at),
+          last_refreshed_at = COALESCE(excluded.last_refreshed_at, llm_test_users.last_refreshed_at)
+        """,
+        (
+            label,
+            email,
+            username,
+            supabase_user_id,
+            password,
+            refresh_token,
+            meta_json,
+            used_at,
+            refreshed_at,
+        ),
+    )
+
+    row = await db.fetchone("SELECT id FROM llm_test_users WHERE kind = 'mail' AND email = ? LIMIT 1", (email,))
+    if not row or not row.get("id"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=create_response(
+                code=500,
+                msg="persist_test_user_failed",
+                message="persist_test_user_failed",
+                request_id=get_current_request_id(),
+            ),
+        )
+    return int(row["id"])
+
+
+async def _list_mail_test_users(request: Request, *, limit: int = 50) -> list[dict[str, Any]]:
+    db = get_sqlite_manager(request.app)
+    rows = await db.fetchall(
+        """
+        SELECT id, label, email, username, supabase_user_id, created_at, last_used_at, last_refreshed_at, refresh_token
+        FROM llm_test_users
+        WHERE kind = 'mail'
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        refresh_token = row.get("refresh_token")
+        items.append(
+            {
+                "id": row.get("id"),
+                "label": row.get("label"),
+                "email": row.get("email"),
+                "username": row.get("username"),
+                "user_id": row.get("supabase_user_id"),
+                "created_at": row.get("created_at"),
+                "last_used_at": row.get("last_used_at"),
+                "last_refreshed_at": row.get("last_refreshed_at"),
+                "has_refresh_token": bool(isinstance(refresh_token, str) and refresh_token.strip()),
+            }
+        )
+    return items
+
+
+async def _get_mail_test_user_by_id(request: Request, test_user_id: int) -> dict[str, Any] | None:
+    db = get_sqlite_manager(request.app)
+    return await db.fetchone(
+        """
+        SELECT id, label, email, username, supabase_user_id, password, refresh_token, created_at
+        FROM llm_test_users
+        WHERE kind = 'mail' AND id = ?
+        LIMIT 1
+        """,
+        (test_user_id,),
+    )
 
 
 def _resolve_supabase_base_url(settings: Any) -> str:
@@ -215,6 +332,69 @@ async def create_mail_user(
     anon_key = _resolve_supabase_anon_key(settings)
 
     username = (payload.username_prefix or "").strip() or "gymbro-test-01"
+
+    # 默认优先复用本地已保存用户：refresh_token -> access_token（避免无限创建测试用户）
+    if not payload.force_new:
+        db = get_sqlite_manager(request.app)
+        existing = await db.fetchone(
+            """
+            SELECT id, email, username, supabase_user_id, password, refresh_token
+            FROM llm_test_users
+            WHERE kind = 'mail' AND label = ? AND refresh_token IS NOT NULL AND TRIM(refresh_token) != ''
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (username,),
+        )
+        if existing and isinstance(existing.get("refresh_token"), str) and existing["refresh_token"].strip():
+            refresh_url = f"{supabase_url}/auth/v1/token?grant_type=refresh_token"
+            headers_auth = {
+                "apikey": anon_key,
+                "Authorization": f"Bearer {anon_key}",
+                "Content-Type": "application/json",
+                "X-Request-Id": request_id,
+            }
+            try:
+                async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
+                    resp = await client.post(
+                        refresh_url, headers=headers_auth, json={"refresh_token": existing["refresh_token"]}
+                    )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    access_token = data.get("access_token") if isinstance(data, dict) else None
+                    if isinstance(access_token, str) and access_token:
+                        new_refresh = data.get("refresh_token") if isinstance(data, dict) else None
+                        await _persist_mail_test_user(
+                            request,
+                            label=username,
+                            email=str(existing.get("email") or ""),
+                            username=str(existing.get("username") or username),
+                            supabase_user_id=existing.get("supabase_user_id"),
+                            password=existing.get("password"),
+                            refresh_token=new_refresh if isinstance(new_refresh, str) and new_refresh.strip() else existing["refresh_token"],
+                            meta={"note": "refreshed_existing"},
+                            touch_used=True,
+                            touch_refreshed=True,
+                        )
+                        return create_response(
+                            data={
+                                "mode": "permanent",
+                                "test_user_id": existing.get("id"),
+                                "user_id": existing.get("supabase_user_id"),
+                                "email": existing.get("email"),
+                                "username": existing.get("username") or username,
+                                "password": existing.get("password"),
+                                "access_token": access_token,
+                                "refresh_token": new_refresh or existing["refresh_token"],
+                                "expires_in": data.get("expires_in") if isinstance(data, dict) else None,
+                                "token_type": data.get("token_type") if isinstance(data, dict) else "bearer",
+                                "note": "refreshed_existing",
+                            }
+                        )
+            except Exception:
+                # refresh 失败则回退到新建
+                pass
+
     password = secrets.token_urlsafe(18)
 
     email_address: str
@@ -355,19 +535,171 @@ async def create_mail_user(
                 ),
             )
 
+        refresh_token = session.get("refresh_token") if isinstance(session, dict) else None
+        test_user_id = await _persist_mail_test_user(
+            request,
+            label=username,
+            email=email_address,
+            username=username,
+            supabase_user_id=user_id,
+            password=password,
+            refresh_token=refresh_token if isinstance(refresh_token, str) and refresh_token.strip() else None,
+            meta=note_extra,
+            touch_used=True,
+            touch_refreshed=False,
+        )
+
         return create_response(
             data={
                 "mode": "permanent",
+                "test_user_id": test_user_id,
                 "user_id": user_id,
                 "email": email_address,
                 "username": username,
                 "password": password,
                 "access_token": access_token,
-                "refresh_token": session.get("refresh_token") if isinstance(session, dict) else None,
+                "refresh_token": refresh_token,
                 "expires_in": session.get("expires_in") if isinstance(session, dict) else None,
                 "token_type": session.get("token_type") if isinstance(session, dict) else "bearer",
                 **note_extra,
             },
+        )
+
+
+@router.get("/tests/mail-users")
+async def list_mail_users(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    if current_user.is_anonymous:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=create_response(
+                code=403,
+                msg="anonymous_user_not_allowed",
+                message="anonymous_user_not_allowed",
+                request_id=get_current_request_id(),
+            ),
+        )
+
+    items = await _list_mail_test_users(request, limit=int(limit))
+    return create_response(data={"items": items, "total": len(items)})
+
+
+@router.post("/tests/mail-users/{test_user_id}/refresh")
+async def refresh_mail_user_token(
+    test_user_id: int,
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    if current_user.is_anonymous:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=create_response(
+                code=403,
+                msg="anonymous_user_not_allowed",
+                message="anonymous_user_not_allowed",
+                request_id=get_current_request_id(),
+            ),
+        )
+
+    from app.settings.config import get_settings
+
+    settings = get_settings()
+    request_id = get_current_request_id()
+
+    row = await _get_mail_test_user_by_id(request, int(test_user_id))
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=create_response(
+                code=404,
+                msg="test_user_not_found",
+                message="test_user_not_found",
+                request_id=request_id,
+            ),
+        )
+
+    refresh_token = row.get("refresh_token")
+    if not isinstance(refresh_token, str) or not refresh_token.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=create_response(
+                code=400,
+                msg="refresh_token_missing",
+                message="refresh_token_missing",
+                request_id=request_id,
+                hint="该测试用户未保存 refresh_token；请点击“一键生成测试用户”重新创建。",
+            ),
+        )
+
+    supabase_url = _resolve_supabase_base_url(settings)
+    anon_key = _resolve_supabase_anon_key(settings)
+    headers_auth = {
+        "apikey": anon_key,
+        "Authorization": f"Bearer {anon_key}",
+        "Content-Type": "application/json",
+        "X-Request-Id": request_id,
+    }
+
+    refresh_url = f"{supabase_url}/auth/v1/token?grant_type=refresh_token"
+    async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
+        resp = await client.post(refresh_url, headers=headers_auth, json={"refresh_token": refresh_token})
+        if resp.status_code >= 400:
+            raise HTTPException(
+                status_code=UPSTREAM_FAILED_STATUS,
+                detail=create_response(
+                    code=502,
+                    msg="supabase_refresh_failed",
+                    message="supabase_refresh_failed",
+                    request_id=request_id,
+                    upstream_status=resp.status_code,
+                    hint="refresh_token 可能已失效；请点击“一键生成测试用户”强制新建。",
+                ),
+            )
+
+        data = resp.json()
+        access_token = data.get("access_token") if isinstance(data, dict) else None
+        if not isinstance(access_token, str) or not access_token:
+            raise HTTPException(
+                status_code=UPSTREAM_FAILED_STATUS,
+                detail=create_response(
+                    code=502,
+                    msg="supabase_missing_access_token",
+                    message="supabase_missing_access_token",
+                    request_id=request_id,
+                ),
+            )
+
+        new_refresh = data.get("refresh_token") if isinstance(data, dict) else None
+        await _persist_mail_test_user(
+            request,
+            label=str(row.get("label") or row.get("username") or "gymbro-test"),
+            email=str(row.get("email") or ""),
+            username=str(row.get("username") or ""),
+            supabase_user_id=row.get("supabase_user_id"),
+            password=row.get("password"),
+            refresh_token=new_refresh if isinstance(new_refresh, str) and new_refresh.strip() else refresh_token,
+            meta={"note": "refreshed_by_id"},
+            touch_used=True,
+            touch_refreshed=True,
+        )
+
+        return create_response(
+            data={
+                "mode": "permanent",
+                "test_user_id": int(test_user_id),
+                "user_id": row.get("supabase_user_id"),
+                "email": row.get("email"),
+                "username": row.get("username"),
+                "password": row.get("password"),
+                "access_token": access_token,
+                "refresh_token": new_refresh or refresh_token,
+                "expires_in": data.get("expires_in") if isinstance(data, dict) else None,
+                "token_type": data.get("token_type") if isinstance(data, dict) else "bearer",
+                "note": "refreshed",
+            }
         )
 
 

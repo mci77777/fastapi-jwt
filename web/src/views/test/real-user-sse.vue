@@ -5,8 +5,11 @@
         <!-- 步骤 1: 获取 JWT Token -->
         <n-card title="步骤 1: 获取真实 Supabase JWT" size="small">
           <n-space style="margin-bottom: 12px">
-            <n-button type="primary" :loading="creatingTestUser" @click="handleCreateTestUser">
-              一键生成测试用户（gymbro-test-01）
+            <n-button type="primary" :loading="creatingTestUser" @click="handleCreateTestUser(false)">
+              一键获取测试用户（复用/refresh）
+            </n-button>
+            <n-button secondary :loading="creatingTestUserForce" @click="handleCreateTestUser(true)">
+              强制新建测试用户
             </n-button>
             <n-button secondary :loading="gettingAnonToken" @click="handleGetAnonToken(false)">
               获取匿名 JWT（当日复用）
@@ -14,6 +17,29 @@
             <n-button tertiary :loading="gettingAnonToken" @click="handleGetAnonToken(true)">
               重新生成匿名用户
             </n-button>
+          </n-space>
+
+          <n-space align="center" wrap style="margin-bottom: 12px">
+            <n-select
+              v-model:value="selectedMailUserId"
+              :options="mailUserSelectOptions"
+              :loading="mailUsersLoading"
+              filterable
+              clearable
+              placeholder="选择已保存测试用户（用于并发分配）"
+              style="min-width: 320px"
+              :disabled="creatingTestUser || creatingTestUserForce || gettingToken"
+            />
+            <n-button
+              secondary
+              :disabled="!selectedMailUserId"
+              :loading="refreshingMailUser"
+              @click="handleUseSelectedMailUser"
+            >
+              刷新并使用
+            </n-button>
+            <n-button tertiary :loading="mailUsersLoading" @click="loadMailUsers"> 刷新列表 </n-button>
+            <n-text v-if="mailUsers.length" depth="3"> 共 {{ mailUsers.length }} 个 </n-text>
           </n-space>
 
           <n-form ref="loginFormRef" :model="loginForm" label-placement="left" label-width="100">
@@ -162,7 +188,13 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { storeToRefs } from 'pinia'
-import { createAnonToken, createMailUser, createMessage } from '@/api/aiModelSuite'
+import {
+  createAnonToken,
+  createMailUser,
+  createMessage,
+  listMailUsers,
+  refreshMailUserToken,
+} from '@/api/aiModelSuite'
 import api from '@/api'
 import { supabaseRefreshSession, supabaseSignInAnonymously } from '@/utils/supabase/auth'
 import { useAiModelSuiteStore } from '@/store'
@@ -186,10 +218,32 @@ const tokenMode = ref('')
 const tokenMeta = ref({ email: '', username: '', user_id: '' })
 const gettingToken = ref(false)
 const creatingTestUser = ref(false)
+const creatingTestUserForce = ref(false)
 const gettingAnonToken = ref(false)
 
 const ANON_CACHE_DAY_KEY = 'jwt_test_anon_day'
 const ANON_CACHE_REFRESH_KEY = 'jwt_test_anon_refresh_token'
+const MAIL_USER_SELECTED_ID_KEY = 'jwt_test_mail_user_id'
+
+const mailUsersLoading = ref(false)
+const refreshingMailUser = ref(false)
+const mailUsers = ref([])
+const selectedMailUserId = ref(null)
+
+const mailUserSelectOptions = computed(() => {
+  const items = Array.isArray(mailUsers.value) ? mailUsers.value : []
+  return items.map((u) => {
+    const id = u?.id
+    const label = u?.label ? String(u.label) : 'mail-user'
+    const email = u?.email ? String(u.email) : '--'
+    const createdAt = u?.created_at ? String(u.created_at) : ''
+    const hasRefresh = u?.has_refresh_token ? '✓' : '×'
+    return {
+      label: `${label} | ${email} | refresh:${hasRefresh}${createdAt ? ` | ${createdAt}` : ''}`,
+      value: id,
+    }
+  })
+})
 
 function getLocalDateKey() {
   // 形如 2026-01-02（按本地时区）
@@ -213,7 +267,7 @@ function formatApiError(prefix, error) {
   return `${prefix}：${error?.message || '未知错误'}`
 }
 
-function applyJwtSession({ access_token, refresh_token, mode, meta } = {}) {
+function applyJwtSession({ access_token, mode, meta } = {}) {
   if (typeof access_token === 'string' && access_token) jwtToken.value = access_token
   if (typeof mode === 'string') tokenMode.value = mode
   tokenMeta.value = {
@@ -247,6 +301,38 @@ async function tryResumeAnonToken() {
     // 静默失败：仅在用户点击按钮时才重新生成
   }
 }
+
+async function loadMailUsers() {
+  mailUsersLoading.value = true
+  try {
+    const res = await listMailUsers({ limit: 100 })
+    const items = res?.data?.items
+    mailUsers.value = Array.isArray(items) ? items : []
+
+    const cachedIdRaw = localStorage.getItem(MAIL_USER_SELECTED_ID_KEY)
+    const cachedId = cachedIdRaw ? Number(cachedIdRaw) : null
+    if (cachedId && mailUsers.value.some((u) => Number(u?.id) === cachedId)) {
+      selectedMailUserId.value = cachedId
+    } else if (!selectedMailUserId.value && mailUsers.value.length) {
+      selectedMailUserId.value = mailUsers.value[0].id
+    }
+  } catch (error) {
+    message.error(formatApiError('加载测试用户列表失败', error))
+  } finally {
+    mailUsersLoading.value = false
+  }
+}
+
+watch(
+  () => selectedMailUserId.value,
+  (val) => {
+    if (val === null || val === undefined || val === '') {
+      localStorage.removeItem(MAIL_USER_SELECTED_ID_KEY)
+      return
+    }
+    localStorage.setItem(MAIL_USER_SELECTED_ID_KEY, String(val))
+  }
+)
 
 // 对话表单
 const chatFormRef = ref(null)
@@ -361,11 +447,13 @@ function handleCopyToken() {
   message.success('Token 已复制到剪贴板')
 }
 
-async function handleCreateTestUser() {
-  creatingTestUser.value = true
+async function handleCreateTestUser(forceNew) {
+  if (forceNew) creatingTestUserForce.value = true
+  else creatingTestUser.value = true
   try {
     const res = await createMailUser({
       username_prefix: 'gymbro-test-01',
+      force_new: !!forceNew,
     })
     const data = res?.data
     if (!data?.access_token) {
@@ -384,11 +472,51 @@ async function handleCreateTestUser() {
       meta: { email: data.email, username: data.username, user_id: data.user_id },
     })
 
+    if (data.test_user_id) {
+      selectedMailUserId.value = Number(data.test_user_id)
+      localStorage.setItem(MAIL_USER_SELECTED_ID_KEY, String(data.test_user_id))
+    }
+    loadMailUsers()
     message.success('测试用户已生成并获取 JWT')
   } catch (error) {
     message.error(formatApiError('生成测试用户失败', error))
   } finally {
     creatingTestUser.value = false
+    creatingTestUserForce.value = false
+  }
+}
+
+async function handleUseSelectedMailUser() {
+  if (!selectedMailUserId.value) {
+    message.warning('请先选择一个已保存测试用户')
+    return
+  }
+
+  refreshingMailUser.value = true
+  try {
+    const res = await refreshMailUserToken(selectedMailUserId.value)
+    const data = res?.data
+    if (!data?.access_token) {
+      message.error('刷新失败：响应缺少 access_token')
+      return
+    }
+
+    if (data.email) loginForm.value.email = String(data.email)
+    if (data.password) loginForm.value.password = String(data.password)
+
+    applyJwtSession({
+      access_token: String(data.access_token),
+      refresh_token: data.refresh_token || null,
+      mode: String(data.mode || 'permanent'),
+      meta: { email: data.email, username: data.username, user_id: data.user_id },
+    })
+
+    loadMailUsers()
+    message.success('已刷新并切换到所选测试用户')
+  } catch (error) {
+    message.error(formatApiError('刷新测试用户 token 失败', error))
+  } finally {
+    refreshingMailUser.value = false
   }
 }
 
@@ -457,6 +585,7 @@ async function handleGetAnonToken(forceNew) {
 
 onMounted(() => {
   tryResumeAnonToken()
+  loadMailUsers()
   aiSuiteStore.loadModels().then(() => {
     if (!chatForm.value.endpoint_id && endpointSelectOptions.value.length) {
       chatForm.value.endpoint_id = endpointSelectOptions.value[0].value
