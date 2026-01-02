@@ -99,7 +99,14 @@ class MailAuthService:
         async with httpx.AsyncClient() as client:
             resp = await client.post(url, headers=self._get_headers(), json=payload)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            if isinstance(data, dict):
+                # 兼容 taxbattle.xyz：返回 {id, email}，而非 {address}
+                if not data.get("address"):
+                    email = data.get("email")
+                    if isinstance(email, str) and email.strip():
+                        data["address"] = email.strip()
+            return data
 
     async def get_emails(self, email_id: str, cursor: Optional[str] = None) -> Dict[str, Any]:
         """获取邮箱邮件列表。"""
