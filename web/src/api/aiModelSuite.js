@@ -50,6 +50,7 @@ export const refreshMailUserToken = (testUserId, data = {}) =>
  * @param {number} [options.openai.temperature]
  * @param {number} [options.openai.top_p]
  * @param {number} [options.openai.max_tokens]
+ * @param {boolean} [options.skipPrompt] - 覆盖 skip_prompt（默认随 promptMode 推导）
  * @param {string} [options.requestId] - 透传请求追踪 Header：X-Request-Id（建议由调用方生成并用于 SSE 对账）
  * @param {string} [options.accessToken] - 覆盖 Authorization（用于 JWT 测试页，不污染全局登录态）
  * @returns {Promise<{message_id: string, conversation_id: string}>} 消息ID与会话ID
@@ -60,6 +61,7 @@ export const createMessage = ({
   metadata = {},
   promptMode = 'server',
   openai = {},
+  skipPrompt,
   requestId,
   accessToken,
 } = {}) => {
@@ -84,14 +86,13 @@ export const createMessage = ({
   if (hasText) payload.text = text.trim()
 
   // prompt 策略：server=使用后端 prompt 注入；passthrough=仅透传 OpenAI 字段，不注入默认 prompt
-  payload.skip_prompt = resolvedPromptMode === 'passthrough'
+  if (typeof skipPrompt === 'boolean') payload.skip_prompt = skipPrompt
+  else payload.skip_prompt = resolvedPromptMode === 'passthrough'
 
   // OpenAI 兼容字段（仅白名单字段进入 body 顶层；扩展信息仍应放 metadata）
   if (openai && typeof openai === 'object') {
     if (typeof openai.model === 'string' && openai.model.trim()) payload.model = openai.model.trim()
-    if (typeof openai.system_prompt === 'string' && openai.system_prompt.trim()) {
-      if (resolvedPromptMode === 'passthrough') payload.system_prompt = openai.system_prompt.trim()
-    }
+    if (typeof openai.system_prompt === 'string' && openai.system_prompt.trim()) payload.system_prompt = openai.system_prompt.trim()
 
     if (Array.isArray(openai.messages)) {
       payload.messages =

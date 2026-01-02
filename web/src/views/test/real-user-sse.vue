@@ -109,6 +109,100 @@
                 :disabled="sendingMessage"
               />
             </n-form-item>
+
+            <n-divider style="margin: 8px 0" />
+
+            <n-form-item label="Prompt 模式" path="prompt_mode">
+              <n-select
+                v-model:value="chatForm.prompt_mode"
+                :options="promptModeOptions"
+                placeholder="选择 prompt 组装策略"
+                :disabled="sendingMessage"
+                style="min-width: 240px"
+              />
+            </n-form-item>
+
+            <n-form-item label="跳过默认Prompt" path="skip_prompt">
+              <n-switch v-model:value="chatForm.skip_prompt" :disabled="sendingMessage" />
+              <n-text depth="3" style="margin-left: 12px">
+                关闭后端默认 prompt 注入（仅影响默认注入；system_prompt/messages 仍会生效）
+              </n-text>
+            </n-form-item>
+
+            <n-form-item label="system_prompt" path="system_prompt">
+              <n-input
+                v-model:value="chatForm.system_prompt"
+                type="textarea"
+                placeholder="可选：覆盖/追加 system prompt（后端会优先使用此字段）"
+                :rows="3"
+                :disabled="sendingMessage"
+              />
+            </n-form-item>
+
+            <n-form-item label="messages(JSON)" path="messages_json">
+              <n-input
+                v-model:value="chatForm.messages_json"
+                type="textarea"
+                placeholder='可选：OpenAI messages JSON 数组，例如：[{\"role\":\"user\",\"content\":\"hi\"}]（填写后将优先使用 messages 而不是 text）'
+                :rows="3"
+                :disabled="sendingMessage"
+              />
+            </n-form-item>
+
+            <n-form-item label="tools(JSON)" path="tools_json">
+              <n-input
+                v-model:value="chatForm.tools_json"
+                type="textarea"
+                placeholder="可选：OpenAI tools JSON 数组（或工具名白名单数组）"
+                :rows="3"
+                :disabled="sendingMessage"
+              />
+            </n-form-item>
+
+            <n-form-item label="tool_choice" path="tool_choice">
+              <n-input
+                v-model:value="chatForm.tool_choice"
+                placeholder='可选：auto/none/required 或 JSON（{"type":"function","function":{"name":"..."} }）'
+                :disabled="sendingMessage"
+              />
+            </n-form-item>
+
+            <n-form-item label="temperature" path="temperature">
+              <n-input-number
+                v-model:value="chatForm.temperature"
+                :min="0"
+                :max="2"
+                :step="0.1"
+                placeholder="可选"
+                :disabled="sendingMessage"
+                style="width: 240px"
+              />
+            </n-form-item>
+
+            <n-form-item label="top_p" path="top_p">
+              <n-input-number
+                v-model:value="chatForm.top_p"
+                :min="0"
+                :max="1"
+                :step="0.05"
+                placeholder="可选"
+                :disabled="sendingMessage"
+                style="width: 240px"
+              />
+            </n-form-item>
+
+            <n-form-item label="max_tokens" path="max_tokens">
+              <n-input-number
+                v-model:value="chatForm.max_tokens"
+                :min="1"
+                :max="131072"
+                :step="64"
+                placeholder="可选"
+                :disabled="sendingMessage"
+                style="width: 240px"
+              />
+            </n-form-item>
+
             <n-form-item label="对话内容" path="message">
               <n-input
                 v-model:value="chatForm.message"
@@ -357,10 +451,53 @@ const chatFormRef = ref(null)
 const chatForm = ref({
   endpoint_id: null,
   model: '',
+  prompt_mode: 'server',
+  skip_prompt: false,
+  system_prompt: '',
+  messages_json: '',
+  tools_json: '',
+  tool_choice: '',
+  temperature: null,
+  top_p: null,
+  max_tokens: null,
   message: 'Hello, this is a test message from Real User SSE UI.',
 })
 
 const endpointSelectOptions = computed(() => aiSuiteStore.endpointOptions || [])
+const promptModeOptions = [
+  { label: 'server（默认：后端组装/注入）', value: 'server' },
+  { label: 'passthrough（透传 OpenAI 字段）', value: 'passthrough' },
+]
+
+function parseJsonArrayField(raw, fieldLabel) {
+  const text = typeof raw === 'string' ? raw.trim() : ''
+  if (!text) return null
+  try {
+    const parsed = JSON.parse(text)
+    if (!Array.isArray(parsed)) {
+      message.error(`${fieldLabel} 必须是 JSON 数组`)
+      return null
+    }
+    return parsed
+  } catch (e) {
+    message.error(`${fieldLabel} JSON 解析失败：${e?.message || 'unknown_error'}`)
+    return null
+  }
+}
+
+function parseToolChoice(raw) {
+  const text = typeof raw === 'string' ? raw.trim() : ''
+  if (!text) return null
+  if (text.startsWith('{') || text.startsWith('[')) {
+    try {
+      return JSON.parse(text)
+    } catch (e) {
+      message.error(`tool_choice JSON 解析失败：${e?.message || 'unknown_error'}`)
+      return null
+    }
+  }
+  return text
+}
 
 function buildModelCandidatesForEndpoint(endpointId) {
   if (!endpointId) return aiSuiteStore.modelCandidates || []
@@ -638,20 +775,38 @@ async function handleSendMessage() {
     lastRequestId.value = requestId
     console.log(`request_id=${requestId} action=create_message`)
 
+    const openaiMessages = parseJsonArrayField(chatForm.value.messages_json, 'messages')
+    const openaiTools = parseJsonArrayField(chatForm.value.tools_json, 'tools')
+    const toolChoice = parseToolChoice(chatForm.value.tool_choice)
+
+    const promptMode = chatForm.value.prompt_mode === 'passthrough' ? 'passthrough' : 'server'
+    const skipPrompt = typeof chatForm.value.skip_prompt === 'boolean' ? chatForm.value.skip_prompt : false
+
     // 步骤 1: 创建消息
     const createResponse = await createMessage({
-      text: chatForm.value.message,
+      text: openaiMessages ? undefined : chatForm.value.message,
       conversationId: conversationId.value || null,
       metadata: {
         scenario: 'real_user_sse_ui',
         test_type: 'manual',
         endpoint_id: chatForm.value.endpoint_id || null,
         requested_model: chatForm.value.model || null,
+        prompt_mode: promptMode,
+        skip_prompt: skipPrompt,
       },
       requestId,
-      promptMode: 'server',
+      promptMode,
+      skipPrompt,
       openai: {
         model: chatForm.value.model || undefined,
+        messages: openaiMessages || undefined,
+        system_prompt: (chatForm.value.system_prompt || '').trim() || undefined,
+        tools: openaiTools || undefined,
+        tool_choice: toolChoice === null ? undefined : toolChoice,
+        temperature:
+          typeof chatForm.value.temperature === 'number' ? Number(chatForm.value.temperature) : undefined,
+        top_p: typeof chatForm.value.top_p === 'number' ? Number(chatForm.value.top_p) : undefined,
+        max_tokens: typeof chatForm.value.max_tokens === 'number' ? Number(chatForm.value.max_tokens) : undefined,
       },
       accessToken: jwtToken.value,
     })
