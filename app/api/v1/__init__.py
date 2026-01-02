@@ -11,6 +11,7 @@ from .health import router as health_router
 from .llm import router as llm_router
 from .messages import router as messages_router
 from .metrics import router as metrics_router
+from .exercise_library import router as exercise_library_router
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ v1_router.include_router(llm_router)
 v1_router.include_router(messages_router)
 v1_router.include_router(metrics_router)
 v1_router.include_router(agents_router)
+v1_router.include_router(exercise_library_router)
 logger.info("[ROUTER_INIT] Agents router registered with %d routes", len(agents_router.routes))
 
 __all__ = ["v1_router"]

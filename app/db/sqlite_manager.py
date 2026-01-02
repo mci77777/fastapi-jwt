@@ -137,6 +137,18 @@ CREATE TABLE IF NOT EXISTS local_users (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Official Exercise Library snapshots (versioned seed payloads)
+CREATE TABLE IF NOT EXISTS exercise_library_snapshots (
+    version INTEGER PRIMARY KEY,
+    checksum TEXT NOT NULL,
+    generated_at INTEGER,
+    total_count INTEGER NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_exercise_library_snapshots_created_at ON exercise_library_snapshots(created_at DESC);
 """
 
 

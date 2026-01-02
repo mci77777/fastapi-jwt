@@ -58,6 +58,8 @@ class PolicyGateMiddleware(BaseHTTPMiddleware):
             # 基础对话功能
             re.compile(r"^/api/v1/messages$"),  # POST 创建消息
             re.compile(r"^/api/v1/messages/[^/]+/events$"),  # GET SSE事件流
+            # 官方动作库同步（只读）
+            re.compile(r"^/api/v1/exercise/library/(meta|full|updates)$"),
             # 获取模型列表（只读）
             re.compile(r"^/api/v1/llm/models$"),  # GET 获取模型列表
             # 健康检查等公共端点
@@ -128,6 +130,8 @@ class PolicyGateMiddleware(BaseHTTPMiddleware):
             if pattern.match(path):
                 # 对于模型端点，只允许GET请求
                 if "/llm/models" in path and method != "GET":
+                    return False
+                if "/exercise/library/" in path and method != "GET":
                     return False
                 return True
         return False
