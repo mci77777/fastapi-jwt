@@ -127,7 +127,8 @@ def create_test_jwt_token(username: str, expire_hours: int = 24) -> str:
 
     # 创建JWT payload
     now = int(time.time())
-    issuer = str(settings.supabase_issuer) if settings.supabase_issuer else "http://localhost:9999"
+    # SSOT：issuer 仅认无尾随 "/" 的规范形态，避免与 JWTVerifier 的 allow-list（rstrip("/")）不一致导致 401 issuer_not_allowed
+    issuer = (str(settings.supabase_issuer).rstrip("/") if settings.supabase_issuer else "http://localhost:9999")
 
     payload = {
         "iss": issuer,

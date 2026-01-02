@@ -14,6 +14,8 @@ async def test_local_admin_can_update_password(async_client: AsyncClient, monkey
     # 让本地 admin token 可被 JWTVerifier 验证（HS256）
     monkeypatch.setenv("SUPABASE_JWT_SECRET", "test-local-secret")
     monkeypatch.setenv("JWT_AUDIENCE", "authenticated")
+    # 回归覆盖：Settings(AnyHttpUrl) 可能带尾随 "/"，必须确保生成 token 的 iss 不带 "/"，否则会触发 issuer_not_allowed
+    monkeypatch.setenv("SUPABASE_ISSUER", "https://example.supabase.co/")
     get_settings.cache_clear()
     get_jwt_verifier.cache_clear()
 
@@ -48,4 +50,3 @@ async def test_local_admin_can_update_password(async_client: AsyncClient, monkey
 
     # 清理：避免影响其他用例/本地 db.sqlite3
     await fastapi_app.state.sqlite_manager.execute("DELETE FROM local_users WHERE username = ?", ("admin",))
-
