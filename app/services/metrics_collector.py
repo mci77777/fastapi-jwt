@@ -100,11 +100,11 @@ class MetricsCollector:
         Returns:
             包含健康端点数、总端点数、连通率的字典
         """
-        # 复用 EndpointMonitor 的状态快照；若从未检测过，则按需跑一次以填充状态（不启动后台循环）
+        # 复用 EndpointMonitor 的状态快照；若从未检测过，则触发一次探针（非阻塞）以填充状态
         snapshot = self._monitor.snapshot()
-        if not snapshot.get("last_run_at") and not snapshot.get("is_running"):
+        if not snapshot.get("last_run_at") and not snapshot.get("is_running") and not snapshot.get("probe_running"):
             try:
-                await self._monitor.run_once_now()
+                self._monitor.trigger_probe()
             except Exception:
                 pass
             snapshot = self._monitor.snapshot()

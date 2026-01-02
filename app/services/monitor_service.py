@@ -24,6 +24,7 @@ class EndpointMonitor:
     def __init__(self, service: AIConfigService) -> None:
         self._service = service
         self._task: Optional[asyncio.Task[None]] = None
+        self._probe_task: Optional[asyncio.Task[None]] = None
         self._interval: int = 60
         self._stop_event: asyncio.Event = asyncio.Event()
         self._lock = asyncio.Lock()
@@ -36,6 +37,9 @@ class EndpointMonitor:
 
     def is_running(self) -> bool:
         return self._task is not None and not self._task.done()
+
+    def is_probe_running(self) -> bool:
+        return self._probe_task is not None and not self._probe_task.done()
 
     async def start(self, interval_seconds: int) -> None:
         """Start (or restart) the polling loop with the given interval."""
@@ -81,14 +85,10 @@ class EndpointMonitor:
 
     async def _run_once(self) -> None:
         try:
-            results = await self._service.refresh_all_status()
-            if results:
-                # refresh_all_status stores ISO timestamps itself; read the first item
-                self._last_run_iso = results[0].get("last_checked_at")
-            else:
-                self._last_run_iso = None
+            await self._service.refresh_all_status()
+            self._last_run_iso = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
             self._last_error = None
-            logger.debug("Endpoint monitor refreshed %d endpoints", len(results))
+            logger.debug("Endpoint monitor refreshed endpoints")
         except Exception as exc:  # pragma: no cover - defensive logging only
             logger.exception("Endpoint monitor refresh failed")
             self._last_error = str(exc)
@@ -98,6 +98,7 @@ class EndpointMonitor:
 
         return {
             "is_running": self.is_running(),
+            "probe_running": self.is_probe_running(),
             "interval_seconds": self._interval,
             "last_run_at": self._last_run_iso,
             "last_error": self._last_error,
@@ -115,3 +116,17 @@ class EndpointMonitor:
             await self._run_once()
             if not self._last_run_iso:
                 self._last_run_iso = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+    def trigger_probe(self) -> None:
+        """非阻塞触发一次探针（用于首屏预热/按需刷新）。"""
+
+        if self.is_probe_running():
+            return
+
+        async def _runner() -> None:
+            try:
+                await self.run_once_now()
+            finally:
+                self._probe_task = None
+
+        self._probe_task = asyncio.create_task(_runner())
