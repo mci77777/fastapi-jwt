@@ -277,6 +277,7 @@ async def create_mail_user(
                     msg="supabase_admin_create_user_failed",
                     request_id=request_id,
                     upstream_status=resp.status_code,
+                    hint="Supabase Admin 创建用户失败；请检查 SUPABASE_SERVICE_ROLE_KEY/SUPABASE_URL 是否正确，且该 key 具备 admin.users 权限。",
                 ),
             )
 
@@ -307,6 +308,7 @@ async def create_mail_user(
                     msg="supabase_token_exchange_failed",
                     request_id=request_id,
                     upstream_status=token_resp.status_code,
+                    hint="Supabase 换取 access_token 失败；请检查 SUPABASE_ANON_KEY/SUPABASE_URL，并确认 Auth 支持 email/password grant。",
                 ),
             )
 
@@ -315,7 +317,12 @@ async def create_mail_user(
         if not isinstance(access_token, str) or not access_token:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=create_response(code=502, msg="supabase_missing_access_token", request_id=request_id),
+                detail=create_response(
+                    code=502,
+                    msg="supabase_missing_access_token",
+                    request_id=request_id,
+                    hint="Supabase 响应缺少 access_token；请检查 Auth 配置与上游响应（建议用 request_id 追踪）。",
+                ),
             )
 
         return create_response(

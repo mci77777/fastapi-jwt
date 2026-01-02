@@ -170,6 +170,23 @@ function getLocalDateKey() {
   return new Date().toLocaleDateString('sv-SE')
 }
 
+function formatApiError(prefix, error) {
+  const resp = error?.response
+  const data = resp?.data
+  const requestId = data?.request_id || data?.requestId
+  const hint = data?.hint
+  const msg = data?.msg || data?.message || data?.code
+  const status = resp?.status || data?.status
+  const parts = []
+  parts.push(prefix)
+  if (status) parts.push(`status=${status}`)
+  if (msg) parts.push(String(msg))
+  if (requestId) parts.push(`request_id=${requestId}`)
+  if (hint) parts.push(String(hint))
+  if (parts.length > 1) return parts.join(' | ')
+  return `${prefix}：${error?.message || '未知错误'}`
+}
+
 function applyJwtSession({ access_token, refresh_token, mode, meta } = {}) {
   if (typeof access_token === 'string' && access_token) jwtToken.value = access_token
   if (typeof mode === 'string') tokenMode.value = mode
@@ -270,7 +287,7 @@ async function handleGetToken() {
       message.error('JWT Token 获取失败：响应格式错误')
     }
   } catch (error) {
-    message.error('JWT Token 获取失败：' + (error.message || '未知错误'))
+    message.error(formatApiError('JWT Token 获取失败', error))
   } finally {
     gettingToken.value = false
   }
@@ -309,7 +326,7 @@ async function handleCreateTestUser() {
 
     message.success('测试用户已生成并获取 JWT')
   } catch (error) {
-    message.error('生成测试用户失败：' + (error.message || '未知错误'))
+    message.error(formatApiError('生成测试用户失败', error))
   } finally {
     creatingTestUser.value = false
   }
@@ -372,7 +389,7 @@ async function handleGetAnonToken(forceNew) {
     })
     message.success(forceNew ? '已重新生成匿名用户' : '匿名 JWT 获取成功')
   } catch (error) {
-    message.error('匿名 JWT 获取失败：' + (error.message || '未知错误'))
+    message.error(formatApiError('匿名 JWT 获取失败', error))
   } finally {
     gettingAnonToken.value = false
   }
