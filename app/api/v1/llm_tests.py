@@ -153,8 +153,8 @@ async def create_mail_user(
     settings = get_settings()
     request_id = get_current_request_id()
 
-    # Mail API Key：仅在 payload 显式传入时才启用（避免服务端 env 配置错误导致 UI 生成链路整体不可用）
-    api_key = (payload.mail_api_key or "").strip() or None
+    # Mail API Key：优先 payload，其次服务端环境变量（线上 SSOT，避免把 key 暴露到浏览器）
+    api_key = (payload.mail_api_key or settings.mail_api_key or "").strip() or None
 
     # MOCK MODE：仅用于 UI 冒烟（不产出 Supabase Auth 真实 JWT）
     if api_key == "test-key-mock":
@@ -173,6 +173,17 @@ async def create_mail_user(
             }
         )
 
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=create_response(
+                code=500,
+                msg="mail_api_key_missing",
+                request_id=request_id,
+                hint="请在后端环境变量配置 MAIL_API_KEY（可选：MAIL_API_BASE_URL/MAIL_DOMAIN/MAIL_EXPIRY_MS）。",
+            ),
+        )
+
     # 真实模式：Supabase Admin 创建用户 + password grant 换取真实 access_token
     supabase_url = _resolve_supabase_base_url(settings)
     service_key = _resolve_supabase_service_key(settings)
@@ -186,25 +197,48 @@ async def create_mail_user(
     domain = (payload.email_domain or "example.com").strip() or "example.com"
     email_local = f"{username}+{int(time.time())}"
     email_address = f"{email_local}@{domain}"
-    if api_key:
-        try:
-            from app.services.mail_auth_service import MailAuthService
 
-            ms = MailAuthService(api_key=api_key)
-            config = await ms.get_config()
-            domains = config.get("domains") if isinstance(config, dict) else None
-            if isinstance(domains, list) and domains:
-                email_name = f"{username}-{int(time.time())}"
-                email_data = await ms.generate_email(domain=str(domains[0]), name=email_name)
-                addr = str(email_data.get("address") or "").strip()
-                if addr and "@" in addr:
-                    email_address = addr
-                else:
-                    note_extra["mail_api_fallback"] = "invalid_email"
-            else:
-                note_extra["mail_api_fallback"] = "no_domains"
-        except Exception:
-            note_extra["mail_api_fallback"] = "mail_api_error"
+    # Mail API 作为“真实用户标准”：必须成功生成邮箱，否则直接报错。
+    try:
+        from app.services.mail_auth_service import MailAuthService
+
+        ms = MailAuthService(api_key=api_key)
+        domain_override = (getattr(settings, "mail_domain", None) or "").strip() or None
+        email_name = f"{username}-{int(time.time())}"
+        email_data = await ms.generate_email(
+            domain=domain_override,
+            name=email_name,
+            expiry_ms=int(getattr(settings, "mail_expiry_ms", 3600000) or 3600000),
+        )
+        email_address = str(email_data.get("address") or "").strip()
+        if not email_address or "@" not in email_address:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=create_response(
+                    code=502,
+                    msg="mail_api_invalid_email",
+                    request_id=request_id,
+                    hint="Mail API 返回的 address 无效；请检查 MAIL_DOMAIN 或 Mail API 配置（见 docs/mail-api.txt）。",
+                ),
+            )
+        note_extra["mail_api"] = "ok"
+        note_extra["mail_api_domain"] = email_address.split("@", 1)[1]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        upstream_status = None
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+            upstream_status = exc.response.status_code
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=create_response(
+                code=502,
+                msg="mail_api_error",
+                request_id=request_id,
+                upstream_status=upstream_status,
+                hint="Mail API 请求失败；请检查 MAIL_API_KEY/MAIL_API_BASE_URL 是否正确（见 docs/mail-api.txt）。",
+            ),
+        ) from exc
 
     headers_service = {
         "apikey": service_key,

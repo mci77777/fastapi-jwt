@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     ai_api_base_url: Optional[AnyHttpUrl] = Field(default=None, alias="AI_API_BASE_URL")
     ai_api_key: Optional[str] = Field(default=None, alias="AI_API_KEY")
     mail_api_key: Optional[str] = Field(default=None, alias="MAIL_API_KEY")
+    mail_api_base_url: Optional[AnyHttpUrl] = Field(default=None, alias="MAIL_API_BASE_URL")
+    mail_domain: Optional[str] = Field(default=None, alias="MAIL_DOMAIN")
+    mail_expiry_ms: int = Field(default=3600000, alias="MAIL_EXPIRY_MS")
 
     # 匿名用户支持配置
     anon_enabled: bool = Field(default=True, alias="ANON_ENABLED")

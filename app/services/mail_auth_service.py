@@ -13,17 +13,22 @@ class MailAuthService:
     """Mail API 认证服务，用于 E2E 测试和调试。"""
 
     def __init__(self, api_base: str = "https://taxbattle.xyz", api_key: Optional[str] = None):
-        self.api_base = api_base.rstrip("/")
+        settings = get_settings()
+        resolved_base = api_base
+        base_from_settings = getattr(settings, "mail_api_base_url", None)
+        if base_from_settings:
+            resolved_base = str(base_from_settings)
+
+        self.api_base = str(resolved_base).rstrip("/")
         self.api_key = api_key
         if not self.api_key:
             # 尝试从 settings 获取，或者抛出警告
-            settings = get_settings()
             # 假设 settings 中会有 mail_api_key，如果没有暂时为空
             self.api_key = getattr(settings, "mail_api_key", None)
 
     def _get_headers(self) -> Dict[str, str]:
         if not self.api_key:
-             raise ValueError("MAIL_API_KEY not configured")
+            raise ValueError("MAIL_API_KEY not configured")
         return {"X-API-Key": self.api_key, "Content-Type": "application/json"}
 
     async def get_config(self) -> Dict[str, Any]:
@@ -34,7 +39,13 @@ class MailAuthService:
             resp.raise_for_status()
             return resp.json()
 
-    async def generate_email(self, domain: Optional[str] = None, name: str = "test") -> Dict[str, Any]:
+    async def generate_email(
+        self,
+        domain: Optional[str] = None,
+        name: str = "test",
+        *,
+        expiry_ms: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """生成临时邮箱。"""
         if not domain:
             config = await self.get_config()
@@ -42,12 +53,19 @@ class MailAuthService:
             if not domains:
                 raise ValueError("No available domains from Mail API")
             domain = domains[0]
+
+        settings = get_settings()
+        resolved_expiry_ms = (
+            expiry_ms
+            if isinstance(expiry_ms, int) and expiry_ms >= 0
+            else int(getattr(settings, "mail_expiry_ms", 3600000) or 3600000)
+        )
             
         url = f"{self.api_base}/api/emails/generate"
         payload = {
             "name": name,
-            "expiryTime": 3600000, # 1 hour
-            "domain": domain
+            "expiryTime": resolved_expiry_ms,  # ms
+            "domain": domain,
         }
         async with httpx.AsyncClient() as client:
             resp = await client.post(url, headers=self._get_headers(), json=payload)

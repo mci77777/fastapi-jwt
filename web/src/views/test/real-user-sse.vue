@@ -141,13 +141,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useMessage } from 'naive-ui'
 import { createAnonToken, createMailUser, createMessage } from '@/api/aiModelSuite'
 import api from '@/api'
-import { useAiModelSuiteStore } from '@/store'
 import { supabaseRefreshSession, supabaseSignInAnonymously } from '@/utils/supabase/auth'
 
 defineOptions({ name: 'RealUserSseTest' })
 
 const message = useMessage()
-const aiStore = useAiModelSuiteStore()
 
 // 登录表单
 const loginFormRef = ref(null)
@@ -290,7 +288,6 @@ async function handleCreateTestUser() {
   creatingTestUser.value = true
   try {
     const res = await createMailUser({
-      mail_api_key: aiStore.mailApiKey || null,
       username_prefix: 'gymbro-test-01',
     })
     const data = res?.data
