@@ -107,6 +107,62 @@ class TestModelSelection:
                 # Should use AI_MODEL from settings or fallback to gpt-4o-mini
                 assert payload["model"] in ["gpt-4o-mini", "gpt-4o"]
 
+    @pytest.mark.asyncio
+    async def test_endpoint_override_from_metadata(self, async_client: AsyncClient, mock_jwt_token: str):
+        """metadata.endpoint_id 指定时，优先命中该端点（不会按 model_list 自动切换）。"""
+        with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+            mock_verifier = MagicMock()
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
+            mock_get_verifier.return_value = mock_verifier
+
+            with patch("app.services.ai_service.httpx.AsyncClient") as mock_client:
+                endpoint_a = await fastapi_app.state.ai_config_service.create_endpoint(
+                    {
+                        "name": "test-openai-default-a",
+                        "base_url": "https://api.openai.com",
+                        "api_key": "test-api-key-a",
+                        "is_active": True,
+                        "is_default": True,
+                        "model_list": ["gpt-4o-mini", "gpt-4o"],
+                    }
+                )
+                endpoint_b = await fastapi_app.state.ai_config_service.create_endpoint(
+                    {
+                        "name": "test-openai-b",
+                        "base_url": "https://example.openai-proxy.local",
+                        "api_key": "test-api-key-b",
+                        "is_active": True,
+                        "is_default": False,
+                        "model_list": ["gpt-4o-mini", "gpt-4o"],
+                    }
+                )
+
+                mock_response = MagicMock()
+                mock_response.json.return_value = {
+                    "choices": [{"message": {"content": "Test response"}}],
+                }
+                mock_response.raise_for_status = MagicMock()
+                mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+
+                response = await async_client.post(
+                    "/api/v1/messages",
+                    headers={"Authorization": f"Bearer {mock_jwt_token}"},
+                    json={
+                        "text": "Hello, AI!",
+                        "model": "gpt-4o",
+                        "metadata": {"endpoint_id": endpoint_b["id"]},
+                    },
+                )
+
+                assert response.status_code == status.HTTP_202_ACCEPTED
+
+                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+                assert call_args is not None
+                called_url = call_args[0][0]
+                assert isinstance(called_url, str)
+                assert "example.openai-proxy.local" in called_url
+                assert endpoint_a["id"] != endpoint_b["id"]
+
 
 class TestConditionalPersistence:
     """Test conditional Supabase persistence."""
@@ -134,7 +190,7 @@ class TestConditionalPersistence:
         with patch.object(
             ai_service,
             "_generate_reply",
-            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None),
+            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None),
         ):
             await ai_service.run_conversation(message_id, user, message, broker)
 
@@ -168,7 +224,7 @@ class TestConditionalPersistence:
         with patch.object(
             ai_service,
             "_generate_reply",
-            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None),
+            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None),
         ):
             await ai_service.run_conversation(message_id, user, message, broker)
 
@@ -198,7 +254,7 @@ class TestConditionalPersistence:
         with patch.object(
             ai_service,
             "_generate_reply",
-            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None),
+            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None),
         ):
             await ai_service.run_conversation(message_id, user, message, broker)
 

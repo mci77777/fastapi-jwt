@@ -150,6 +150,27 @@ CREATE TABLE IF NOT EXISTS exercise_library_snapshots (
 );
 
 CREATE INDEX IF NOT EXISTS idx_exercise_library_snapshots_created_at ON exercise_library_snapshots(created_at DESC);
+
+-- LLM/JWT 调试用测试用户（仅本地 SQLite；不与 Supabase 用户表混用）
+CREATE TABLE IF NOT EXISTS llm_test_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,                -- mail / anonymous / other
+    label TEXT,                        -- 例如 gymbro-test-01（用于分组/复用）
+    email TEXT,
+    username TEXT,
+    supabase_user_id TEXT,
+    password TEXT,
+    refresh_token TEXT,
+    meta_json TEXT,
+    last_used_at TEXT,
+    last_refreshed_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_test_users_kind ON llm_test_users(kind);
+CREATE INDEX IF NOT EXISTS idx_llm_test_users_label ON llm_test_users(label);
+CREATE INDEX IF NOT EXISTS idx_llm_test_users_created_at ON llm_test_users(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_test_users_email ON llm_test_users(email);
 """
 
 
