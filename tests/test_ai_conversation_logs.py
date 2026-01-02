@@ -183,7 +183,7 @@ async def test_ai_service_logs_conversation(ai_service, sqlite_manager, mock_sup
     with patch.object(
         ai_service,
         "_generate_reply",
-        return_value=("This is a test reply from AI", "gpt-4o", request_payload, response_payload, "up-req-1"),
+        return_value=("This is a test reply from AI", "gpt-4o", request_payload, response_payload, "up-req-1", None),
     ):
         user = AuthenticatedUser(uid="test-user-123", claims={}, user_type="permanent")
 
