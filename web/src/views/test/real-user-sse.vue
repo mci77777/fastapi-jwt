@@ -61,6 +61,28 @@
         <!-- 步骤 2: AI 对话测试 -->
         <n-card title="步骤 2: AI 对话测试" size="small">
           <n-form ref="chatFormRef" :model="chatForm" label-placement="left" label-width="100">
+            <n-form-item label="API（端点）" path="endpoint_id">
+              <n-select
+                v-model:value="chatForm.endpoint_id"
+                :options="endpointSelectOptions"
+                :loading="modelsLoading"
+                filterable
+                clearable
+                placeholder="选择一个已配置的 AI 端点"
+                :disabled="sendingMessage"
+              />
+            </n-form-item>
+            <n-form-item label="模型" path="model">
+              <n-select
+                v-model:value="chatForm.model"
+                :options="modelSelectOptions"
+                :loading="modelsLoading"
+                filterable
+                clearable
+                placeholder="选择模型（可选）"
+                :disabled="sendingMessage"
+              />
+            </n-form-item>
             <n-form-item label="对话内容" path="message">
               <n-input
                 v-model:value="chatForm.message"
@@ -137,15 +159,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useMessage } from 'naive-ui'
+import { storeToRefs } from 'pinia'
 import { createAnonToken, createMailUser, createMessage } from '@/api/aiModelSuite'
 import api from '@/api'
 import { supabaseRefreshSession, supabaseSignInAnonymously } from '@/utils/supabase/auth'
+import { useAiModelSuiteStore } from '@/store'
 
 defineOptions({ name: 'RealUserSseTest' })
 
 const message = useMessage()
+const aiSuiteStore = useAiModelSuiteStore()
+const { modelsLoading, models } = storeToRefs(aiSuiteStore)
 
 // 登录表单
 const loginFormRef = ref(null)
@@ -225,8 +251,40 @@ async function tryResumeAnonToken() {
 // 对话表单
 const chatFormRef = ref(null)
 const chatForm = ref({
+  endpoint_id: null,
+  model: '',
   message: 'Hello, this is a test message from Real User SSE UI.',
 })
+
+const endpointSelectOptions = computed(() => aiSuiteStore.endpointOptions || [])
+
+function buildModelCandidatesForEndpoint(endpointId) {
+  if (!endpointId) return aiSuiteStore.modelCandidates || []
+  const endpoint = (models.value || []).find((item) => item && item.id === endpointId)
+  if (!endpoint) return aiSuiteStore.modelCandidates || []
+  const candidateSet = new Set()
+  if (Array.isArray(endpoint.model_list)) {
+    endpoint.model_list.forEach((m) => {
+      if (m) candidateSet.add(String(m))
+    })
+  }
+  if (endpoint.model) candidateSet.add(String(endpoint.model))
+  return Array.from(candidateSet).filter(Boolean).sort()
+}
+
+const modelSelectOptions = computed(() => {
+  const candidates = buildModelCandidatesForEndpoint(chatForm.value.endpoint_id)
+  return candidates.map((m) => ({ label: m, value: m }))
+})
+
+function ensureChatFormModelValid(endpointId) {
+  const candidates = buildModelCandidatesForEndpoint(endpointId)
+  if (!candidates.length) return
+  const current = String(chatForm.value.model || '').trim()
+  if (!current || !candidates.includes(current)) {
+    chatForm.value.model = candidates[0]
+  }
+}
 
 // AI 响应
 const messageId = ref('')
@@ -245,6 +303,8 @@ function exportTraceJSON() {
     request_id: lastRequestId.value,
     message_id: messageId.value,
     conversation_id: conversationId.value,
+    endpoint_id: chatForm.value.endpoint_id,
+    model: chatForm.value.model,
     created_at: new Date().toISOString(),
     ai_response: aiResponse.value,
     sse_events: sseEvents.value,
@@ -397,7 +457,20 @@ async function handleGetAnonToken(forceNew) {
 
 onMounted(() => {
   tryResumeAnonToken()
+  aiSuiteStore.loadModels().then(() => {
+    if (!chatForm.value.endpoint_id && endpointSelectOptions.value.length) {
+      chatForm.value.endpoint_id = endpointSelectOptions.value[0].value
+    }
+    ensureChatFormModelValid(chatForm.value.endpoint_id)
+  })
 })
+
+watch(
+  () => chatForm.value.endpoint_id,
+  (endpointId) => {
+    ensureChatFormModelValid(endpointId)
+  }
+)
 
 /**
  * 发送消息并接收 SSE 响应
@@ -425,9 +498,14 @@ async function handleSendMessage() {
       metadata: {
         scenario: 'real_user_sse_ui',
         test_type: 'manual',
+        endpoint_id: chatForm.value.endpoint_id || null,
+        requested_model: chatForm.value.model || null,
       },
       requestId,
       promptMode: 'server',
+      openai: {
+        model: chatForm.value.model || undefined,
+      },
       accessToken: jwtToken.value,
     })
 

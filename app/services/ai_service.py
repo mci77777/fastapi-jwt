@@ -116,6 +116,7 @@ class AIService:
         start_time = perf_counter()
         success = False
         model_used: Optional[str] = None
+        endpoint_id_used: Optional[int] = None
         request_payload: Optional[str] = None
         response_payload: Optional[str] = None
         upstream_request_id: Optional[str] = None
@@ -141,6 +142,7 @@ class AIService:
                 request_payload,
                 response_payload,
                 upstream_request_id,
+                endpoint_id_used,
             ) = await self._generate_reply(message, user, user_details)
 
             async for chunk in self._stream_chunks(reply_text):
@@ -201,7 +203,7 @@ class AIService:
             )
         finally:
             latency_ms = (perf_counter() - start_time) * 1000
-            await self._record_ai_request(user.uid, None, model_used, latency_ms, success)
+            await self._record_ai_request(user.uid, endpoint_id_used, model_used, latency_ms, success)
 
             # Prometheus：会话延迟与成功率（按 model/user_type/status 维度）
             try:
@@ -243,15 +245,19 @@ class AIService:
         message: AIMessageInput,
         user: AuthenticatedUser,
         user_details: UserDetails,
-    ) -> tuple[str, Optional[str], Optional[str], Optional[str], Optional[str]]:
+    ) -> tuple[str, Optional[str], Optional[str], Optional[str], Optional[str], Optional[int]]:
         if self._ai_config_service is None:
             reply_text = await self._call_openai_completion_settings(message)
             model_used = self._settings.ai_model or "gpt-4o-mini"
             request_payload = json.dumps({"model": model_used, "text": message.text}, ensure_ascii=False)
-            return reply_text, model_used, request_payload, None, None
+            return reply_text, model_used, request_payload, None, None, None
 
         openai_req = await self._build_openai_request(message, user_details=user_details)
-        selected_endpoint, selected_model, provider_name = await self._select_endpoint_and_model(openai_req)
+        preferred_endpoint_id = _parse_optional_int((message.metadata or {}).get("endpoint_id") or (message.metadata or {}).get("endpointId"))
+        selected_endpoint, selected_model, provider_name = await self._select_endpoint_and_model(
+            openai_req,
+            preferred_endpoint_id=preferred_endpoint_id,
+        )
 
         api_key = await self._get_endpoint_api_key(selected_endpoint)
         if not api_key:
@@ -273,14 +279,37 @@ class AIService:
                 api_key,
                 openai_req,
             )
-            return reply_text, selected_model, request_payload, response_payload, upstream_request_id
+            endpoint_id = _parse_optional_int(selected_endpoint.get("id"))
+            return reply_text, selected_model, request_payload, response_payload, upstream_request_id, endpoint_id
 
         reply_text, response_payload, upstream_request_id = await self._call_openai_chat_completions(
             selected_endpoint,
             api_key,
             openai_req,
         )
-        return reply_text, selected_model, request_payload, response_payload, upstream_request_id
+        endpoint_id = _parse_optional_int(selected_endpoint.get("id"))
+        return reply_text, selected_model, request_payload, response_payload, upstream_request_id, endpoint_id
+
+
+def _parse_optional_int(value: Any) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return int(stripped)
+        except Exception:
+            return None
+    try:
+        return int(value)
+    except Exception:
+        return None
 
     async def _call_openai_completion_settings(self, message: AIMessageInput) -> str:
         text = (message.text or "").strip()
@@ -499,6 +528,8 @@ class AIService:
     async def _select_endpoint_and_model(
         self,
         openai_req: dict[str, Any],
+        *,
+        preferred_endpoint_id: Optional[int] = None,
     ) -> tuple[dict[str, Any], Optional[str], str]:
         if self._ai_config_service is None:
             raise ProviderError("ai_config_service_not_initialized")
@@ -515,6 +546,14 @@ class AIService:
 
         default_endpoint = next((item for item in candidates if item.get("is_default")), candidates[0])
         selected_endpoint = default_endpoint
+        if isinstance(preferred_endpoint_id, int):
+            preferred = next(
+                (item for item in candidates if _parse_optional_int(item.get("id")) == preferred_endpoint_id),
+                None,
+            )
+            if preferred is None:
+                raise ProviderError("endpoint_not_found_or_inactive")
+            selected_endpoint = preferred
 
         if isinstance(resolved_model, str) and resolved_model.strip():
             by_list = next(
@@ -525,7 +564,14 @@ class AIService:
                 ),
                 None,
             )
-            selected_endpoint = by_list or selected_endpoint
+            # 仅在未显式指定 endpoint 时，才按 model_list 进行“自动切换端点”。
+            if preferred_endpoint_id is None:
+                selected_endpoint = by_list or selected_endpoint
+            else:
+                # 指定 endpoint 时：若该 endpoint 有显式 model_list，则做最小校验（避免误以为生效）。
+                model_list = selected_endpoint.get("model_list")
+                if isinstance(model_list, list) and model_list and resolved_model not in model_list:
+                    raise ProviderError("model_not_supported_by_endpoint")
 
         provider_name = self._infer_provider(selected_endpoint)
 
