@@ -76,7 +76,12 @@ def _resolve_supabase_base_url(settings: Any) -> str:
         return f"https://{project_id}.supabase.co"
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=create_response(code=500, msg="supabase_not_configured", request_id=get_current_request_id()),
+        detail=create_response(
+            code=500,
+            msg="supabase_not_configured",
+            message="supabase_not_configured",
+            request_id=get_current_request_id(),
+        ),
     )
 
 
@@ -86,7 +91,12 @@ def _resolve_supabase_service_key(settings: Any) -> str:
         return key.strip()
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=create_response(code=500, msg="supabase_service_role_key_missing", request_id=get_current_request_id()),
+        detail=create_response(
+            code=500,
+            msg="supabase_service_role_key_missing",
+            message="supabase_service_role_key_missing",
+            request_id=get_current_request_id(),
+        ),
     )
 
 
@@ -100,7 +110,12 @@ def _resolve_supabase_anon_key(settings: Any) -> str:
         return service_key.strip()
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=create_response(code=500, msg="supabase_anon_key_missing", request_id=get_current_request_id()),
+        detail=create_response(
+            code=500,
+            msg="supabase_anon_key_missing",
+            message="supabase_anon_key_missing",
+            request_id=get_current_request_id(),
+        ),
     )
 
 
@@ -144,7 +159,12 @@ async def create_mail_user(
     if current_user.is_anonymous:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=create_response(code=403, msg="anonymous_user_not_allowed", request_id=get_current_request_id()),
+            detail=create_response(
+                code=403,
+                msg="anonymous_user_not_allowed",
+                message="anonymous_user_not_allowed",
+                request_id=get_current_request_id(),
+            ),
         )
 
     from app.api.v1.base import create_test_jwt_token
@@ -179,6 +199,7 @@ async def create_mail_user(
             detail=create_response(
                 code=500,
                 msg="mail_api_key_missing",
+                message="mail_api_key_missing",
                 request_id=request_id,
                 hint="请在后端环境变量配置 MAIL_API_KEY（可选：MAIL_API_BASE_URL/MAIL_DOMAIN/MAIL_EXPIRY_MS）。",
             ),
@@ -217,6 +238,7 @@ async def create_mail_user(
                 detail=create_response(
                     code=502,
                     msg="mail_api_invalid_email",
+                    message="mail_api_invalid_email",
                     request_id=request_id,
                     hint="Mail API 返回的 address 无效；请检查 MAIL_DOMAIN 或 Mail API 配置（见 docs/mail-api.txt）。",
                 ),
@@ -234,6 +256,7 @@ async def create_mail_user(
             detail=create_response(
                 code=502,
                 msg="mail_api_error",
+                message="mail_api_error",
                 request_id=request_id,
                 upstream_status=upstream_status,
                 hint="Mail API 请求失败；请检查 MAIL_API_KEY/MAIL_API_BASE_URL 是否正确（见 docs/mail-api.txt）。",
@@ -275,6 +298,7 @@ async def create_mail_user(
                 detail=create_response(
                     code=502,
                     msg="supabase_admin_create_user_failed",
+                    message="supabase_admin_create_user_failed",
                     request_id=request_id,
                     upstream_status=resp.status_code,
                     hint="Supabase Admin 创建用户失败；请检查 SUPABASE_SERVICE_ROLE_KEY/SUPABASE_URL 是否正确，且该 key 具备 admin.users 权限。",
@@ -306,6 +330,7 @@ async def create_mail_user(
                 detail=create_response(
                     code=502,
                     msg="supabase_token_exchange_failed",
+                    message="supabase_token_exchange_failed",
                     request_id=request_id,
                     upstream_status=token_resp.status_code,
                     hint="Supabase 换取 access_token 失败；请检查 SUPABASE_ANON_KEY/SUPABASE_URL，并确认 Auth 支持 email/password grant。",
@@ -320,6 +345,7 @@ async def create_mail_user(
                 detail=create_response(
                     code=502,
                     msg="supabase_missing_access_token",
+                    message="supabase_missing_access_token",
                     request_id=request_id,
                     hint="Supabase 响应缺少 access_token；请检查 Auth 配置与上游响应（建议用 request_id 追踪）。",
                 ),
@@ -352,7 +378,12 @@ async def create_anon_token(
     if current_user.is_anonymous:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=create_response(code=403, msg="anonymous_user_not_allowed", request_id=get_current_request_id()),
+            detail=create_response(
+                code=403,
+                msg="anonymous_user_not_allowed",
+                message="anonymous_user_not_allowed",
+                request_id=get_current_request_id(),
+            ),
         )
 
     from app.settings.config import get_settings
@@ -365,7 +396,12 @@ async def create_anon_token(
     if not isinstance(anon_key, str) or not anon_key.strip():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=create_response(code=500, msg="supabase_anon_key_missing", request_id=request_id),
+            detail=create_response(
+                code=500,
+                msg="supabase_anon_key_missing",
+                message="supabase_anon_key_missing",
+                request_id=request_id,
+            ),
         )
     anon_key = anon_key.strip()
 
@@ -404,6 +440,7 @@ async def create_anon_token(
                 detail=create_response(
                     code=502,
                     msg="supabase_anon_signup_failed",
+                    message="supabase_anon_signup_failed",
                     request_id=request_id,
                     upstream_status=resp.status_code,
                 ),
@@ -414,7 +451,12 @@ async def create_anon_token(
         if not isinstance(access_token, str) or not access_token:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=create_response(code=502, msg="supabase_missing_access_token", request_id=request_id),
+                detail=create_response(
+                    code=502,
+                    msg="supabase_missing_access_token",
+                    message="supabase_missing_access_token",
+                    request_id=request_id,
+                ),
             )
 
         return create_response(
