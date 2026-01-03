@@ -125,21 +125,60 @@
 	                  style="min-width: 320px"
 	                />
 	                <n-text v-if="chatForm.model_source === 'mapping'" depth="3">
-	                  发送的是映射 key（如 global:global），后端会解析为真实模型
+	                  发送的是映射名称/ID，后端会解析为真实模型
 	                </n-text>
 	              </n-space>
 	            </n-form-item>
 
             <n-divider style="margin: 8px 0" />
 
-            <n-form-item label="Prompt 模式" path="prompt_mode">
-              <n-select
-                v-model:value="chatForm.prompt_mode"
-                :options="promptModeOptions"
-                placeholder="选择 prompt 组装策略"
-                :disabled="sendingMessage"
-                style="min-width: 240px"
-              />
+            <n-form-item label="Prompt 透传" path="prompt_mode">
+              <n-space align="center" wrap>
+                <n-select
+                  v-model:value="chatForm.prompt_mode"
+                  :options="promptModeOptions"
+                  placeholder="选择透传/不透传"
+                  :disabled="sendingMessage"
+                  style="min-width: 240px"
+                />
+                <n-text depth="3">透传：不注入默认 prompt；不透传：可选 prompt 组装</n-text>
+              </n-space>
+            </n-form-item>
+
+            <n-form-item v-if="chatForm.prompt_mode !== 'passthrough'" label="Prompt 组装" path="prompt_assembly">
+              <n-space align="center" wrap>
+                <n-select
+                  v-model:value="chatForm.system_prompt_id"
+                  :options="systemPromptSelectOptions"
+                  :loading="promptsLoading"
+                  filterable
+                  clearable
+                  placeholder="选择 system prompt（可选，应用后写入 system_prompt）"
+                  style="min-width: 360px"
+                  :disabled="sendingMessage || applyingPrompt"
+                />
+                <n-select
+                  v-model:value="chatForm.tools_prompt_id"
+                  :options="toolsPromptSelectOptions"
+                  :loading="promptsLoading"
+                  filterable
+                  clearable
+                  placeholder="选择 tools prompt（可选，应用后写入 tools JSON）"
+                  style="min-width: 360px"
+                  :disabled="sendingMessage || applyingPrompt"
+                />
+                <n-button
+                  tertiary
+                  :loading="applyingPrompt"
+                  :disabled="sendingMessage"
+                  @click="applySelectedPrompts"
+                >
+                  应用组装
+                </n-button>
+                <n-button tertiary :loading="promptsLoading" :disabled="sendingMessage" @click="loadPrompts">
+                  刷新 Prompt
+                </n-button>
+              </n-space>
             </n-form-item>
 
             <n-form-item label="跳过默认Prompt" path="skip_prompt">
@@ -317,7 +356,7 @@ defineOptions({ name: 'RealUserSseTest' })
 
 const message = useMessage()
 const aiSuiteStore = useAiModelSuiteStore()
-const { modelsLoading, models, mappingsLoading, mappings } = storeToRefs(aiSuiteStore)
+const { modelsLoading, models, mappingsLoading, mappings, promptsLoading, prompts } = storeToRefs(aiSuiteStore)
 
 // 登录表单
 const loginFormRef = ref(null)
@@ -473,6 +512,8 @@ const chatForm = ref({
   model_source: 'mapping',
   model: '',
   prompt_mode: 'server',
+  system_prompt_id: null,
+  tools_prompt_id: null,
   skip_prompt: false,
   system_prompt: '',
   messages_json: '',
@@ -491,9 +532,35 @@ const modelSourceOptions = [
   { label: '供应商模型列表（endpoint.model_list）', value: 'vendor' },
 ]
 const promptModeOptions = [
-  { label: 'server（默认：后端组装/注入）', value: 'server' },
-  { label: 'passthrough（透传 OpenAI 字段）', value: 'passthrough' },
+  { label: '不透传（后端组装/注入）', value: 'server' },
+  { label: '透传（仅透传 OpenAI 字段）', value: 'passthrough' },
 ]
+
+async function loadPrompts() {
+  try {
+    await aiSuiteStore.loadPrompts({ page: 1, page_size: 100 })
+  } catch (error) {
+    message.error(formatApiError('加载 Prompt 列表失败', error))
+  }
+}
+
+const systemPromptSelectOptions = computed(() => {
+  const items = Array.isArray(prompts.value) ? prompts.value : []
+  const systemPrompts = items.filter((p) => p && String(p.prompt_type || 'system') !== 'tools')
+  return systemPrompts.map((p) => ({
+    label: `${p.name || `prompt-${p.id}`}${p.is_active ? '（active）' : ''}`,
+    value: Number(p.id),
+  }))
+})
+
+const toolsPromptSelectOptions = computed(() => {
+  const items = Array.isArray(prompts.value) ? prompts.value : []
+  const toolPrompts = items.filter((p) => p && String(p.prompt_type || '') === 'tools')
+  return toolPrompts.map((p) => ({
+    label: `${p.name || `tools-${p.id}`}${p.is_active ? '（active）' : ''}`,
+    value: Number(p.id),
+  }))
+})
 
 function parseJsonArrayField(raw, fieldLabel) {
   const text = typeof raw === 'string' ? raw.trim() : ''
@@ -563,14 +630,48 @@ async function loadMappings() {
 const mappingSelectOptions = computed(() => {
   const items = Array.isArray(mappings.value) ? mappings.value : []
   const active = items.filter((m) => m && m.is_active !== false)
-  return active.map((m) => {
+
+  const endpointId = chatForm.value.endpoint_id
+  const endpoint = (models.value || []).find((item) => item && item.id === endpointId)
+  const endpointModels = new Set()
+  if (endpoint && Array.isArray(endpoint.model_list)) {
+    endpoint.model_list.forEach((x) => {
+      if (typeof x === 'string' && x.trim()) endpointModels.add(x.trim())
+    })
+  }
+
+  const filtered =
+    endpoint && endpointModels.size
+      ? active.filter((m) => {
+          const mid = typeof m.id === 'string' ? m.id : ''
+          const mname = typeof m.name === 'string' ? m.name : ''
+          const mkey = typeof m.scope_key === 'string' ? m.scope_key : ''
+          if (endpoint.model && [mid, mname, mkey].includes(String(endpoint.model))) return true
+
+          const target = new Set()
+          if (typeof m.default_model === 'string' && m.default_model.trim()) target.add(m.default_model.trim())
+          if (Array.isArray(m.candidates)) {
+            m.candidates.forEach((x) => {
+              if (typeof x === 'string' && x.trim()) target.add(x.trim())
+            })
+          }
+          for (const t of target) {
+            if (endpointModels.has(t)) return true
+          }
+          return false
+        })
+      : active
+
+  const list = filtered.length ? filtered : active
+  return list.map((m) => {
     const id = typeof m.id === 'string' && m.id ? m.id : `${m.scope_type}:${m.scope_key}`
     const name = m.name ? String(m.name) : id
+    const value = m.name ? String(m.name) : id
     const target =
       (typeof m.default_model === 'string' && m.default_model.trim() ? m.default_model.trim() : '') ||
       (Array.isArray(m.candidates) && typeof m.candidates[0] === 'string' ? String(m.candidates[0]) : '')
     const suffix = target ? ` → ${target}` : ''
-    return { label: `${name} (${id})${suffix}`, value: id }
+    return { label: `${name}${suffix}`, value }
   })
 })
 
@@ -815,6 +916,7 @@ onMounted(() => {
   // JWT 对话测试的模型 SSOT：优先使用端点配置的 `model`（映射模型）；不强制拉取供应商 /v1/models。
   Promise.all([
     loadMappings(),
+    loadPrompts(),
     aiSuiteStore.loadModels({ page_size: 100, refresh_missing_models: false }),
   ]).then(() => {
     if (!chatForm.value.endpoint_id && endpointSelectOptions.value.length) {
@@ -837,6 +939,60 @@ watch(
     ensureChatFormModelValid(chatForm.value.endpoint_id)
   }
 )
+
+watch(
+  () => chatForm.value.prompt_mode,
+  (mode) => {
+    const resolved = mode === 'passthrough' ? 'passthrough' : 'server'
+    chatForm.value.prompt_mode = resolved
+    // 透传：默认跳过后端默认 prompt；不透传：默认不跳过（可通过开关覆盖）
+    if (resolved === 'passthrough') chatForm.value.skip_prompt = true
+  }
+)
+
+const applyingPrompt = ref(false)
+
+function _extractToolsArrayFromPrompt(promptDetail) {
+  const toolsJson = promptDetail?.tools_json ?? promptDetail?.tools
+  if (Array.isArray(toolsJson)) return toolsJson
+  if (toolsJson && typeof toolsJson === 'object') {
+    const maybe = toolsJson.tools
+    if (Array.isArray(maybe)) return maybe
+  }
+  return null
+}
+
+async function applySelectedPrompts() {
+  applyingPrompt.value = true
+  try {
+    const systemId = chatForm.value.system_prompt_id
+    const toolsId = chatForm.value.tools_prompt_id
+
+    if (systemId) {
+      const res = await api.getAIPromptDetail(systemId)
+      const detail = res?.data
+      const content = detail?.content || detail?.system_prompt
+      if (typeof content === 'string' && content.trim()) {
+        chatForm.value.system_prompt = content.trim()
+      }
+    }
+
+    if (toolsId) {
+      const res = await api.getAIPromptDetail(toolsId)
+      const detail = res?.data
+      const toolsArr = _extractToolsArrayFromPrompt(detail)
+      if (toolsArr) {
+        chatForm.value.tools_json = JSON.stringify(toolsArr, null, 2)
+      }
+    }
+
+    message.success('已应用 prompt 组装到本次请求字段')
+  } catch (error) {
+    message.error(formatApiError('应用 prompt 组装失败', error))
+  } finally {
+    applyingPrompt.value = false
+  }
+}
 
 /**
  * 发送消息并接收 SSE 响应
