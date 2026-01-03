@@ -122,3 +122,4 @@ frpc.pid
 .secrets.baseline
 .mcp.json
 web/package.json
+tmp_test/*.sqlite3
