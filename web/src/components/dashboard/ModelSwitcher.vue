@@ -124,12 +124,13 @@ function buildMappedModelOptionsForEndpoint(endpoint) {
   return list.map((m) => {
     const name = (m.name || '').trim()
     const fallback = typeof m.id === 'string' && m.id ? m.id : `${m.scope_type}:${m.scope_key}`
-    const value = name || fallback
+    const value = fallback
     const target =
       (typeof m.default_model === 'string' && m.default_model.trim() ? m.default_model.trim() : '') ||
       (Array.isArray(m.candidates) && typeof m.candidates[0] === 'string' ? String(m.candidates[0]) : '')
     const suffix = target ? ` → ${target}` : ''
-    return { label: `${value}${suffix}`, value }
+    const label = `${(name || fallback)}${suffix}`
+    return { label, value }
   })
 }
 

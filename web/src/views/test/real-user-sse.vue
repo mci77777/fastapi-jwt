@@ -643,10 +643,9 @@ const mappingSelectOptions = computed(() => {
   const filtered =
     endpoint && endpointModels.size
       ? active.filter((m) => {
-          const mid = typeof m.id === 'string' ? m.id : ''
-          const mname = typeof m.name === 'string' ? m.name : ''
-          const mkey = typeof m.scope_key === 'string' ? m.scope_key : ''
-          if (endpoint.model && [mid, mname, mkey].includes(String(endpoint.model))) return true
+          const mid =
+            typeof m.id === 'string' && m.id ? m.id : `${m.scope_type}:${m.scope_key}`
+          if (endpoint.model && mid === String(endpoint.model)) return true
 
           const target = new Set()
           if (typeof m.default_model === 'string' && m.default_model.trim()) target.add(m.default_model.trim())
@@ -666,7 +665,8 @@ const mappingSelectOptions = computed(() => {
   return list.map((m) => {
     const id = typeof m.id === 'string' && m.id ? m.id : `${m.scope_type}:${m.scope_key}`
     const name = m.name ? String(m.name) : id
-    const value = m.name ? String(m.name) : id
+    // SSOT：请求 value 必须为稳定的业务 key（mapping.id）；name 可改，仅用于展示。
+    const value = id
     const target =
       (typeof m.default_model === 'string' && m.default_model.trim() ? m.default_model.trim() : '') ||
       (Array.isArray(m.candidates) && typeof m.candidates[0] === 'string' ? String(m.candidates[0]) : '')

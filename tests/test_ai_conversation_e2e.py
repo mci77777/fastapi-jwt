@@ -63,6 +63,130 @@ class TestModelSelection:
                 assert payload["model"] == "gpt-4o"
 
     @pytest.mark.asyncio
+    async def test_model_from_mapping_key_resolves_to_vendor_model(self, async_client: AsyncClient, mock_jwt_token: str):
+        """当请求 model 为“业务映射 key”（mapping.id）时，应解析为真实 vendor model。"""
+        with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+            mock_verifier = MagicMock()
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
+            mock_get_verifier.return_value = mock_verifier
+
+            mappings = [
+                {
+                    "id": "user:test-user-123",
+                    "scope_type": "user",
+                    "scope_key": "test-user-123",
+                    "name": "Renamable Label",
+                    "default_model": "gpt-4o",
+                    "candidates": ["gpt-4o"],
+                    "is_active": True,
+                    "source": "fallback",
+                    "metadata": {},
+                }
+            ]
+
+            with patch("app.services.ai_service.httpx.AsyncClient") as mock_client:
+                await fastapi_app.state.ai_config_service.create_endpoint(
+                    {
+                        "name": "openai-default",
+                        "base_url": "https://api.openai.com",
+                        "api_key": "test-api-key",
+                        "is_active": True,
+                        "is_default": True,
+                        "model_list": ["gpt-4o-mini", "gpt-4o"],
+                    }
+                )
+
+                mock_response = MagicMock()
+                mock_response.json.return_value = {
+                    "choices": [{"message": {"content": "Test response"}}],
+                }
+                mock_response.raise_for_status = MagicMock()
+                mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+
+                with patch.object(
+                    fastapi_app.state.model_mapping_service,
+                    "list_mappings",
+                    new=AsyncMock(return_value=mappings),
+                ):
+                    response = await async_client.post(
+                        "/api/v1/messages",
+                        headers={"Authorization": f"Bearer {mock_jwt_token}"},
+                        json={
+                            "text": "Hello, AI!",
+                            "model": "user:test-user-123",
+                        },
+                    )
+
+                assert response.status_code == status.HTTP_202_ACCEPTED
+
+                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+                assert call_args is not None
+                payload = call_args[1]["json"]
+                assert payload["model"] == "gpt-4o"
+
+    @pytest.mark.asyncio
+    async def test_model_name_is_not_used_as_mapping_key(self, async_client: AsyncClient, mock_jwt_token: str):
+        """映射 name 仅用于展示；改名不应成为请求 key。"""
+        with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+            mock_verifier = MagicMock()
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
+            mock_get_verifier.return_value = mock_verifier
+
+            mappings = [
+                {
+                    "id": "user:test-user-123",
+                    "scope_type": "user",
+                    "scope_key": "test-user-123",
+                    "name": "Renamable Label",
+                    "default_model": "gpt-4o",
+                    "candidates": ["gpt-4o"],
+                    "is_active": True,
+                    "source": "fallback",
+                    "metadata": {},
+                }
+            ]
+
+            with patch("app.services.ai_service.httpx.AsyncClient") as mock_client:
+                await fastapi_app.state.ai_config_service.create_endpoint(
+                    {
+                        "name": "openai-default",
+                        "base_url": "https://api.openai.com",
+                        "api_key": "test-api-key",
+                        "is_active": True,
+                        "is_default": True,
+                        "model_list": ["gpt-4o-mini", "gpt-4o"],
+                    }
+                )
+
+                mock_response = MagicMock()
+                mock_response.json.return_value = {
+                    "choices": [{"message": {"content": "Test response"}}],
+                }
+                mock_response.raise_for_status = MagicMock()
+                mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+
+                with patch.object(
+                    fastapi_app.state.model_mapping_service,
+                    "list_mappings",
+                    new=AsyncMock(return_value=mappings),
+                ):
+                    response = await async_client.post(
+                        "/api/v1/messages",
+                        headers={"Authorization": f"Bearer {mock_jwt_token}"},
+                        json={
+                            "text": "Hello, AI!",
+                            "model": "Renamable Label",
+                        },
+                    )
+
+                assert response.status_code == status.HTTP_202_ACCEPTED
+
+                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+                assert call_args is not None
+                payload = call_args[1]["json"]
+                assert payload["model"] == "Renamable Label"
+
+    @pytest.mark.asyncio
     async def test_model_fallback_to_default(self, async_client: AsyncClient, mock_jwt_token: str):
         """Test that missing model falls back to default."""
         with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:

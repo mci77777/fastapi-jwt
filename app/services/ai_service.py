@@ -627,7 +627,8 @@ class AIService:
         for mapping in mappings:
             if not mapping.get("is_active", True):
                 continue
-            if mapping.get("id") == name or mapping.get("name") == name or mapping.get("scope_key") == name:
+            # SSOT：映射“业务模型 key”必须稳定；name 可被用户改名，仅作展示，不允许作为请求 key。
+            if mapping.get("id") == name:
                 default_model = mapping.get("default_model")
                 if isinstance(default_model, str) and default_model.strip():
                     return default_model.strip()
