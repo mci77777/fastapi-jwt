@@ -118,7 +118,7 @@ class TestModelSelection:
             with patch("app.services.ai_service.httpx.AsyncClient") as mock_client:
                 endpoint_a = await fastapi_app.state.ai_config_service.create_endpoint(
                     {
-                        "name": "test-openai-default-a",
+                        "name": "openai-default-a",
                         "base_url": "https://api.openai.com",
                         "api_key": "test-api-key-a",
                         "is_active": True,
@@ -128,7 +128,7 @@ class TestModelSelection:
                 )
                 endpoint_b = await fastapi_app.state.ai_config_service.create_endpoint(
                     {
-                        "name": "test-openai-b",
+                        "name": "openai-b",
                         "base_url": "https://example.openai-proxy.local",
                         "api_key": "test-api-key-b",
                         "is_active": True,

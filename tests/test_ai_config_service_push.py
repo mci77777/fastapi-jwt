@@ -87,7 +87,7 @@ async def test_push_endpoint_skips_when_remote_is_newer(tmp_path, monkeypatch):
     try:
         endpoint = await service.create_endpoint(
             {
-                "name": "test-endpoint",
+                "name": "endpoint-a",
                 "base_url": "https://api.example.com",
                 "model": "gpt-4",
             }

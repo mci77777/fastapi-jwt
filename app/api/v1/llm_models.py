@@ -225,10 +225,17 @@ async def create_ai_model(
         get_current_request_id(),
     )
     service = get_service(request)
-    endpoint = await service.create_endpoint(
-        payload.model_dump(exclude={"auto_sync"}, exclude_none=True),
-        auto_sync=payload.auto_sync,
-    )
+    try:
+        endpoint = await service.create_endpoint(
+            payload.model_dump(exclude={"auto_sync"}, exclude_none=True),
+            auto_sync=payload.auto_sync,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=create_response(code=400, msg=code),
+        ) from exc
     return create_response(data=endpoint, msg="创建成功")
 
 
@@ -255,11 +262,16 @@ async def update_ai_model(
                 exclude_none=True,
             ),
         )
-    except ValueError:
+    except ValueError as exc:
+        if str(exc) == "endpoint_not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=create_response(code=404, msg="接口不存在"),
+            ) from exc
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=create_response(code=404, msg="接口不存在"),
-        )
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=create_response(code=400, msg=str(exc)),
+        ) from exc
     if payload.auto_sync:
         try:
             endpoint = await service.push_endpoint_to_supabase(payload.id)

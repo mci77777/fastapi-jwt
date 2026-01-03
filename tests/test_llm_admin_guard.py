@@ -29,7 +29,7 @@ async def test_llm_models_post_requires_admin(async_client, mock_jwt_token: str)
         mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
         mock_get_verifier.return_value = mock_verifier
 
-        payload = {"name": "guard-test", "base_url": "https://api.openai.com"}
+        payload = {"name": "endpoint-guard", "base_url": "https://api.openai.com"}
 
         denied = await async_client.post(
             "/api/v1/llm/models",

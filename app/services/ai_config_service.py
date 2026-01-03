@@ -24,6 +24,8 @@ DEFAULT_ENDPOINT_PATHS = {
     "embeddings": "/v1/embeddings",
 }
 
+DISALLOWED_TEST_ENDPOINT_PREFIXES = ("test-", "test_")
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -50,6 +52,13 @@ def _safe_json_loads(value: Optional[str]) -> Any:
         return json.loads(value)
     except json.JSONDecodeError:
         return None
+
+
+def _is_disallowed_test_endpoint_name(name: str | None) -> bool:
+    text = (name or "").strip().lower()
+    if not text:
+        return False
+    return text.startswith(DISALLOWED_TEST_ENDPOINT_PREFIXES)
 
 
 class AIConfigService:
@@ -230,6 +239,8 @@ class AIConfigService:
 
     async def create_endpoint(self, payload: dict[str, Any], *, auto_sync: bool = False) -> dict[str, Any]:
         now = _utc_now()
+        if _is_disallowed_test_endpoint_name(payload.get("name")):
+            raise ValueError("test_endpoint_name_not_allowed")
         if payload.get("is_default"):
             await self._db.execute("UPDATE ai_endpoints SET is_default = 0 WHERE is_default = 1")
 
@@ -366,6 +377,8 @@ class AIConfigService:
             params.append(value)
 
         if "name" in payload:
+            if _is_disallowed_test_endpoint_name(payload["name"]):
+                raise ValueError("test_endpoint_name_not_allowed")
             add("name", payload["name"])
         if "base_url" in payload and payload["base_url"] != existing["base_url"]:
             add("base_url", payload["base_url"])
@@ -753,6 +766,8 @@ class AIConfigService:
         for item in data:
             supabase_id = item.get("id")
             if not supabase_id:
+                continue
+            if _is_disallowed_test_endpoint_name(item.get("name")):
                 continue
             seen_remote_ids.add(int(supabase_id))
             local = await self._db.fetchone("SELECT * FROM ai_endpoints WHERE supabase_id = ?", [supabase_id])
