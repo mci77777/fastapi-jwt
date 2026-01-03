@@ -9,6 +9,9 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
+# 测试隔离：避免污染本地持久化 data/db.sqlite3（会导致“测试端点”越跑越多）
+os.environ["SQLITE_DB_PATH"] = "tmp_test/pytest_db.sqlite3"
+
 os.environ["SUPABASE_KEEPALIVE_ENABLED"] = "false"
 # 硬开关：显式禁用 Supabase Provider（避免读取 .env 与真实网络调用）
 os.environ["SUPABASE_PROVIDER_ENABLED"] = "false"
@@ -21,6 +24,14 @@ os.environ["AI_MODEL"] = "gpt-4o-mini"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 os.environ["CORS_ALLOW_ORIGINS"] = "*"
 os.environ["ALLOW_TEST_AI_ENDPOINTS"] = "true"
+
+try:
+    os.makedirs("tmp_test", exist_ok=True)
+    if os.path.exists(os.environ["SQLITE_DB_PATH"]):
+        os.remove(os.environ["SQLITE_DB_PATH"])
+except Exception:
+    # 测试环境兜底：不因清理失败阻断 import
+    pass
 
 from app.auth.provider import get_auth_provider
 from app.settings.config import get_settings

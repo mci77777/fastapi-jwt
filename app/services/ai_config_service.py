@@ -305,20 +305,47 @@ class AIConfigService:
             else:
                 return None
 
-        endpoint = await self.create_endpoint(
-            {
-                "name": f"env-default-{provider or 'ai'}",
-                "base_url": base_url,
-                "model": model,
-                "description": "Auto-seeded from env for local E2E",
-                "api_key": api_key,
-                "timeout": int(self._settings.http_timeout_seconds),
-                "is_active": True,
-                "is_default": True,
-                "status": "unknown",
-            },
-            auto_sync=False,
+        env_name = f"env-default-{provider or 'ai'}"
+
+        # 幂等：若已有历史 env-default 端点（可能被手动置为 inactive），则复用并回写为 SSOT
+        existing = await self._db.fetchone(
+            """
+            SELECT * FROM ai_endpoints
+            WHERE lower(name) = lower(?)
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 1
+            """,
+            [env_name],
         )
+        if existing:
+            endpoint = await self.update_endpoint(
+                int(existing["id"]),
+                {
+                    "base_url": base_url,
+                    "model": model,
+                    "description": "Auto-seeded from env for local E2E",
+                    "api_key": api_key,
+                    "timeout": int(self._settings.http_timeout_seconds),
+                    "is_active": True,
+                    "is_default": True,
+                    "status": "unknown",
+                },
+            )
+        else:
+            endpoint = await self.create_endpoint(
+                {
+                    "name": env_name,
+                    "base_url": base_url,
+                    "model": model,
+                    "description": "Auto-seeded from env for local E2E",
+                    "api_key": api_key,
+                    "timeout": int(self._settings.http_timeout_seconds),
+                    "is_active": True,
+                    "is_default": True,
+                    "status": "unknown",
+                },
+                auto_sync=False,
+            )
         logger.info(
             "Seeded env default ai endpoint name=%s base_url=%s model=%s api_key=%s",
             endpoint.get("name"),
