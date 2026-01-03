@@ -9,13 +9,18 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
-os.environ.setdefault("SUPABASE_KEEPALIVE_ENABLED", "false")
+os.environ["SUPABASE_KEEPALIVE_ENABLED"] = "false"
+# 硬开关：显式禁用 Supabase Provider（避免读取 .env 与真实网络调用）
+os.environ["SUPABASE_PROVIDER_ENABLED"] = "false"
+# 测试环境：允许通过 header 验证 LLM 管理端点
+os.environ["LLM_ADMIN_API_KEY"] = "test-llm-admin"
 # 测试环境强制关闭 Supabase Provider（避免真实网络调用/泄露密钥）
-os.environ.setdefault("SUPABASE_PROJECT_ID", "")
-os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "")
-os.environ.setdefault("AI_MODEL", "gpt-4o-mini")
-os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
-os.environ.setdefault("CORS_ALLOW_ORIGINS", "*")
+os.environ["SUPABASE_PROJECT_ID"] = ""
+os.environ["SUPABASE_SERVICE_ROLE_KEY"] = ""
+os.environ["AI_MODEL"] = "gpt-4o-mini"
+os.environ["RATE_LIMIT_ENABLED"] = "false"
+os.environ["CORS_ALLOW_ORIGINS"] = "*"
+os.environ["ALLOW_TEST_AI_ENDPOINTS"] = "true"
 
 from app.auth.provider import get_auth_provider
 from app.settings.config import get_settings

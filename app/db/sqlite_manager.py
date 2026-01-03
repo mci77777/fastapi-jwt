@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS conversation_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
     message_id TEXT NOT NULL,
+    request_id TEXT,
     request_payload TEXT,
     response_payload TEXT,
     model_used TEXT,
@@ -240,6 +241,13 @@ class SQLiteManager:
             except Exception:
                 pass
             await self._conn.commit()
+            await self._ensure_columns(
+                "conversation_logs",
+                {
+                    "request_id": "ALTER TABLE conversation_logs ADD COLUMN request_id TEXT",
+                },
+            )
+            await self._conn.commit()
 
     @staticmethod
     def _looks_like_corruption(exc: BaseException) -> bool:
@@ -324,6 +332,7 @@ class SQLiteManager:
         self,
         user_id: str,
         message_id: str,
+        request_id: Optional[str],
         request_payload: Optional[str],
         response_payload: Optional[str],
         model_used: Optional[str],
@@ -336,6 +345,7 @@ class SQLiteManager:
         Args:
             user_id: 用户 ID
             message_id: 消息 ID
+            request_id: 请求链路 ID（X-Request-Id）
             request_payload: 请求 payload（JSON 字符串）
             response_payload: 响应 payload（JSON 字符串）
             model_used: 使用的模型
@@ -351,10 +361,10 @@ class SQLiteManager:
             await self._conn.execute(
                 """
                 INSERT INTO conversation_logs
-                (user_id, message_id, request_payload, response_payload, model_used, latency_ms, status, error_message)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (user_id, message_id, request_id, request_payload, response_payload, model_used, latency_ms, status, error_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, message_id, request_payload, response_payload, model_used, latency_ms, status, error_message),
+                (user_id, message_id, request_id, request_payload, response_payload, model_used, latency_ms, status, error_message),
             )
 
             # 维护循环缓冲区：删除超过 100 条的旧记录
@@ -386,7 +396,7 @@ class SQLiteManager:
         async with self._lock:
             cursor = await self._conn.execute(
                 """
-                SELECT id, user_id, message_id, request_payload, response_payload,
+                SELECT id, user_id, message_id, request_id, request_payload, response_payload,
                        model_used, latency_ms, status, error_message, created_at
                 FROM conversation_logs
                 ORDER BY id DESC

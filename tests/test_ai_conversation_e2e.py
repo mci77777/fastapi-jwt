@@ -27,7 +27,7 @@ class TestModelSelection:
             with patch("app.services.ai_service.httpx.AsyncClient") as mock_client:
                 await fastapi_app.state.ai_config_service.create_endpoint(
                     {
-                        "name": "test-openai-default",
+                        "name": "openai-default",
                         "base_url": "https://api.openai.com",
                         "api_key": "test-api-key",
                         "is_active": True,
@@ -73,7 +73,7 @@ class TestModelSelection:
             with patch("app.services.ai_service.httpx.AsyncClient") as mock_client:
                 await fastapi_app.state.ai_config_service.create_endpoint(
                     {
-                        "name": "test-openai-default",
+                        "name": "openai-default",
                         "base_url": "https://api.openai.com",
                         "api_key": "test-api-key",
                         "is_active": True,
@@ -177,7 +177,7 @@ class TestConditionalPersistence:
         ai_service = AIService(provider=mock_provider)
         broker = MessageEventBroker()
         message_id = AIService.new_message_id()
-        await broker.create_channel(message_id)
+        await broker.create_channel(message_id, owner_user_id="user-123", conversation_id="conv-001")
 
         user = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
         message = AIMessageInput(
@@ -211,7 +211,7 @@ class TestConditionalPersistence:
         ai_service = AIService(provider=mock_provider)
         broker = MessageEventBroker()
         message_id = AIService.new_message_id()
-        await broker.create_channel(message_id)
+        await broker.create_channel(message_id, owner_user_id="user-123", conversation_id="conv-001")
 
         user = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
         message = AIMessageInput(
@@ -241,7 +241,7 @@ class TestConditionalPersistence:
         ai_service = AIService(provider=mock_provider)
         broker = MessageEventBroker()
         message_id = AIService.new_message_id()
-        await broker.create_channel(message_id)
+        await broker.create_channel(message_id, owner_user_id="user-123", conversation_id="conv-001")
 
         user = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
         message = AIMessageInput(
@@ -287,7 +287,7 @@ class TestPrometheusMetrics:
         ai_service = AIService(provider=mock_provider)
         broker = MessageEventBroker()
         message_id = AIService.new_message_id()
-        await broker.create_channel(message_id)
+        await broker.create_channel(message_id, owner_user_id="user-123", conversation_id="conv-001")
 
         user = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
         message = AIMessageInput(text="Hello", model="gpt-4o-mini")
@@ -295,7 +295,7 @@ class TestPrometheusMetrics:
         with patch.object(
             ai_service,
             "_generate_reply",
-            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None),
+            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None),
         ):
             await ai_service.run_conversation(message_id, user, message, broker)
 
@@ -324,7 +324,7 @@ class TestPrometheusMetrics:
         ai_service = AIService(provider=mock_provider)
         broker = MessageEventBroker()
         message_id = AIService.new_message_id()
-        await broker.create_channel(message_id)
+        await broker.create_channel(message_id, owner_user_id="user-123", conversation_id="conv-001")
 
         user = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
         message = AIMessageInput(text="Hello", model="gpt-4o-mini")

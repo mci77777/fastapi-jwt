@@ -62,6 +62,7 @@ class PolicyGateMiddleware(BaseHTTPMiddleware):
             re.compile(r"^/api/v1/exercise/library/(meta|full|updates)$"),
             # 获取模型列表（只读）
             re.compile(r"^/api/v1/llm/models$"),  # GET 获取模型列表
+            re.compile(r"^/api/v1/llm/app/models$"),  # GET App 获取映射模型列表
             # 健康检查等公共端点
             re.compile(r"^/health$"),
             re.compile(r"^/docs$"),
@@ -217,6 +218,7 @@ def get_anonymous_allowed_endpoints() -> List[str]:
         "GET /api/v1/messages/{message_id}/events",
         # 模型查询
         "GET /api/v1/llm/models",
+        "GET /api/v1/llm/app/models",
         # 公共端点（继承自公开端点）
         *get_public_endpoints(),
     ]

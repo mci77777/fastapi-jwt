@@ -91,7 +91,7 @@ class TestRequestIdSSOT:
             with patch("app.services.ai_service.httpx.AsyncClient") as mock_httpx:
                 await fastapi_app.state.ai_config_service.create_endpoint(
                     {
-                        "name": "test-openai-default",
+                        "name": "openai-default",
                         "base_url": "https://api.openai.com",
                         "api_key": "test-api-key",
                         "is_active": True,

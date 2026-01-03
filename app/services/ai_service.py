@@ -48,29 +48,61 @@ class MessageEvent:
     data: Dict[str, Any]
 
 
+@dataclass(slots=True)
+class MessageChannelMeta:
+    owner_user_id: str
+    conversation_id: str
+    created_at: datetime
+    closed: bool = False
+    terminal_event: Optional[MessageEvent] = None
+
+
 class MessageEventBroker:
     """管理消息事件队列，支持 SSE 订阅。"""
 
     def __init__(self) -> None:
         self._channels: Dict[str, asyncio.Queue[Optional[MessageEvent]]] = {}
+        self._meta: Dict[str, MessageChannelMeta] = {}
         self._lock = asyncio.Lock()
 
-    async def create_channel(self, message_id: str) -> asyncio.Queue[Optional[MessageEvent]]:
+    async def create_channel(
+        self,
+        message_id: str,
+        *,
+        owner_user_id: str,
+        conversation_id: str,
+    ) -> asyncio.Queue[Optional[MessageEvent]]:
         queue: asyncio.Queue[Optional[MessageEvent]] = asyncio.Queue()
         async with self._lock:
             self._channels[message_id] = queue
+            self._meta[message_id] = MessageChannelMeta(
+                owner_user_id=owner_user_id,
+                conversation_id=conversation_id,
+                created_at=datetime.utcnow(),
+            )
         return queue
 
     def get_channel(self, message_id: str) -> Optional[asyncio.Queue[Optional[MessageEvent]]]:
         return self._channels.get(message_id)
 
+    def get_meta(self, message_id: str) -> Optional[MessageChannelMeta]:
+        return self._meta.get(message_id)
+
     async def publish(self, message_id: str, event: MessageEvent) -> None:
         queue = self._channels.get(message_id)
         if queue:
+            meta = self._meta.get(message_id)
+            if meta and event.event in {"completed", "error"}:
+                meta.terminal_event = event
             await queue.put(event)
 
     async def close(self, message_id: str) -> None:
         queue = self._channels.get(message_id)
+        meta = self._meta.get(message_id)
+        if meta and meta.closed:
+            return
+        if meta:
+            meta.closed = True
         if queue:
             await queue.put(None)
 
@@ -144,6 +176,14 @@ class AIService:
                 upstream_request_id,
                 endpoint_id_used,
             ) = await self._generate_reply(message, user, user_details)
+
+            logger.info(
+                "AI endpoint selected message_id=%s request_id=%s endpoint_id=%s model=%s",
+                message_id,
+                request_id,
+                endpoint_id_used,
+                model_used,
+            )
 
             async for chunk in self._stream_chunks(reply_text):
                 await broker.publish(
@@ -228,6 +268,7 @@ class AIService:
                     await self._db.log_conversation(
                         user_id=user.uid,
                         message_id=message_id,
+                        request_id=request_id,
                         request_payload=request_payload,
                         response_payload=response_payload,
                         model_used=model_used,
@@ -524,6 +565,8 @@ class AIService:
 
         endpoints, _ = await self._ai_config_service.list_endpoints(only_active=True, page=1, page_size=200)
         candidates = [item for item in endpoints if item.get("is_active") and item.get("has_api_key")]
+        if not getattr(self._settings, "allow_test_ai_endpoints", False):
+            candidates = [item for item in candidates if not _looks_like_test_endpoint(item)]
         if not candidates:
             raise ProviderError("no_active_ai_endpoint")
 
@@ -539,14 +582,7 @@ class AIService:
             selected_endpoint = preferred
 
         if isinstance(resolved_model, str) and resolved_model.strip():
-            by_list = next(
-                (
-                    item
-                    for item in candidates
-                    if isinstance(item.get("model_list"), list) and resolved_model in (item.get("model_list") or [])
-                ),
-                None,
-            )
+            by_list = next((item for item in candidates if _endpoint_supports_model(item, resolved_model)), None)
             # 仅在未显式指定 endpoint 时，才按 model_list 进行“自动切换端点”。
             if preferred_endpoint_id is None:
                 selected_endpoint = by_list or selected_endpoint
@@ -555,13 +591,16 @@ class AIService:
                 # 但当用户传入的是“映射模型 key”时，最终真实模型可能无法通过 /v1/models 枚举到；
                 # 此时不应误拦截（仍由上游调用返回错误来兜底）。
                 model_list = selected_endpoint.get("model_list")
-                if (
-                    isinstance(model_list, list)
-                    and model_list
-                    and resolved_model not in model_list
-                    and not mapping_hit
-                ):
+                if isinstance(model_list, list) and model_list and resolved_model not in model_list and not mapping_hit:
                     raise ProviderError("model_not_supported_by_endpoint")
+
+            if (
+                by_list is None
+                and preferred_endpoint_id is None
+                and mapping_hit
+                and getattr(self._settings, "ai_strict_model_routing", False)
+            ):
+                raise ProviderError("no_endpoint_for_mapped_model")
 
         provider_name = self._infer_provider(selected_endpoint)
 
@@ -819,6 +858,26 @@ class AIService:
             )
         except Exception as exc:
             logger.warning("Failed to record AI request stats request_id=%s error=%s", get_current_request_id(), exc)
+
+
+def _looks_like_test_endpoint(endpoint: dict[str, Any]) -> bool:
+    name = str(endpoint.get("name") or "").strip().lower()
+    if not name:
+        return False
+    return name.startswith(("test-", "test_", "env-default-"))
+
+
+def _endpoint_supports_model(endpoint: dict[str, Any], model: str) -> bool:
+    model = model.strip()
+    if not model:
+        return False
+    model_list = endpoint.get("model_list") or []
+    if isinstance(model_list, list) and model_list and model in model_list:
+        return True
+    default_model = endpoint.get("model")
+    if isinstance(default_model, str) and default_model.strip() and default_model.strip() == model:
+        return True
+    return False
 
 
 def _parse_optional_int(value: Any) -> Optional[int]:

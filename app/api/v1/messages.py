@@ -16,7 +16,7 @@ from app.auth import AuthenticatedUser, get_current_user
 from app.core.middleware import get_current_request_id, reset_current_request_id, set_current_request_id
 from app.core.sse_guard import check_sse_concurrency, unregister_sse_connection
 from app.db.sqlite_manager import get_sqlite_manager
-from app.services.ai_service import AIMessageInput, AIService, MessageEventBroker
+from app.services.ai_service import AIMessageInput, AIService, MessageEvent, MessageEventBroker
 from app.settings.config import get_settings
 
 router = APIRouter(tags=["messages"])
@@ -65,7 +65,6 @@ async def create_message(
     ai_service: AIService = request.app.state.ai_service
 
     message_id = AIService.new_message_id()
-    await broker.create_channel(message_id)
 
     conversation_id = None
     if payload.conversation_id:
@@ -75,6 +74,12 @@ async def create_message(
             conversation_id = None
     if conversation_id is None:
         conversation_id = str(uuid.uuid4())
+
+    await broker.create_channel(
+        message_id,
+        owner_user_id=current_user.uid,
+        conversation_id=conversation_id,
+    )
 
     message_input = AIMessageInput(
         text=payload.text,
@@ -119,7 +124,17 @@ async def stream_message_events(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="message not found")
 
     conversation_id = request.query_params.get("conversation_id")
-    connection_id = f"{current_user.uid}:{message_id}"
+    meta = broker.get_meta(message_id)
+    if meta is not None:
+        # SSOT：message_id 的 owner/conversation 由创建时固化，订阅侧只做校验
+        if meta.owner_user_id != current_user.uid:
+            return Response(status_code=status.HTTP_404_NOT_FOUND)
+        if conversation_id and meta.conversation_id and conversation_id != meta.conversation_id:
+            return Response(status_code=status.HTTP_404_NOT_FOUND)
+        conversation_id = meta.conversation_id
+    # 并发控制维度：同一用户同一 conversation 只允许 1 条活跃 SSE（message_id 不应绕开该限制）
+    concurrency_key = f"{current_user.uid}:{conversation_id or 'no-conversation'}"
+    connection_id = concurrency_key
 
     concurrency_error = await check_sse_concurrency(connection_id, current_user, conversation_id, message_id, request)
     if concurrency_error:
@@ -133,6 +148,7 @@ async def stream_message_events(
         started = time.time()
         end_reason = "unknown"
         frames: list[dict[str, Any]] = []
+        terminal_sent = False
         try:
             while True:
                 if await request.is_disconnected():
@@ -169,8 +185,33 @@ async def stream_message_events(
                 frames.append({"event": item.event, "data": safe_data})
 
                 yield f"event: {item.event}\ndata: {json.dumps(item.data)}\n\n"
+                if item.event in {"completed", "error"}:
+                    terminal_sent = True
+                    end_reason = "terminal_event_sent"
+                    break
         finally:
-            await broker.close(message_id)
+            # SSE 契约：无论任何路径，尽力补发终止事件（error）再关闭连接
+            if not terminal_sent:
+                fallback = None
+                if meta is not None and meta.terminal_event is not None:
+                    fallback = meta.terminal_event
+                if fallback is None:
+                    fallback = MessageEvent(
+                        event="error",
+                        data={
+                            "message_id": message_id,
+                            "error": "sse_stream_closed_without_terminal_event",
+                            "request_id": request_id,
+                        },
+                    )
+                try:
+                    frames.append({"event": fallback.event, "data": {"message_id": message_id, "hint": "terminal_fallback"}})
+                    yield f"event: {fallback.event}\ndata: {json.dumps(fallback.data)}\n\n"
+                    terminal_sent = True
+                    end_reason = f"{end_reason}:terminal_fallback"
+                except Exception:
+                    pass
+
             await unregister_sse_connection(connection_id)
 
             try:
@@ -197,5 +238,6 @@ async def stream_message_events(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )

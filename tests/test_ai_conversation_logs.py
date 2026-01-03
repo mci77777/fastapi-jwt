@@ -55,6 +55,7 @@ async def test_log_conversation_success(sqlite_manager):
     await sqlite_manager.log_conversation(
         user_id="user-456",
         message_id="msg-123",
+        request_id=None,
         request_payload=json.dumps(request_payload),
         response_payload=json.dumps(response_payload),
         model_used="gpt-4o",
@@ -91,6 +92,7 @@ async def test_log_conversation_error(sqlite_manager):
     await sqlite_manager.log_conversation(
         user_id="user-456",
         message_id="msg-789",
+        request_id=None,
         request_payload=json.dumps(request_payload),
         response_payload=None,
         model_used=None,
@@ -113,6 +115,7 @@ async def test_circular_buffer_maintains_100_records(sqlite_manager):
         await sqlite_manager.log_conversation(
             user_id=f"user-{i}",
             message_id=f"msg-{i}",
+            request_id=None,
             request_payload=json.dumps({"text": f"Message {i}"}),
             response_payload=json.dumps({"reply": f"Reply {i}"}),
             model_used="gpt-4o-mini",
@@ -140,6 +143,7 @@ async def test_get_conversation_logs_limit(sqlite_manager):
         await sqlite_manager.log_conversation(
             user_id=f"user-{i}",
             message_id=f"msg-{i}",
+            request_id=None,
             request_payload=json.dumps({"text": f"Message {i}"}),
             response_payload=json.dumps({"reply": f"Reply {i}"}),
             model_used="gpt-4o-mini",
@@ -191,7 +195,7 @@ async def test_ai_service_logs_conversation(ai_service, sqlite_manager, mock_sup
 
         broker = MessageEventBroker()
         message_id = "msg-test-123"
-        await broker.create_channel(message_id)
+        await broker.create_channel(message_id, owner_user_id="test-user-123", conversation_id="conv-123")
 
         await ai_service.run_conversation(message_id, user, message, broker)
 
@@ -224,7 +228,7 @@ async def test_ai_service_logs_error(ai_service, sqlite_manager, mock_supabase_p
 
         broker = MessageEventBroker()
         message_id = "msg-error-123"
-        await broker.create_channel(message_id)
+        await broker.create_channel(message_id, owner_user_id="test-user-456", conversation_id="conv-456")
 
         await ai_service.run_conversation(message_id, user, message, broker)
 

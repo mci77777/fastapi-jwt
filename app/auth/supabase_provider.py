@@ -180,6 +180,8 @@ class SupabaseProvider(AuthProvider):
 @lru_cache(maxsize=1)
 def get_supabase_provider() -> SupabaseProvider:
     settings = get_settings()
+    if not getattr(settings, "supabase_provider_enabled", True):
+        raise ProviderError("Supabase provider disabled by SUPABASE_PROVIDER_ENABLED=false")
     project_id = settings.supabase_project_id
     service_key = settings.supabase_service_role_key
     if not project_id or not service_key:

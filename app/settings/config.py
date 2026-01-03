@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     supabase_jwt_secret: Optional[str] = Field(default=None, alias="SUPABASE_JWT_SECRET")
     supabase_chat_table: str = Field(default="chat_messages", alias="SUPABASE_CHAT_TABLE")
     supabase_return_representation: bool = Field(default=False, alias="SUPABASE_RETURN_REPRESENTATION")
+    supabase_provider_enabled: bool = Field(default=True, alias="SUPABASE_PROVIDER_ENABLED")
 
     # Supabase 保活配置（防止免费层 7 天无活动后暂停）
     supabase_keepalive_enabled: bool = Field(default=True, alias="SUPABASE_KEEPALIVE_ENABLED")
@@ -65,7 +66,7 @@ class Settings(BaseSettings):
     )
 
     http_timeout_seconds: float = Field(default=10.0, alias="HTTP_TIMEOUT_SECONDS")
-    event_stream_heartbeat_seconds: float = Field(default=15.0, alias="SSE_HEARTBEAT_SECONDS")
+    event_stream_heartbeat_seconds: float = Field(default=5.0, alias="SSE_HEARTBEAT_SECONDS")
     ai_provider: Optional[str] = Field(default=None, alias="AI_PROVIDER")
     ai_model: Optional[str] = Field(default=None, alias="AI_MODEL")
     ai_api_base_url: Optional[AnyHttpUrl] = Field(default=None, alias="AI_API_BASE_URL")
@@ -103,6 +104,14 @@ class Settings(BaseSettings):
     auth_fallback_enabled: bool = Field(default=False, alias="AUTH_FALLBACK_ENABLED")
     rate_limit_enabled: bool = Field(default=True, alias="RATE_LIMIT_ENABLED")
     policy_gate_enabled: bool = Field(default=True, alias="POLICY_GATE_ENABLED")
+
+    # LLM 管理端点权限（防止任意 Bearer 用户篡改默认 endpoint）
+    llm_admin_api_key: Optional[str] = Field(default=None, alias="LLM_ADMIN_API_KEY")
+    llm_admin_uids: List[str] = Field(default_factory=list, alias="LLM_ADMIN_UIDS")
+
+    # AI 端点选择策略
+    allow_test_ai_endpoints: bool = Field(default=False, alias="ALLOW_TEST_AI_ENDPOINTS")
+    ai_strict_model_routing: bool = Field(default=False, alias="AI_STRICT_MODEL_ROUTING")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -161,6 +170,25 @@ class Settings(BaseSettings):
     @classmethod
     def _split_issuers(cls, value: object) -> List[str]:
         """解析 JWT_ALLOWED_ISSUERS，允许占位符字符串并在后续再做 URL 规范化。"""
+        if value in (None, "", []):
+            return []
+        if isinstance(value, str):
+            text = value.strip()
+            if text.startswith("["):
+                try:
+                    data = json.loads(text)
+                    if isinstance(data, list):
+                        return [str(item).strip() for item in data if str(item).strip()]
+                except json.JSONDecodeError:
+                    pass
+            return [item.strip() for item in text.split(",") if item.strip()]
+        if isinstance(value, Iterable):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return []
+
+    @field_validator("llm_admin_uids", mode="before")
+    @classmethod
+    def _split_llm_admin_uids(cls, value: object) -> List[str]:
         if value in (None, "", []):
             return []
         if isinstance(value, str):

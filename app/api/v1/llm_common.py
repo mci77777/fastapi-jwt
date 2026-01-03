@@ -5,13 +5,16 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from app.auth import AuthenticatedUser, get_current_user
+from app.core.middleware import get_current_request_id
 from app.services.ai_config_service import AIConfigService
 from app.services.jwt_test_service import JWTTestService
 from app.services.model_mapping_service import ModelMappingService
 from app.services.monitor_service import EndpointMonitor
+from app.settings.config import get_settings
 
 
 def create_response(
@@ -92,6 +95,35 @@ class SyncRequest(BaseModel):
     delete_missing: bool = Field(default=False, description="是否删除缺失项，保持两端完全一致")
 
 
+async def require_llm_admin(
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+    x_llm_admin_key: str | None = Header(default=None, alias="X-LLM-Admin-Key"),  # noqa: B008
+) -> None:
+    """限制 LLM 配置变更端点的访问（避免被普通 Bearer 用户误/恶意写入）。"""
+
+    settings = get_settings()
+    if getattr(settings, "debug", False):
+        return
+
+    admin_key = (getattr(settings, "llm_admin_api_key", None) or "").strip()
+    if admin_key and x_llm_admin_key and x_llm_admin_key.strip() == admin_key:
+        return
+
+    allowed_uids = set(getattr(settings, "llm_admin_uids", []) or [])
+    if current_user.uid in allowed_uids:
+        return
+
+    request_id = get_current_request_id()
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "llm_admin_required",
+            "message": "LLM admin privileges required",
+            "request_id": request_id or "",
+        },
+    )
+
+
 __all__ = [
     "create_response",
     "get_service",
@@ -100,4 +132,5 @@ __all__ = [
     "get_jwt_test_service",
     "SyncDirection",
     "SyncRequest",
+    "require_llm_admin",
 ]

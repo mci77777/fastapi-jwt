@@ -3,16 +3,29 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth import AuthenticatedUser, get_current_user
+from app.core.middleware import get_current_request_id
 
-from .llm_common import SyncDirection, SyncRequest, create_response, get_monitor, get_service
+from app.settings.config import get_settings
+
+from .llm_common import (
+    SyncDirection,
+    SyncRequest,
+    create_response,
+    get_mapping_service,
+    get_monitor,
+    get_service,
+    require_llm_admin,
+)
 
 router = APIRouter(prefix="/llm", tags=["llm"])
+logger = logging.getLogger(__name__)
 
 
 class APIEndpointBase(BaseModel):
@@ -50,6 +63,85 @@ class MonitorControlRequest(BaseModel):
     """Endpoint 监控控制参数。"""
 
     interval_seconds: int = Field(..., ge=10, le=600, description="Interval seconds")
+
+
+@router.get("/app/models")
+async def list_app_models(
+    request: Request,
+    include_inactive: bool = Query(default=False, description="是否包含非激活映射（仅调试用）"),  # noqa: B008
+    debug: bool = Query(default=False, description="是否返回调试字段（仅 DEBUG=true 生效）"),  # noqa: B008
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """App 侧模型列表（返回“映射模型 key”，避免客户端直接选择供应商原始 model）。"""
+
+    mapping_service = get_mapping_service(request)
+    settings = get_settings()
+
+    try:
+        all_mappings = await mapping_service.list_mappings()
+    except Exception:
+        all_mappings = []
+
+    candidates: list[dict[str, Any]] = []
+    for mapping in all_mappings:
+        if not isinstance(mapping, dict):
+            continue
+        scope_type = mapping.get("scope_type")
+        scope_key = mapping.get("scope_key")
+        if scope_type == "user" and scope_key != current_user.uid:
+            continue
+        if scope_type == "global" and scope_key != "global":
+            continue
+        if scope_type not in {"user", "global"}:
+            continue
+
+        is_active = bool(mapping.get("is_active", True))
+        if not include_inactive and not is_active:
+            continue
+
+        model_key = mapping.get("id")
+        if not isinstance(model_key, str) or not model_key.strip():
+            continue
+
+        item: dict[str, Any] = {
+            "model": model_key.strip(),
+            "label": (mapping.get("name") or model_key).strip() if isinstance(mapping.get("name") or model_key, str) else model_key,
+            "scope_type": scope_type,
+        }
+
+        if debug and getattr(settings, "debug", False):
+            candidates_list = mapping.get("candidates") if isinstance(mapping.get("candidates"), list) else []
+            resolved_model = mapping.get("default_model")
+            if not isinstance(resolved_model, str) or not resolved_model.strip():
+                resolved_model = candidates_list[0] if candidates_list else None
+            item.update(
+                {
+                    "resolved_model": resolved_model,
+                    "candidates": candidates_list,
+                    "updated_at": mapping.get("updated_at"),
+                    "source": mapping.get("source"),
+                }
+            )
+
+        candidates.append(item)
+
+    # 去重并保持顺序（user 优先于 global）
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in sorted(candidates, key=lambda x: 0 if x.get("scope_type") == "user" else 1):
+        model_key = str(item.get("model") or "")
+        if not model_key or model_key in seen:
+            continue
+        seen.add(model_key)
+        deduped.append(item)
+
+    recommended_model = deduped[0]["model"] if deduped else None
+
+    return create_response(
+        data=deduped,
+        total=len(deduped),
+        recommended_model=recommended_model,
+    )
 
 
 @router.get("/models")
@@ -121,8 +213,17 @@ async def list_ai_models(
 async def create_ai_model(
     payload: AIModelCreate,
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
+    logger.info(
+        "LLM endpoint create user_id=%s name=%s base_url=%s is_default=%s request_id=%s",
+        current_user.uid,
+        payload.name,
+        payload.base_url,
+        bool(payload.is_default),
+        get_current_request_id(),
+    )
     service = get_service(request)
     endpoint = await service.create_endpoint(
         payload.model_dump(exclude={"auto_sync"}, exclude_none=True),
@@ -135,8 +236,16 @@ async def create_ai_model(
 async def update_ai_model(
     payload: AIModelUpdate,
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
+    logger.info(
+        "LLM endpoint update user_id=%s endpoint_id=%s is_default=%s request_id=%s",
+        current_user.uid,
+        payload.id,
+        bool(payload.is_default),
+        get_current_request_id(),
+    )
     service = get_service(request)
     try:
         endpoint = await service.update_endpoint(
@@ -166,8 +275,15 @@ async def update_ai_model(
 async def delete_ai_model(
     endpoint_id: int,
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
+    logger.info(
+        "LLM endpoint delete user_id=%s endpoint_id=%s request_id=%s",
+        current_user.uid,
+        endpoint_id,
+        get_current_request_id(),
+    )
     service = get_service(request)
     try:
         await service.delete_endpoint(endpoint_id)
@@ -183,6 +299,7 @@ async def delete_ai_model(
 async def check_ai_endpoint(
     endpoint_id: int,
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     service = get_service(request)
@@ -199,6 +316,7 @@ async def check_ai_endpoint(
 @router.post("/models/check-all")
 async def check_all_endpoints(
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     service = get_service(request)
@@ -211,6 +329,7 @@ async def sync_single_endpoint(
     endpoint_id: int,
     request: Request,
     body: SyncRequest | None = None,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     service = get_service(request)
@@ -252,6 +371,7 @@ async def sync_single_endpoint(
 async def sync_all_endpoints(
     request: Request,
     body: SyncRequest | None = None,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     service = get_service(request)
@@ -295,6 +415,7 @@ async def supabase_status(request: Request) -> dict[str, Any]:
 @router.get("/monitor/status")
 async def monitor_status(
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     monitor = get_monitor(request)
@@ -305,6 +426,7 @@ async def monitor_status(
 async def start_monitor(
     payload: MonitorControlRequest,
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     monitor = get_monitor(request)
@@ -321,6 +443,7 @@ async def start_monitor(
 @router.post("/monitor/stop")
 async def stop_monitor(
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     monitor = get_monitor(request)
