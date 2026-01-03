@@ -32,6 +32,11 @@ const publishing = ref(false)
 
 const previewItems = computed(() => parsedItems.value.slice(0, 10))
 
+const patchText = ref('')
+const parsedPatch = ref(null)
+const patchError = ref('')
+const patchPublishing = ref(false)
+
 function formatMs(ms) {
   const v = Number(ms)
   if (!Number.isFinite(v) || v <= 0) return '--'
@@ -81,6 +86,69 @@ function tryParseSeedText(text) {
   parsedItems.value = items
 }
 
+function tryParsePatchText(text) {
+  patchError.value = ''
+  parsedPatch.value = null
+
+  const raw = String(text || '').trim()
+  if (!raw) {
+    patchError.value = '请输入 Patch JSON'
+    return
+  }
+
+  let payload
+  try {
+    payload = JSON.parse(raw)
+  } catch (err) {
+    patchError.value = `JSON 解析失败：${err?.message || String(err)}`
+    return
+  }
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    patchError.value = '格式不正确：Patch 必须是对象'
+    return
+  }
+
+  const baseVersion = Number(payload.baseVersion)
+  if (!Number.isFinite(baseVersion) || baseVersion < 1) {
+    patchError.value = 'baseVersion 必须是 >= 1 的数字'
+    return
+  }
+
+  const added = Array.isArray(payload.added) ? payload.added : []
+  const updated = Array.isArray(payload.updated) ? payload.updated : []
+  const deleted = Array.isArray(payload.deleted) ? payload.deleted : []
+
+  if (!added.length && !updated.length && !deleted.length) {
+    patchError.value = 'Patch 为空：至少需要 added/updated/deleted 之一'
+    return
+  }
+
+  parsedPatch.value = {
+    baseVersion: Math.trunc(baseVersion),
+    added,
+    updated,
+    deleted,
+    generatedAt: payload.generatedAt,
+  }
+}
+
+function fillPatchTemplate() {
+  const baseVersion = Number(meta.value?.version || 1)
+  patchText.value = JSON.stringify(
+    {
+      baseVersion,
+      added: [],
+      updated: [],
+      deleted: [],
+      generatedAt: Date.now(),
+    },
+    null,
+    2
+  )
+  tryParsePatchText(patchText.value)
+}
+
 async function handlePickFile(e) {
   const file = e?.target?.files?.[0]
   if (!file) return
@@ -117,6 +185,40 @@ async function publish() {
         await loadMeta()
       } finally {
         publishing.value = false
+      }
+    },
+  })
+}
+
+async function publishPatch() {
+  tryParsePatchText(patchText.value)
+  if (patchError.value) {
+    message.error(patchError.value)
+    return
+  }
+
+  const patch = parsedPatch.value
+  if (!patch) return
+
+  const addedCount = Array.isArray(patch.added) ? patch.added.length : 0
+  const updatedCount = Array.isArray(patch.updated) ? patch.updated.length : 0
+  const deletedCount = Array.isArray(patch.deleted) ? patch.deleted.length : 0
+
+  dialog.warning({
+    title: '确认发布增量 Patch？',
+    content: `baseVersion=${patch.baseVersion}，新增 ${addedCount} / 更新 ${updatedCount} / 删除 ${deletedCount}。发布后将生成新版本。`,
+    positiveText: '发布',
+    negativeText: '取消',
+    async onPositiveClick() {
+      patchPublishing.value = true
+      try {
+        const res = await api.patchExerciseLibrarySeed(patch)
+        message.success(`发布成功：version=${res?.version ?? '--'}`)
+        patchText.value = ''
+        parsedPatch.value = null
+        await loadMeta()
+      } finally {
+        patchPublishing.value = false
       }
     },
   })
@@ -174,6 +276,40 @@ onMounted(() => {
               />
               <div class="text-xs text-gray-500">
                 选择文件后会自动读取并解析；也可切换到“粘贴 JSON”查看或修改内容。
+              </div>
+            </NSpace>
+          </NTabPane>
+          <NTabPane name="patch" tab="增量更新 Patch">
+            <NSpace vertical size="small">
+              <NAlert type="info" show-icon :bordered="false">
+                Patch 结构：{ baseVersion, added, updated, deleted, generatedAt? }。updated 按 id 只覆盖你填写的字段。
+              </NAlert>
+              <NInput
+                v-model:value="patchText"
+                type="textarea"
+                placeholder="粘贴 Patch JSON"
+                :autosize="{ minRows: 10, maxRows: 22 }"
+                @blur="tryParsePatchText(patchText)"
+              />
+              <NSpace>
+                <NButton secondary @click="fillPatchTemplate">生成模板</NButton>
+                <NButton secondary @click="tryParsePatchText(patchText)">解析预览</NButton>
+                <NButton
+                  type="primary"
+                  :loading="patchPublishing"
+                  v-permission="'post/api/v1/admin/exercise/library/patch'"
+                  @click="publishPatch"
+                >
+                  发布 Patch
+                </NButton>
+              </NSpace>
+              <NAlert v-if="patchError" type="error" show-icon>
+                {{ patchError }}
+              </NAlert>
+              <div v-if="parsedPatch" class="text-xs text-gray-500">
+                baseVersion={{ parsedPatch.baseVersion }}；added={{ parsedPatch.added?.length || 0 }}；updated={{
+                  parsedPatch.updated?.length || 0
+                }}；deleted={{ parsedPatch.deleted?.length || 0 }}
               </div>
             </NSpace>
           </NTabPane>

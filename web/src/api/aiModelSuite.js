@@ -20,6 +20,7 @@ export const fetchMappings = (params = {}) => request.get('/llm/model-groups', {
 export const saveMapping = (data = {}) => request.post('/llm/model-groups', data)
 export const activateMapping = (mappingId, data = {}) =>
   request.post(`/llm/model-groups/${mappingId}/activate`, data)
+export const deleteMapping = (mappingId) => request.delete(`/llm/model-groups/${mappingId}`)
 export const syncMappingsToSupabase = () => request.post('/llm/model-groups/sync-to-supabase')
 
 export const fetchPrompts = (params = {}) => request.get('/llm/prompts', { params })

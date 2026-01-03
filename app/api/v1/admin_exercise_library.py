@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
-from pydantic import TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from app.api.v1.base import get_current_user_from_token
 from app.auth import AuthenticatedUser
@@ -80,4 +80,50 @@ async def publish_exercise_library_seed(
         return meta.model_dump(mode="json")
     except ExerciseLibraryError as exc:
         status_code = 400 if exc.code in {"empty_seed"} or exc.code.startswith("invalid_") else 503
+        raise HTTPException(status_code=status_code, detail={"code": exc.code, "message": str(exc)}) from exc
+
+
+class ExerciseLibraryPatchUpdate(BaseModel):
+    """字段级更新：必须包含 id，其余字段按需提供。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str = Field(..., min_length=1, max_length=200)
+
+
+class ExerciseLibraryPatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    baseVersion: int = Field(..., ge=1, description="当前快照版本（并发保护）")
+    added: list[dict[str, Any]] = Field(default_factory=list)
+    updated: list[ExerciseLibraryPatchUpdate] = Field(default_factory=list)
+    deleted: list[str] = Field(default_factory=list)
+    generatedAt: int | None = Field(default=None, ge=0)
+
+
+@router.post("/patch")
+async def patch_exercise_library_seed(
+    payload: ExerciseLibraryPatchRequest,
+    request: Request,
+    _: AuthenticatedUser = Depends(require_dashboard_admin),  # noqa: B008
+):
+    """增量更新官方动作库（added/updated/deleted）并发布新版本。"""
+
+    service = _get_service(request)
+    try:
+        meta = await service.apply_patch_and_publish(
+            base_version=int(payload.baseVersion),
+            added=list(payload.added or []),
+            updated=[item.model_dump(mode="python") for item in (payload.updated or [])],
+            deleted=list(payload.deleted or []),
+            generated_at_ms=(int(payload.generatedAt) if payload.generatedAt is not None else None),
+        )
+        return meta.model_dump(mode="json")
+    except ExerciseLibraryError as exc:
+        if exc.code == "version_conflict":
+            status_code = status.HTTP_409_CONFLICT
+        elif exc.code == "patch_target_not_found":
+            status_code = status.HTTP_404_NOT_FOUND
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST if exc.code.startswith("invalid_") else status.HTTP_503_SERVICE_UNAVAILABLE
         raise HTTPException(status_code=status_code, detail={"code": exc.code, "message": str(exc)}) from exc

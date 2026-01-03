@@ -136,14 +136,23 @@ class JWTVerifier:
 
     def __init__(self) -> None:
         self._settings = get_settings()
-        self._cache = JWKSCache(
-            jwks_url=str(self._settings.supabase_jwks_url) if self._settings.supabase_jwks_url else None,
-            static_jwk=self._settings.supabase_jwk,
-            ttl_seconds=self._settings.jwks_cache_ttl_seconds,
-            timeout_seconds=self._settings.http_timeout_seconds,
+        self._cache = self._build_cache(self._settings)
+
+    def _build_cache(self, settings: Any) -> JWKSCache:
+        return JWKSCache(
+            jwks_url=str(settings.supabase_jwks_url) if settings.supabase_jwks_url else None,
+            static_jwk=settings.supabase_jwk,
+            ttl_seconds=settings.jwks_cache_ttl_seconds,
+            timeout_seconds=settings.http_timeout_seconds,
         )
 
     def verify_token(self, token: str) -> AuthenticatedUser:
+        # 测试/热更新场景下 Settings 可能被 cache_clear 重新加载：这里按需刷新，避免签名密钥不一致导致 401。
+        latest_settings = get_settings()
+        if latest_settings is not self._settings:
+            self._settings = latest_settings
+            self._cache = self._build_cache(latest_settings)
+
         request_id = get_current_request_id()
 
         if not token:

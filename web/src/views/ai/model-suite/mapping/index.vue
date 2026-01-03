@@ -15,6 +15,7 @@ import {
   NTable,
   NTag,
   NTooltip,
+  useDialog,
   useMessage,
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
@@ -27,6 +28,7 @@ defineOptions({ name: 'AiModelMapping' })
 const store = useAiModelSuiteStore()
 const { mappings, mappingsLoading, models, prompts, promptsLoading } = storeToRefs(store)
 const message = useMessage()
+const dialog = useDialog()
 
 const modalVisible = ref(false)
 const isEdit = ref(false)
@@ -164,6 +166,25 @@ async function confirmDefault() {
   defaultModalVisible.value = false
 }
 
+function handleDeleteMapping(record) {
+  const id = record?.id
+  if (!id) return
+  dialog.warning({
+    title: '确认删除',
+    content: `将删除映射：${id}`,
+    positiveText: '删除',
+    negativeText: '取消',
+    async onPositiveClick() {
+      try {
+        await store.deleteMapping(id)
+        message.success('已删除')
+      } catch (error) {
+        message.error('删除失败')
+      }
+    },
+  })
+}
+
 onMounted(() => {
   store.loadModels()
   store.loadPrompts()
@@ -241,6 +262,9 @@ onMounted(() => {
                 <NButton size="small" @click="openEdit(item)">编辑</NButton>
                 <NButton size="small" type="primary" @click="openDefaultModal(item)"
                   >设为默认</NButton
+                >
+                <NButton size="small" type="error" secondary @click="handleDeleteMapping(item)"
+                  >删除</NButton
                 >
               </NSpace>
             </td>

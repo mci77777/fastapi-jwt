@@ -7,6 +7,7 @@ import {
   fetchBlockedModels,
   saveMapping,
   activateMapping,
+  deleteMapping,
   updateModel,
   syncModel,
   syncAllModels,
@@ -125,6 +126,11 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
     },
     async activateMapping(mappingId, defaultModel) {
       await activateMapping(mappingId, { default_model: defaultModel })
+      await this.loadMappings()
+    },
+    async deleteMapping(mappingId) {
+      if (!mappingId) return
+      await deleteMapping(mappingId)
       await this.loadMappings()
     },
     async loadPrompts(params = {}) {

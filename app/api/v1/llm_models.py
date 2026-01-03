@@ -94,6 +94,14 @@ async def list_app_models(
     except Exception:
         all_mappings = []
 
+    # App 端到端兜底：若没有任何映射，自动种一个最小 global 映射，避免 “可选模型为空” 导致对话无法选择模型。
+    if not all_mappings:
+        try:
+            await mapping_service.ensure_minimal_global_mapping()
+            all_mappings = await mapping_service.list_mappings()
+        except Exception:
+            all_mappings = []
+
     candidates: list[dict[str, Any]] = []
     for mapping in all_mappings:
         if not isinstance(mapping, dict):
@@ -114,23 +122,34 @@ async def list_app_models(
         model_key = mapping.get("id")
         if not isinstance(model_key, str) or not model_key.strip():
             continue
+        model_key = model_key.strip()
+
+        candidates_list = mapping.get("candidates") if isinstance(mapping.get("candidates"), list) else []
+        filtered_candidates = [
+            item
+            for item in candidates_list
+            if isinstance(item, str) and item.strip() and item.strip() not in blocked_models
+        ]
+
+        resolved_model = mapping.get("default_model")
+        if isinstance(resolved_model, str):
+            resolved_model = resolved_model.strip()
+        if not isinstance(resolved_model, str) or not resolved_model or resolved_model in blocked_models:
+            resolved_model = filtered_candidates[0] if filtered_candidates else None
+
+        # 无可用真实模型：该映射对 App 无意义（且可能会把 mapping key 直打上游），直接过滤掉
+        if resolved_model is None:
+            continue
 
         item: dict[str, Any] = {
-            "model": model_key.strip(),
-            "label": (mapping.get("name") or model_key).strip() if isinstance(mapping.get("name") or model_key, str) else model_key,
+            "model": model_key,
+            "label": (mapping.get("name") or model_key).strip()
+            if isinstance(mapping.get("name") or model_key, str)
+            else model_key,
             "scope_type": scope_type,
         }
 
         if allow_debug:
-            candidates_list = mapping.get("candidates") if isinstance(mapping.get("candidates"), list) else []
-            filtered_candidates = [item for item in candidates_list if isinstance(item, str) and item.strip() and item.strip() not in blocked_models]
-
-            resolved_model = mapping.get("default_model")
-            if isinstance(resolved_model, str):
-                resolved_model = resolved_model.strip()
-            if not isinstance(resolved_model, str) or not resolved_model or resolved_model in blocked_models:
-                resolved_model = filtered_candidates[0] if filtered_candidates else None
-
             item.update(
                 {
                     "resolved_model": resolved_model,

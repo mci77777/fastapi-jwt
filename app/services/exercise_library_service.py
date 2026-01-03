@@ -189,6 +189,112 @@ class ExerciseLibraryService:
             timestamp=timestamp_ms,
         )
 
+    async def apply_patch_and_publish(
+        self,
+        *,
+        base_version: int,
+        added: list[dict[str, Any]] | None = None,
+        updated: list[dict[str, Any]] | None = None,
+        deleted: list[str] | None = None,
+        generated_at_ms: int | None = None,
+    ) -> ExerciseLibraryMeta:
+        """增量应用 patch（新增/字段级更新/删除）并发布新快照版本。"""
+
+        if base_version < 1:
+            raise ExerciseLibraryError("invalid_base_version", "baseVersion must be >= 1")
+
+        # 若尚未有快照，则先从内置 seed 发布 v1
+        await self.ensure_seeded()
+        latest = await self._get_latest_snapshot()
+        if latest is None:
+            raise ExerciseLibraryError("exercise_library_not_seeded", "Exercise library is not seeded")
+
+        current_version = int(latest.version)
+        if int(base_version) != current_version:
+            raise ExerciseLibraryError(
+                "version_conflict",
+                f"baseVersion={base_version} does not match current version={current_version}",
+            )
+
+        try:
+            raw_items = json.loads(latest.payload_json)
+        except Exception as exc:
+            raise ExerciseLibraryError("invalid_snapshot", "Snapshot payload is not valid JSON") from exc
+
+        if not isinstance(raw_items, list):
+            raise ExerciseLibraryError("invalid_snapshot", "Snapshot payload must be a JSON array")
+
+        by_id: dict[str, dict[str, Any]] = {}
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("id") or "").strip()
+            if not item_id:
+                continue
+            by_id[item_id] = dict(item)
+
+        deleted_ids: list[str] = []
+        if deleted:
+            for value in deleted:
+                item_id = str(value or "").strip()
+                if not item_id:
+                    continue
+                if item_id not in by_id:
+                    raise ExerciseLibraryError("patch_target_not_found", f"delete target not found: id={item_id}")
+                deleted_ids.append(item_id)
+            for item_id in deleted_ids:
+                by_id.pop(item_id, None)
+
+        updated_items = updated or []
+        ts = int(generated_at_ms if generated_at_ms is not None else _now_ms())
+        for patch in updated_items:
+            if not isinstance(patch, dict):
+                continue
+            item_id = str(patch.get("id") or "").strip()
+            if not item_id:
+                raise ExerciseLibraryError("invalid_patch", "updated item must include non-empty id")
+            if item_id not in by_id:
+                raise ExerciseLibraryError("patch_target_not_found", f"update target not found: id={item_id}")
+            merged = dict(by_id[item_id])
+            for key, value in patch.items():
+                if key == "id":
+                    continue
+                merged[key] = value
+            # KISS：未显式提供 updatedAt 时，自动刷新为本次发布的时间戳
+            if "updatedAt" not in patch:
+                merged["updatedAt"] = ts
+            by_id[item_id] = merged
+
+        added_items = added or []
+        for item in added_items:
+            if isinstance(item, ExerciseDto):
+                payload = item.model_dump(mode="python")
+            elif isinstance(item, dict):
+                payload = dict(item)
+            else:
+                continue
+            item_id = str(payload.get("id") or "").strip()
+            if not item_id:
+                raise ExerciseLibraryError("invalid_patch", "added item must include non-empty id")
+            if item_id in by_id:
+                raise ExerciseLibraryError("invalid_patch", f"duplicate id in added: {item_id}")
+            if "updatedAt" not in payload:
+                payload["updatedAt"] = ts
+            if "createdAt" not in payload:
+                payload["createdAt"] = payload["updatedAt"]
+            by_id[item_id] = payload
+
+        # 合并后整体验证（最终对象必须可被 ExerciseDto 接受）
+        merged_items: list[ExerciseDto] = []
+        for value in by_id.values():
+            try:
+                merged_items.append(ExerciseDto.model_validate(value))
+            except Exception as exc:
+                item_id = str(value.get("id") or "").strip()
+                raise ExerciseLibraryError("invalid_exercise", f"invalid exercise after patch: id={item_id}") from exc
+
+        return await self.publish(merged_items, generated_at_ms=ts)
+
     async def publish(
         self,
         items: list[ExerciseDto],

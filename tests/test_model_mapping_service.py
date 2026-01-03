@@ -247,3 +247,33 @@ async def test_fallback_mapping(tmp_path: Path) -> None:
     assert items[0]["scope_key"] == "chat"
     assert items[0]["source"] == "fallback"
     assert (tmp_path / "model_mappings.json").exists()
+
+
+@pytest.mark.anyio("asyncio")
+async def test_resolve_model_key_skips_blocked(tmp_path: Path) -> None:
+    ai_service = FakeAIConfigService()
+    service = ModelMappingService(ai_service, tmp_path)
+
+    await service.upsert_mapping(
+        {
+            "scope_type": "module",
+            "scope_key": "chat",
+            "name": "Chat Module",
+            "default_model": "gpt-4o-mini",
+            "candidates": ["gpt-4o-mini", "gpt-4o"],
+            "is_active": True,
+            "metadata": {},
+        }
+    )
+
+    # 屏蔽默认模型后，应自动回退到下一个候选
+    await service.upsert_blocked_models([{"model": "gpt-4o-mini", "blocked": True}])
+    resolved = await service.resolve_model_key("module:chat")
+    assert resolved["hit"] is True
+    assert resolved["resolved_model"] == "gpt-4o"
+
+    # 全部候选被屏蔽：应返回 hit=true 且 resolved_model=None（由调用方 fallback）
+    await service.upsert_blocked_models([{"model": "gpt-4o", "blocked": True}])
+    resolved2 = await service.resolve_model_key("module:chat")
+    assert resolved2["hit"] is True
+    assert resolved2["resolved_model"] is None

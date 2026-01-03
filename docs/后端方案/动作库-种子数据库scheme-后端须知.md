@@ -136,6 +136,38 @@
 
 ---
 
+## 7) 管理端增量更新（Patch 发布）
+
+当仅需要改动少量动作（新增/字段级更新/删除）时，可使用 **Patch JSON** 发布新版本，避免每次上传 full：
+
+- 端点：`POST /api/v1/admin/exercise/library/patch`（仅 admin 可用）
+- 并发保护：必须提供 `baseVersion`，且需等于当前 `meta.version`；否则返回 `409 version_conflict`
+- 更新语义：
+  - `added`：新增完整 `ExerciseDto`（至少包含必填字段）
+  - `updated`：按 `id` 匹配，仅覆盖你提供的字段（未提供字段保持不变）
+  - `deleted`：按 `id` 删除
+  - `generatedAt`：可选（毫秒），用于作为本次发布的 `lastUpdated`（同时作为自动补齐 `updatedAt` 的默认值）
+
+示例：
+
+```json
+{
+  "baseVersion": 12,
+  "generatedAt": 1767398400000,
+  "added": [],
+  "updated": [
+    {
+      "id": "off_5023c57c",
+      "description": "更新后的描述",
+      "updatedAt": 1767398400000
+    }
+  ],
+  "deleted": ["off_deadbeef"]
+}
+```
+
+---
+
 ## 6) 验证清单（交付自测）
 
 - 基础联通：三接口均能 200 返回且 JSON 字段名与类型符合上文

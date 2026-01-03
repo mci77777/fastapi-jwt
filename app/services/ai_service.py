@@ -555,13 +555,19 @@ class AIService:
             raise ProviderError("ai_config_service_not_initialized")
 
         raw_model = openai_req.get("model")
-        resolved_model = raw_model
+        resolved_model: Optional[str] = None
         mapping_hit = False
         if isinstance(raw_model, str) and raw_model.strip():
             raw_str = raw_model.strip()
-            resolved_model = await self._resolve_mapped_model_name(raw_str)
-            if isinstance(resolved_model, str) and resolved_model.strip() and resolved_model.strip() != raw_str:
-                mapping_hit = True
+            resolved_model = raw_str
+            if self._model_mapping_service is not None:
+                resolved = await self._model_mapping_service.resolve_model_key(raw_str)
+                mapping_hit = bool(resolved.get("hit"))
+                candidate = resolved.get("resolved_model")
+                if isinstance(candidate, str) and candidate.strip():
+                    resolved_model = candidate.strip()
+                elif mapping_hit:
+                    resolved_model = None
 
         endpoints, _ = await self._ai_config_service.list_endpoints(only_active=True, page=1, page_size=200)
         candidates = [item for item in endpoints if item.get("is_active") and item.get("has_api_key")]
@@ -621,20 +627,12 @@ class AIService:
         if self._model_mapping_service is None:
             return name
         try:
-            mappings = await self._model_mapping_service.list_mappings()
+            resolved = await self._model_mapping_service.resolve_model_key(name)
         except Exception:
             return name
-        for mapping in mappings:
-            if not mapping.get("is_active", True):
-                continue
-            # SSOT：映射“业务模型 key”必须稳定；name 可被用户改名，仅作展示，不允许作为请求 key。
-            if mapping.get("id") == name:
-                default_model = mapping.get("default_model")
-                if isinstance(default_model, str) and default_model.strip():
-                    return default_model.strip()
-                candidates = mapping.get("candidates") or []
-                if isinstance(candidates, list) and candidates and isinstance(candidates[0], str):
-                    return candidates[0]
+        candidate = resolved.get("resolved_model")
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
         return name
 
     def _infer_provider(self, endpoint: dict[str, Any]) -> str:
@@ -662,7 +660,10 @@ class AIService:
         openai_req: dict[str, Any],
     ) -> tuple[str, str, Optional[str]]:
         resolved = endpoint.get("resolved_endpoints") or {}
-        chat_url = resolved.get("chat_completions") or f"{str(endpoint.get('base_url') or '').rstrip('/')}/v1/chat/completions"
+        chat_url = resolved.get("chat_completions")
+        if not isinstance(chat_url, str) or not chat_url.strip() or "/v1/v1/" in chat_url:
+            base = _normalize_ai_base_url(str(endpoint.get("base_url") or ""))
+            chat_url = f"{base}/v1/chat/completions" if base else "/v1/chat/completions"
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -700,7 +701,7 @@ class AIService:
         api_key: str,
         openai_req: dict[str, Any],
     ) -> tuple[str, str, Optional[str]]:
-        base_url = str(endpoint.get("base_url") or "").rstrip("/")
+        base_url = _normalize_ai_base_url(str(endpoint.get("base_url") or ""))
         messages_url = f"{base_url}/v1/messages"
 
         anthropic_payload = self._convert_openai_to_anthropic(openai_req)
@@ -900,3 +901,13 @@ def _parse_optional_int(value: Any) -> Optional[int]:
         return int(value)
     except Exception:
         return None
+
+
+def _normalize_ai_base_url(base_url: str) -> str:
+    """兼容用户把 base_url 误填为 .../v1 的情况，避免拼接出 /v1/v1/*。"""
+
+    base = str(base_url or "").strip().rstrip("/")
+    lowered = base.lower()
+    if lowered.endswith("/v1"):
+        base = base[:-3].rstrip("/")
+    return base

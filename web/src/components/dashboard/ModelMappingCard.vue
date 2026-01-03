@@ -90,7 +90,7 @@
 
 <script setup>
 import { ref, computed, onMounted, h } from 'vue'
-import { NButton, NTag, NSpace, useMessage } from 'naive-ui'
+import { NButton, NTag, NSpace, useDialog, useMessage } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
 import HeroIcon from '@/components/common/HeroIcon.vue'
@@ -102,6 +102,7 @@ const emit = defineEmits(['mapping-change'])
 const store = useAiModelSuiteStore()
 const { mappings, mappingsLoading, modelCandidates } = storeToRefs(store)
 const message = useMessage()
+const dialog = useDialog()
 
 const loading = computed(() => mappingsLoading.value)
 const showAddModal = ref(false)
@@ -220,9 +221,26 @@ async function handleSave() {
   }
 }
 
-async function handleDelete() {
-  // 注意：后端暂无删除 API，此处仅为占位
-  message.warning('删除功能暂未实现')
+async function handleDelete(row) {
+  // 已在后端实现 DELETE /llm/model-groups/{id}
+  const id = row?.id
+  if (!id) return
+
+  dialog.warning({
+    title: '确认删除',
+    content: `将删除映射：${id}。该操作会影响 App 侧可选模型与路由解析。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    async onPositiveClick() {
+      try {
+        await store.deleteMapping(id)
+        message.success('已删除')
+        emit('mapping-change', mappings.value)
+      } catch (error) {
+        message.error('删除失败')
+      }
+    },
+  })
 }
 
 /**

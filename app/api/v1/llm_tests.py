@@ -15,7 +15,7 @@ from app.auth import AuthenticatedUser, get_current_user
 from app.core.middleware import get_current_request_id
 from app.db import get_sqlite_manager
 
-from .llm_common import create_response, get_jwt_test_service, get_service
+from .llm_common import create_response, get_jwt_test_service, get_mapping_service, get_service
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 
@@ -254,11 +254,21 @@ async def test_prompt(
 ) -> dict[str, Any]:
     service = get_service(request)
     try:
+        resolved_model = payload.model
+        if isinstance(payload.model, str) and payload.model.strip():
+            mapping_service = get_mapping_service(request)
+            resolved = await mapping_service.resolve_model_key(payload.model.strip())
+            candidate = resolved.get("resolved_model")
+            if isinstance(candidate, str) and candidate.strip():
+                resolved_model = candidate.strip()
+            elif resolved.get("hit"):
+                resolved_model = None
+
         result = await service.test_prompt(
             prompt_id=payload.prompt_id,
             endpoint_id=payload.endpoint_id,
             message=payload.message,
-            model=payload.model,
+            model=resolved_model,
             skip_prompt=payload.skip_prompt,
         )
     except ValueError as exc:
@@ -902,7 +912,13 @@ async def simulate_jwt_dialog(
 ) -> dict[str, Any]:
     service = get_jwt_test_service(request)
     try:
-        result = await service.simulate_dialog(payload.model_dump())
+        data = payload.model_dump()
+        if isinstance(payload.model, str) and payload.model.strip():
+            mapping_service = get_mapping_service(request)
+            resolved = await mapping_service.resolve_model_key(payload.model.strip())
+            candidate = resolved.get("resolved_model")
+            data["model"] = candidate.strip() if isinstance(candidate, str) and candidate.strip() else None
+        result = await service.simulate_dialog(data)
         return create_response(data=result)
     except RuntimeError as exc:
         # AI 服务调用失败（如 API 超时、模型不存在等）
@@ -927,7 +943,13 @@ async def run_jwt_load_test(
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     service = get_jwt_test_service(request)
-    result = await service.run_load_test(payload.model_dump())
+    data = payload.model_dump()
+    if isinstance(payload.model, str) and payload.model.strip():
+        mapping_service = get_mapping_service(request)
+        resolved = await mapping_service.resolve_model_key(payload.model.strip())
+        candidate = resolved.get("resolved_model")
+        data["model"] = candidate.strip() if isinstance(candidate, str) and candidate.strip() else None
+    result = await service.run_load_test(data)
     return create_response(data=result, msg="压测完成")
 
 

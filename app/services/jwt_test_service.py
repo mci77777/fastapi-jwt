@@ -69,17 +69,29 @@ class JWTTestService:
         self._lock = asyncio.Lock()
         self._active_runs: dict[str, JwtRunSummary] = {}  # 运行中的压测状态
 
+    async def _call_test_prompt(self, **kwargs: Any) -> dict[str, Any]:
+        """兼容 AIConfigService.test_prompt 的历史签名（部分测试替身不支持新参数）。"""
+
+        try:
+            return await self._ai_service.test_prompt(**kwargs)
+        except TypeError as exc:
+            if "skip_prompt" not in str(exc):
+                raise
+            kwargs.pop("skip_prompt", None)
+            return await self._ai_service.test_prompt(**kwargs)
+
     async def simulate_dialog(self, payload: dict[str, Any]) -> dict[str, Any]:
         username = payload.get("username") or "tester"
         token = self._generate_token(username)
         result: dict[str, Any] | None = None
         error: str | None = None
         try:
-            result = await self._ai_service.test_prompt(
+            result = await self._call_test_prompt(
                 prompt_id=payload["prompt_id"],
                 endpoint_id=payload["endpoint_id"],
                 message=self._decorate_message(payload["message"], run_id=None, index=0),
                 model=payload.get("model"),
+                skip_prompt=bool(payload.get("skip_prompt", False)),
             )
         except RuntimeError as exc:
             error = str(exc)
@@ -167,11 +179,12 @@ class JWTTestService:
                             # 在请求间添加小延迟以避免速率限制
                             if idx > 0:
                                 await asyncio.sleep(0.1)
-                            result = await self._ai_service.test_prompt(
+                            result = await self._call_test_prompt(
                                 prompt_id=payload["prompt_id"],
                                 endpoint_id=payload["endpoint_id"],
                                 message=message,
                                 model=payload.get("model"),
+                                skip_prompt=bool(payload.get("skip_prompt", False)),
                             )
                             success_count += 1
                             # 更新活动状态

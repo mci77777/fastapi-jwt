@@ -61,6 +61,16 @@ def _is_disallowed_test_endpoint_name(name: str | None) -> bool:
     return text.startswith(DISALLOWED_TEST_ENDPOINT_PREFIXES)
 
 
+def _normalize_ai_base_url(base_url: str) -> str:
+    """兼容用户把 base_url 误填为 .../v1 的情况，避免拼接出 /v1/v1/*。"""
+
+    base = str(base_url or "").strip().rstrip("/")
+    lowered = base.lower()
+    if lowered.endswith("/v1"):
+        base = base[:-3].rstrip("/")
+    return base
+
+
 class AIConfigService:
     """封装 AI 端点与 Prompt 的本地持久化、状态检测及 Supabase 同步逻辑。"""
 
@@ -161,7 +171,7 @@ class AIConfigService:
         return await self._write_backup("supabase_endpoints", models)
 
     def _build_resolved_endpoints(self, base_url: str) -> dict[str, str]:
-        base = base_url.rstrip("/")
+        base = _normalize_ai_base_url(base_url)
         return {name: f"{base}{path}" for name, path in DEFAULT_ENDPOINT_PATHS.items()}
 
     def _format_endpoint_row(self, row: dict[str, Any]) -> dict[str, Any]:
@@ -1290,6 +1300,7 @@ class AIConfigService:
         endpoint_id: int,
         message: str,
         model: Optional[str] = None,
+        skip_prompt: bool = False,
     ) -> dict[str, Any]:
         prompt = await self.get_prompt(prompt_id)
         prompt_type = prompt.get("prompt_type")
@@ -1301,16 +1312,18 @@ class AIConfigService:
 
         if prompt_type == "system":
             system_prompt_text = str(prompt.get("content") or "").strip() or None
-            active_tools, _ = await self.list_prompts(only_active=True, prompt_type="tools", page=1, page_size=1)
-            if active_tools:
-                tools_prompt_text = str(active_tools[0].get("content") or "").strip() or None
-                tools_json = active_tools[0].get("tools_json")
+            if not skip_prompt:
+                active_tools, _ = await self.list_prompts(only_active=True, prompt_type="tools", page=1, page_size=1)
+                if active_tools:
+                    tools_prompt_text = str(active_tools[0].get("content") or "").strip() or None
+                    tools_json = active_tools[0].get("tools_json")
         else:
             tools_prompt_text = str(prompt.get("content") or "").strip() or None
             tools_json = prompt.get("tools_json")
-            active_system, _ = await self.list_prompts(only_active=True, prompt_type="system", page=1, page_size=1)
-            if active_system:
-                system_prompt_text = str(active_system[0].get("content") or "").strip() or None
+            if not skip_prompt:
+                active_system, _ = await self.list_prompts(only_active=True, prompt_type="system", page=1, page_size=1)
+                if active_system:
+                    system_prompt_text = str(active_system[0].get("content") or "").strip() or None
 
         system_message_parts = [part for part in (system_prompt_text, tools_prompt_text) if part]
         system_message = "\n\n".join(system_message_parts) if system_message_parts else None
@@ -1416,4 +1429,108 @@ class AIConfigService:
             "response": reply_text,
             "usage": (response_payload or {}).get("usage") if response_payload else None,
             "latency_ms": latency_ms,
+        }
+
+    # --------------------------------------------------------------------- #
+    # Supabase · Model Mappings（可选）
+    # --------------------------------------------------------------------- #
+    async def _fetch_supabase_model_mappings(self) -> list[dict[str, Any]]:
+        headers = self._supabase_headers()
+        base_url = self._supabase_base_url()
+        async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+            response = await client.get(
+                f"{base_url}/model_mappings",
+                headers=headers,
+                params={"select": "*", "order": "updated_at.desc"},
+            )
+            response.raise_for_status()
+            data = response.json()
+        return data if isinstance(data, list) else []
+
+    async def push_model_mappings_to_supabase(
+        self,
+        mappings: list[dict[str, Any]],
+        *,
+        delete_missing: bool = False,
+    ) -> dict[str, Any]:
+        """把当前映射配置推送到 Supabase（若未配置 Supabase，则返回 skipped）。"""
+
+        await self._write_backup("sqlite_model_mappings", mappings)
+
+        if not self._supabase_available():
+            return {"status": "skipped:supabase_not_configured", "synced_count": 0, "deleted_count": 0}
+
+        remote_snapshot: list[dict[str, Any]] = []
+        try:
+            remote_snapshot = await self._fetch_supabase_model_mappings()
+        except Exception:  # pragma: no cover
+            remote_snapshot = []
+
+        try:
+            await self._write_backup("supabase_model_mappings", remote_snapshot)
+        except Exception:  # pragma: no cover
+            pass
+
+        base_url = self._supabase_base_url()
+        headers = dict(self._supabase_headers())
+        headers["Prefer"] = "return=representation,resolution=merge-duplicates"
+
+        payload: list[dict[str, Any]] = []
+        for item in mappings:
+            if not isinstance(item, dict):
+                continue
+            mapping_id = item.get("id")
+            if not isinstance(mapping_id, str) or not mapping_id.strip():
+                continue
+            payload.append(
+                {
+                    "id": mapping_id.strip(),
+                    "scope_type": item.get("scope_type"),
+                    "scope_key": item.get("scope_key"),
+                    "name": item.get("name"),
+                    "default_model": item.get("default_model"),
+                    "candidates": item.get("candidates") or [],
+                    "is_active": bool(item.get("is_active", True)),
+                    "updated_at": item.get("updated_at"),
+                    "source": item.get("source"),
+                    "metadata": item.get("metadata") or {},
+                }
+            )
+
+        synced_rows: list[dict[str, Any]] = []
+        async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+            if payload:
+                response = await client.post(
+                    f"{base_url}/model_mappings",
+                    headers=headers,
+                    params={"on_conflict": "id"},
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+                synced_rows = data if isinstance(data, list) else []
+
+            deleted_count = 0
+            if delete_missing:
+                keep_ids = {row["id"] for row in payload if isinstance(row, dict) and isinstance(row.get("id"), str)}
+                remote_ids = {
+                    str(row.get("id"))
+                    for row in remote_snapshot
+                    if isinstance(row, dict) and row.get("id") is not None
+                }
+                for obsolete_id in sorted(remote_ids - keep_ids):
+                    resp = await client.delete(
+                        f"{base_url}/model_mappings",
+                        headers=headers,
+                        params={"id": f"eq.{obsolete_id}"},
+                    )
+                    resp.raise_for_status()
+                    deleted_count += 1
+
+        return {
+            "status": "synced",
+            "synced_count": len(payload),
+            "deleted_count": deleted_count,
+            "remote_before": len(remote_snapshot),
+            "remote_after": len(payload),
         }

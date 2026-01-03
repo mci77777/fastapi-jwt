@@ -149,6 +149,57 @@ class ModelMappingService:
         results = await self.list_mappings(scope_type=scope_type, scope_key=scope_key)
         return results[0] if results else {}
 
+    async def ensure_minimal_global_mapping(self) -> dict[str, Any] | None:
+        """当系统没有任何可用映射时，按当前端点配置生成一个最小 global 映射，保证 App 可选模型非空。"""
+
+        existing = await self.list_mappings(scope_type="global", scope_key="global")
+        if existing:
+            return existing[0]
+
+        endpoints, _ = await self._ai_service.list_endpoints(only_active=True, page=1, page_size=200)
+        active = [ep for ep in endpoints if isinstance(ep, dict) and ep.get("is_active") and ep.get("has_api_key")]
+        if not active:
+            return None
+
+        default_endpoint = next((ep for ep in active if ep.get("is_default")), active[0])
+        blocked = set(await self.list_blocked_models())
+
+        candidates: list[str] = []
+        preferred = default_endpoint.get("model")
+        if isinstance(preferred, str) and preferred.strip() and preferred.strip() not in blocked:
+            candidates.append(preferred.strip())
+
+        model_list = default_endpoint.get("model_list") or []
+        if isinstance(model_list, list):
+            for value in model_list:
+                text = str(value or "").strip()
+                if text and text not in blocked and text not in candidates:
+                    candidates.append(text)
+
+        # 兜底：从其他端点补齐少量候选，确保首屏至少可选 1 个
+        if not candidates:
+            for ep in active:
+                text = str(ep.get("model") or "").strip()
+                if text and text not in blocked and text not in candidates:
+                    candidates.append(text)
+                if len(candidates) >= 10:
+                    break
+
+        if not candidates:
+            return None
+
+        return await self.upsert_mapping(
+            {
+                "scope_type": "global",
+                "scope_key": "global",
+                "name": "App Default",
+                "default_model": candidates[0],
+                "candidates": candidates,
+                "is_active": True,
+                "metadata": {"source": "auto_seed"},
+            }
+        )
+
     async def activate_default(self, mapping_id: str, default_model: str) -> dict[str, Any]:
         scope_type, scope_key = self._split_mapping_id(mapping_id)
         results = await self.list_mappings(scope_type=scope_type, scope_key=scope_key)
@@ -165,6 +216,90 @@ class ModelMappingService:
             "metadata": mapping.get("metadata") or {},
         }
         return await self.upsert_mapping(payload)
+
+    async def delete_mapping(self, mapping_id: str) -> bool:
+        """删除一条映射（prompt 映射写回 ai_prompts.tools_json；fallback 映射写回 JSON 文件）。"""
+
+        scope_type, scope_key = self._split_mapping_id(mapping_id)
+
+        if scope_type == "prompt":
+            try:
+                prompt_id = int(scope_key)
+            except Exception as exc:
+                raise ValueError("invalid_mapping_id") from exc
+
+            prompt = await self._ai_service.get_prompt(prompt_id)
+            tools = prompt.get("tools_json")
+
+            container: dict[str, Any]
+            if isinstance(tools, dict):
+                container = dict(tools)
+            elif isinstance(tools, list):
+                container = {"tools": tools}
+            elif tools is None:
+                container = {}
+            else:
+                container = {"raw": tools}
+
+            if MAPPING_KEY not in container:
+                return False
+            container.pop(MAPPING_KEY, None)
+            await self._ai_service.update_prompt(prompt_id, {"tools_json": container})
+            return True
+
+        async with self._lock:
+            data = await self._read_fallback()
+            bucket = data.get(scope_type)
+            if not isinstance(bucket, dict) or scope_key not in bucket:
+                return False
+            bucket.pop(scope_key, None)
+            if not bucket:
+                data.pop(scope_type, None)
+            await self._write_fallback(data)
+            return True
+
+    async def resolve_model_key(self, model_key: str) -> dict[str, Any]:
+        """将“映射模型 key”解析为可用于上游调用的真实模型名（并强制跳过被屏蔽模型）。"""
+
+        key = str(model_key or "").strip()
+        if not key:
+            return {"resolved_model": None, "hit": False}
+
+        try:
+            mappings = await self.list_mappings()
+        except Exception:
+            return {"resolved_model": key, "hit": False}
+
+        mapping = next((m for m in mappings if m.get("id") == key and m.get("is_active", True)), None)
+        if not isinstance(mapping, dict):
+            return {"resolved_model": key, "hit": False}
+
+        blocked = set(await self.list_blocked_models())
+
+        ordered: list[str] = []
+        default_model = mapping.get("default_model")
+        if isinstance(default_model, str) and default_model.strip():
+            ordered.append(default_model.strip())
+        candidates = mapping.get("candidates") or []
+        if isinstance(candidates, list):
+            for value in candidates:
+                text = str(value or "").strip()
+                if text:
+                    ordered.append(text)
+
+        for candidate in ordered:
+            if candidate in blocked:
+                continue
+            return {"resolved_model": candidate, "hit": True}
+
+        # 命中映射但无可用模型：交给调用方做 fallback（避免把被屏蔽 key 直接打到上游）
+        return {"resolved_model": None, "hit": True}
+
+    async def sync_to_supabase(self, *, delete_missing: bool = False) -> dict[str, Any]:
+        """把当前映射推送到 Supabase（若未配置 Supabase，则返回 skipped）。"""
+
+        mappings = await self.list_mappings()
+        return await self._ai_service.push_model_mappings_to_supabase(mappings, delete_missing=delete_missing)
 
     async def resolve_for_message(
         self,

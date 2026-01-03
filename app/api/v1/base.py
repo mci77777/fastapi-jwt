@@ -442,6 +442,7 @@ async def get_user_api(current_user: AuthenticatedUser = Depends(get_current_use
 
     if is_admin:
         apis.append("post/api/v1/admin/exercise/library/publish")
+        apis.append("post/api/v1/admin/exercise/library/patch")
         apis.append("get/api/v1/llm/models/blocked")
         apis.append("put/api/v1/llm/models/blocked")
         apis.append("post/api/v1/llm/model-groups")

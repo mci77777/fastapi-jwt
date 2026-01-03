@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
@@ -76,6 +76,24 @@ async def activate_model_group(
     return create_response(data=mapping, msg="默认模型已更新")
 
 
+@router.delete("/model-groups/{mapping_id}")
+async def delete_model_group(
+    mapping_id: str,
+    request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    service = get_mapping_service(request)
+    try:
+        deleted = await service.delete_mapping(mapping_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=create_response(code=422, msg=str(exc)),
+        ) from exc
+    return create_response(data={"deleted": deleted, "id": mapping_id}, msg="已删除" if deleted else "不存在")
+
+
 @router.post("/model-groups/sync-to-supabase")
 async def sync_mappings_to_supabase(
     request: Request,
@@ -88,14 +106,11 @@ async def sync_mappings_to_supabase(
     注意：此操作会覆盖 Supabase 中的现有映射数据。
     """
     service = get_mapping_service(request)
-    mappings = await service.list_mappings()
-
-    # TODO: 实现 Supabase 同步逻辑
-    # 当前返回映射数量作为占位实现
-    return create_response(
-        data={"synced_count": len(mappings), "mappings": mappings},
-        msg=f"已同步 {len(mappings)} 条映射到 Supabase（占位实现）",
-    )
+    try:
+        result = await service.sync_to_supabase(delete_missing=False)
+    except RuntimeError as exc:
+        return create_response(code=424, msg=str(exc), data={"error": str(exc)})
+    return create_response(data=result, msg=f"已同步 {result.get('synced_count', 0)} 条映射到 Supabase")
 
 
 __all__ = ["router", "ModelMappingPayload", "ActivateMappingRequest"]
