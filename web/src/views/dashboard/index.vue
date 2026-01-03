@@ -12,6 +12,7 @@ import PollingConfig from '@/components/dashboard/PollingConfig.vue'
 import StatDetailModal from '@/components/dashboard/StatDetailModal.vue'
 import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
 import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
+import ModelObservabilityCard from '@/components/dashboard/ModelObservabilityCard.vue'
 
 // Dashboard API
 import {
@@ -511,6 +512,7 @@ onBeforeUnmount(() => {
        </div>
     </div>
 
+    <ModelObservabilityCard />
 
     <!-- Dialogs -->
     <PollingConfig

@@ -1,4 +1,10 @@
-"""官方动作库（Exercise Library）版本化快照 + diff 计算服务。"""
+"""官方动作库（Exercise Library）版本化快照 + diff 计算服务。
+
+对外契约以 `docs/后端方案/动作库-种子数据库scheme-后端须知.md` 为准：
+- meta: version/totalCount/lastUpdated/checksum/downloadUrl
+- updates: fromVersion/toVersion/added/updated/deleted/timestamp
+- full: List<ExerciseDto>
+"""
 
 from __future__ import annotations
 
@@ -15,50 +21,57 @@ from app.db.sqlite_manager import SQLiteManager
 
 
 class ExerciseDto(BaseModel):
-    """与 App 侧 ExerciseDto 对齐（camelCase）。"""
+    """与 App 侧 ExerciseDto 对齐（camelCase，允许前向字段）。"""
 
-    model_config = ConfigDict(extra="forbid")
+    # 允许携带前向字段，并在发布/快照中保留（避免 admin 发布时丢字段）
+    model_config = ConfigDict(extra="allow")
 
     id: str
     name: str
-    muscleGroup: str
-    equipment: str
     description: str | None = None
-    imageUrl: str | None = None
-    videoUrl: str | None = None
-    defaultSets: int
-    defaultReps: int
-    defaultWeight: float | None = None
-    steps: list[str]
-    tips: list[str]
-    userId: str | None = None
-    isCustom: bool
-    isFavorite: bool
-    difficultyLevel: int
-    calories: int | None = None
-    targetMuscles: list[str]
-    instructions: list[str]
-    embedding: str | None = None
+    muscleGroup: str
+    category: str
+    equipment: list[str]
+    difficulty: str
+    source: str = "OFFICIAL"
+    isCustom: bool = False
+    isOfficial: bool = True
     createdAt: int
     updatedAt: int
-    createdByUserId: str | None = None
 
 
 class ExerciseLibraryMeta(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: int
-    checksum: str | None = None
-    generatedAt: int | None = None
-    totalCount: int | None = None
+    totalCount: int
+    lastUpdated: int
+    checksum: str
+    downloadUrl: str | None = None
 
 
 class ExerciseLibraryUpdates(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    fromVersion: int
+    toVersion: int
     added: list[ExerciseDto]
     updated: list[ExerciseDto]
     deleted: list[str]
+    timestamp: int
+
+
+class ExerciseSeedFile(BaseModel):
+    """assets/exercise/exercise_official_seed.json（ExerciseSeedData）。"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    schemaVersion: str | None = None
+    entity: str | None = None
+    entityVersion: int
+    generatedAt: int | None = None
+    totalCount: int | None = None
+    payload: list[ExerciseDto]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +81,13 @@ class SnapshotRow:
     generated_at: int | None
     total_count: int
     payload_json: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExerciseLibraryDiff:
+    added: list[ExerciseDto]
+    updated: list[ExerciseDto]
+    deleted: list[str]
 
 
 class ExerciseLibraryError(RuntimeError):
@@ -107,8 +127,13 @@ class ExerciseLibraryService:
         if latest is not None:
             return self._row_to_meta(latest)
 
-        payload = self._load_seed_file()
-        return await self.publish(payload, generated_at_ms=_now_ms())
+        payload, seed_meta = self._load_seed_file()
+        version_override = None
+        generated_at_ms = _now_ms()
+        if seed_meta:
+            version_override = seed_meta.get("entityVersion")
+            generated_at_ms = int(seed_meta.get("generatedAt") or generated_at_ms)
+        return await self.publish(payload, generated_at_ms=generated_at_ms, version_override=version_override)
 
     async def get_meta(self) -> ExerciseLibraryMeta:
         latest = await self._get_latest_snapshot()
@@ -129,19 +154,48 @@ class ExerciseLibraryService:
 
         to_snapshot = await self._get_snapshot(to_version)
         new_items = _exercise_list_adapter.validate_python(json.loads(to_snapshot.payload_json))
+        timestamp_ms = int(to_snapshot.generated_at or _now_ms())
 
         if from_version == to_version:
-            return ExerciseLibraryUpdates(added=[], updated=[], deleted=[])
+            return ExerciseLibraryUpdates(
+                fromVersion=int(from_version),
+                toVersion=int(to_version),
+                added=[],
+                updated=[],
+                deleted=[],
+                timestamp=timestamp_ms,
+            )
 
         if from_version == 0:
-            return ExerciseLibraryUpdates(added=new_items, updated=[], deleted=[])
+            return ExerciseLibraryUpdates(
+                fromVersion=int(from_version),
+                toVersion=int(to_version),
+                added=new_items,
+                updated=[],
+                deleted=[],
+                timestamp=timestamp_ms,
+            )
 
         from_snapshot = await self._get_snapshot(from_version)
         old_items = _exercise_list_adapter.validate_python(json.loads(from_snapshot.payload_json))
 
-        return self._diff(old_items, new_items)
+        diff = self._diff(old_items, new_items)
+        return ExerciseLibraryUpdates(
+            fromVersion=int(from_version),
+            toVersion=int(to_version),
+            added=diff.added,
+            updated=diff.updated,
+            deleted=diff.deleted,
+            timestamp=timestamp_ms,
+        )
 
-    async def publish(self, items: list[ExerciseDto], *, generated_at_ms: int | None = None) -> ExerciseLibraryMeta:
+    async def publish(
+        self,
+        items: list[ExerciseDto],
+        *,
+        generated_at_ms: int | None = None,
+        version_override: int | None = None,
+    ) -> ExerciseLibraryMeta:
         if not items:
             raise ExerciseLibraryError("empty_seed", "Seed payload must not be empty")
 
@@ -151,10 +205,22 @@ class ExerciseLibraryService:
         checksum = _sha256_hex(_canonical_json(normalized))
 
         latest = await self._get_latest_snapshot()
-        if latest is not None and latest.checksum == checksum:
-            return self._row_to_meta(latest)
-
-        next_version = (latest.version + 1) if latest is not None else 1
+        if version_override is None:
+            if latest is not None and latest.checksum == checksum:
+                return self._row_to_meta(latest)
+            next_version = (latest.version + 1) if latest is not None else 1
+        else:
+            try:
+                next_version = int(version_override)
+            except Exception as exc:
+                raise ExerciseLibraryError("invalid_version", "Version must be an integer") from exc
+            if next_version < 1:
+                raise ExerciseLibraryError("invalid_version", "Version must be >= 1")
+            if latest is not None and next_version <= latest.version:
+                raise ExerciseLibraryError(
+                    "invalid_version",
+                    f"Version must be greater than current version={latest.version}",
+                )
         total_count = len(normalized)
         generated_at_ms = generated_at_ms if generated_at_ms is not None else _now_ms()
 
@@ -168,16 +234,31 @@ class ExerciseLibraryService:
 
         return ExerciseLibraryMeta(
             version=next_version,
-            checksum=checksum,
-            generatedAt=generated_at_ms,
             totalCount=total_count,
+            lastUpdated=generated_at_ms,
+            checksum=f"sha256:{checksum}",
+            downloadUrl=None,
         )
 
-    def _load_seed_file(self) -> list[ExerciseDto]:
+    def _load_seed_file(self) -> tuple[list[ExerciseDto], dict[str, Any] | None]:
         if not self._seed_path.exists():
             raise ExerciseLibraryError("seed_not_found", f"Seed file not found: {self._seed_path.as_posix()}")
         raw = json.loads(self._seed_path.read_text(encoding="utf-8"))
-        return _exercise_list_adapter.validate_python(raw)
+        if isinstance(raw, list):
+            return _exercise_list_adapter.validate_python(raw), None
+        if isinstance(raw, dict):
+            if "payload" in raw:
+                seed = ExerciseSeedFile.model_validate(raw)
+                meta = {
+                    "entityVersion": seed.entityVersion,
+                    "generatedAt": seed.generatedAt,
+                    "totalCount": seed.totalCount,
+                }
+                return seed.payload, meta
+            candidate = raw.get("items") or raw.get("exercises")
+            if isinstance(candidate, list):
+                return _exercise_list_adapter.validate_python(candidate), None
+        raise ExerciseLibraryError("invalid_seed_format", "Seed JSON must be a list or an ExerciseSeedData object")
 
     async def _get_latest_snapshot(self) -> SnapshotRow | None:
         row = await self._db.fetchone(
@@ -224,14 +305,16 @@ class ExerciseLibraryService:
         )
 
     def _row_to_meta(self, row: SnapshotRow) -> ExerciseLibraryMeta:
+        last_updated = int(row.generated_at or 0)
         return ExerciseLibraryMeta(
             version=row.version,
-            checksum=row.checksum,
-            generatedAt=row.generated_at,
             totalCount=row.total_count,
+            lastUpdated=last_updated,
+            checksum=f"sha256:{row.checksum}",
+            downloadUrl=None,
         )
 
-    def _diff(self, old_items: list[ExerciseDto], new_items: list[ExerciseDto]) -> ExerciseLibraryUpdates:
+    def _diff(self, old_items: list[ExerciseDto], new_items: list[ExerciseDto]) -> ExerciseLibraryDiff:
         old_by_id = {item.id: item for item in old_items}
         new_by_id = {item.id: item for item in new_items}
 
@@ -252,5 +335,4 @@ class ExerciseLibraryService:
             if _sha256_hex(_canonical_json(old_payload)) != _sha256_hex(_canonical_json(new_payload)):
                 updated.append(new_by_id[item_id])
 
-        return ExerciseLibraryUpdates(added=added, updated=updated, deleted=deleted)
-
+        return ExerciseLibraryDiff(added=added, updated=updated, deleted=deleted)

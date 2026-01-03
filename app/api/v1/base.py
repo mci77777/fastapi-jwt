@@ -286,6 +286,10 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
     logger = logging.getLogger(__name__)
     logger.info("=== get_user_menu called === v3")
 
+    user_metadata = current_user.claims.get("user_metadata") or {}
+    username = (user_metadata.get("username") or "").strip()
+    is_admin = bool(user_metadata.get("is_admin", False)) or username == "admin"
+
     # 临时硬编码菜单，实际应该从数据库查询
     # 菜单配置：Dashboard (0) → 系统管理 (5) → AI模型管理 (10)
     menus = [
@@ -389,6 +393,31 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
             ],
         },
     ]
+
+    if is_admin:
+        menus.append(
+            {
+                "name": "动作库管理",
+                "path": "/exercise",
+                "component": "/exercise",
+                "icon": "mdi:dumbbell",
+                "order": 11,
+                "is_hidden": False,
+                "redirect": None,
+                "keepalive": False,
+                "children": [
+                    {
+                        "name": "官方库种子发布",
+                        "path": "library/seed",
+                        "component": "/exercise/library/seed",
+                        "icon": "mdi:database-arrow-up",
+                        "order": 1,
+                        "is_hidden": False,
+                        "keepalive": False,
+                    }
+                ],
+            }
+        )
     logger.info(f"Returning menus: {menus}")
     return create_response(data=menus)
 
@@ -396,6 +425,10 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
 @router.get("/userapi", summary="获取用户API权限")
 async def get_user_api(current_user: AuthenticatedUser = Depends(get_current_user_from_token)) -> Dict[str, Any]:
     """获取当前用户的API权限。"""
+    user_metadata = current_user.claims.get("user_metadata") or {}
+    username = (user_metadata.get("username") or "").strip()
+    is_admin = bool(user_metadata.get("is_admin", False)) or username == "admin"
+
     # 临时硬编码API权限，实际应该从数据库查询
     apis = [
         "get/api/v1/llm/models",
@@ -406,6 +439,14 @@ async def get_user_api(current_user: AuthenticatedUser = Depends(get_current_use
         "put/api/v1/llm/prompts",
         "post/api/v1/llm/prompts/activate",
     ]
+
+    if is_admin:
+        apis.append("post/api/v1/admin/exercise/library/publish")
+        apis.append("get/api/v1/llm/models/blocked")
+        apis.append("put/api/v1/llm/models/blocked")
+        apis.append("post/api/v1/llm/model-groups")
+        apis.append("post/api/v1/llm/model-groups/activate")
+        apis.append("post/api/v1/llm/model-groups/sync-to-supabase")
     return create_response(data=apis)
 
 

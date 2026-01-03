@@ -8,9 +8,12 @@ class TestExerciseLibraryContracts:
         resp = client.get("/api/v1/exercise/library/meta")
         assert resp.status_code == 200
         data = resp.json()
-        assert set(data.keys()) <= {"version", "checksum", "generatedAt", "totalCount"}
+        assert set(data.keys()) <= {"version", "totalCount", "lastUpdated", "checksum", "downloadUrl"}
         assert isinstance(data["version"], int)
         assert data["version"] >= 1
+        assert isinstance(data["totalCount"], int)
+        assert isinstance(data["lastUpdated"], int)
+        assert isinstance(data["checksum"], str)
 
     def test_full_contract(self, client):
         resp = client.get("/api/v1/exercise/library/full")
@@ -22,25 +25,21 @@ class TestExerciseLibraryContracts:
         for key in (
             "id",
             "name",
+            "description",
             "muscleGroup",
+            "category",
             "equipment",
-            "defaultSets",
-            "defaultReps",
-            "steps",
-            "tips",
+            "difficulty",
+            "source",
             "isCustom",
-            "isFavorite",
-            "difficultyLevel",
-            "targetMuscles",
-            "instructions",
+            "isOfficial",
             "createdAt",
             "updatedAt",
         ):
             assert key in sample
 
         assert isinstance(sample["id"], str)
-        assert isinstance(sample["steps"], list)
-        assert isinstance(sample["tips"], list)
+        assert isinstance(sample["equipment"], list)
         assert isinstance(sample["isCustom"], bool)
 
     def test_updates_contract_from_zero(self, client):
@@ -50,7 +49,10 @@ class TestExerciseLibraryContracts:
         resp = client.get(f"/api/v1/exercise/library/updates?from=0&to={version}")
         assert resp.status_code == 200
         data = resp.json()
-        assert set(data.keys()) == {"added", "updated", "deleted"}
+        assert set(data.keys()) == {"fromVersion", "toVersion", "added", "updated", "deleted", "timestamp"}
+        assert int(data["fromVersion"]) == 0
+        assert int(data["toVersion"]) == int(version)
+        assert isinstance(data["timestamp"], int)
         assert isinstance(data["added"], list)
         assert isinstance(data["updated"], list)
         assert isinstance(data["deleted"], list)
@@ -66,4 +68,3 @@ class TestExerciseLibraryContracts:
     def test_updates_invalid_range(self, client):
         resp = client.get("/api/v1/exercise/library/updates?from=2&to=1")
         assert resp.status_code == 400
-

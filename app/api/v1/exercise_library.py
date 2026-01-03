@@ -13,7 +13,7 @@ router = APIRouter(prefix="/exercise/library", tags=["exercise-library"])
 
 def _get_service(request: Request) -> ExerciseLibraryService:
     sqlite_manager = request.app.state.sqlite_manager
-    return ExerciseLibraryService(sqlite_manager, seed_path=Path("assets") / "exercise_library" / "seed.json")
+    return ExerciseLibraryService(sqlite_manager, seed_path=Path("assets") / "exercise" / "exercise_official_seed.json")
 
 
 @router.get("/meta")
@@ -46,4 +46,3 @@ async def get_exercise_library_updates(
     except ExerciseLibraryError as exc:
         status = 400 if exc.code.startswith("invalid_") else 404 if exc.code == "snapshot_not_found" else 503
         raise HTTPException(status_code=status, detail={"code": exc.code, "message": str(exc)}) from exc
-

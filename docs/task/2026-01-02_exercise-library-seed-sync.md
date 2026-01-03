@@ -15,7 +15,7 @@
 > 响应：直出 JSON，不包裹 `code/data` 二层结构；字段 camelCase。
 
 1) `GET /api/v1/exercise/library/meta`
-- 返回：`{ "version": <int>, "checksum": <string?>, "generatedAt": <int?>, "totalCount": <int?> }`
+- 返回：`{ "version": <int>, "totalCount": <int>, "lastUpdated": <long(ms)>, "checksum": <string>, "downloadUrl": <string|null> }`
 - 语义：服务端当前“官方库快照”的最新版本信息（version 单调递增）。
 
 2) `GET /api/v1/exercise/library/full`
@@ -23,7 +23,7 @@
 - 语义：返回最新版本的完整官方库（用于客户端回退全量覆盖）。
 
 3) `GET /api/v1/exercise/library/updates?from=<int>&to=<int>`
-- 返回：`{ "added": List[ExerciseDto], "updated": List[ExerciseDto], "deleted": List[string] }`
+- 返回：`{ "fromVersion": <int>, "toVersion": <int>, "added": List[ExerciseDto], "updated": List[ExerciseDto], "deleted": List[string], "timestamp": <long(ms)> }`
 - 语义：从 `from` 到 `to` 的增量 diff（客户端会按 `id` 删除/批量 upsert）。
 - 兼容：若 `from` 过旧或 diff 不可得，可返回 4xx/5xx 触发客户端自动回退 `full`。
 
@@ -51,8 +51,13 @@
 建议二选一：
 1) **脚本发布（优先 KISS）**：提供 `scripts/publish_exercise_seed.py`（读 seed.json → 生成 version+checksum+diff → 写入 DB/文件）。
 2) **管理 API 发布**（需要鉴权）：
-   - `POST /api/v1/admin/exercise/library/publish`：上传 seed JSON 或引用位置
+   - `POST /api/v1/admin/exercise/library/publish`：上传 seed JSON（已实现）
    - 返回新 `meta`（version/checksum/totalCount）
+
+实现约定（现状 SSOT）：
+- 鉴权：仅 `admin` 用户可用（Dashboard 本地账号 / JWT `user_metadata.is_admin=true`）。
+- 请求头：支持 `token: <jwt>` 或 `Authorization: Bearer <jwt>`。
+- 请求体：支持直接传 `List[ExerciseDto]` 数组，或 `{ "items": [...] }` / `{ "payload": [...] }` / `{ "exercises": [...] }`。
 
 ## 🔐 鉴权与策略
 
@@ -73,6 +78,5 @@
 
 ## 📝 备注（客户端侧实现提示）
 
-- App 侧 official id 默认规则：`off_${name.hashCode().toString(16)}`（JVM String.hashCode），更推荐直接以 seed 中的 `id` 为准，避免多语言实现漂移。
+- official id：当前官方 seed 使用 `off_${md5(name).take(8)}`（UTF-8，取 8 位十六进制小写）；更推荐直接以 seed 中的 `id` 为准，避免多语言实现漂移。
 - App 侧每天只检测一次（节流 SSOT=本地 prefs 的 `last_check_at_ms`），不依赖 SSE 推送。
-

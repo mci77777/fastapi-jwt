@@ -26,6 +26,11 @@ export const fetchPrompts = (params = {}) => request.get('/llm/prompts', { param
 export const fetchPromptTests = (promptId, params = {}) =>
   request.get(`/llm/prompts/${promptId}/tests`, { params })
 
+export const fetchAppModels = (params = {}) => request.get('/llm/app/models', { params })
+
+export const fetchBlockedModels = () => request.get('/llm/models/blocked')
+export const upsertBlockedModels = (updates = []) => request.put('/llm/models/blocked', { updates })
+
 // JWT 测试相关
 export const createMailUser = (data = {}) => request.post('/llm/tests/create-mail-user', data)
 export const createAnonToken = (data = {}) => request.post('/llm/tests/anon-token', data)

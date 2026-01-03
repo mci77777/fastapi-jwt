@@ -21,6 +21,7 @@ from .llm_common import (
     get_mapping_service,
     get_monitor,
     get_service,
+    is_dashboard_admin_user,
     require_llm_admin,
 )
 
@@ -65,6 +66,15 @@ class MonitorControlRequest(BaseModel):
     interval_seconds: int = Field(..., ge=10, le=600, description="Interval seconds")
 
 
+class BlockedModelUpdate(BaseModel):
+    model: str = Field(..., min_length=1, max_length=200)
+    blocked: bool = Field(default=True)
+
+
+class BlockedModelsUpdateRequest(BaseModel):
+    updates: list[BlockedModelUpdate] = Field(default_factory=list)
+
+
 @router.get("/app/models")
 async def list_app_models(
     request: Request,
@@ -76,6 +86,8 @@ async def list_app_models(
 
     mapping_service = get_mapping_service(request)
     settings = get_settings()
+    blocked_models = set(await mapping_service.list_blocked_models())
+    allow_debug = bool(debug) and (getattr(settings, "debug", False) or is_dashboard_admin_user(current_user))
 
     try:
         all_mappings = await mapping_service.list_mappings()
@@ -109,15 +121,27 @@ async def list_app_models(
             "scope_type": scope_type,
         }
 
-        if debug and getattr(settings, "debug", False):
+        if allow_debug:
             candidates_list = mapping.get("candidates") if isinstance(mapping.get("candidates"), list) else []
+            filtered_candidates = [item for item in candidates_list if isinstance(item, str) and item.strip() and item.strip() not in blocked_models]
+
             resolved_model = mapping.get("default_model")
-            if not isinstance(resolved_model, str) or not resolved_model.strip():
-                resolved_model = candidates_list[0] if candidates_list else None
+            if isinstance(resolved_model, str):
+                resolved_model = resolved_model.strip()
+            if not isinstance(resolved_model, str) or not resolved_model or resolved_model in blocked_models:
+                resolved_model = filtered_candidates[0] if filtered_candidates else None
+
             item.update(
                 {
                     "resolved_model": resolved_model,
-                    "candidates": candidates_list,
+                    "candidates": filtered_candidates,
+                    "blocked_candidates": sorted(
+                        {
+                            str(value).strip()
+                            for value in candidates_list
+                            if isinstance(value, str) and value.strip() and value.strip() in blocked_models
+                        }
+                    ),
                     "updated_at": mapping.get("updated_at"),
                     "source": mapping.get("source"),
                 }
@@ -142,6 +166,29 @@ async def list_app_models(
         total=len(deduped),
         recommended_model=recommended_model,
     )
+
+
+@router.get("/models/blocked")
+async def list_blocked_models(
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    mapping_service = get_mapping_service(request)
+    blocked = await mapping_service.list_blocked_models()
+    return create_response(data={"blocked": blocked, "total": len(blocked)})
+
+
+@router.put("/models/blocked")
+async def upsert_blocked_models(
+    payload: BlockedModelsUpdateRequest,
+    request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    mapping_service = get_mapping_service(request)
+    updates = [item.model_dump(mode="python") for item in payload.updates]
+    blocked = await mapping_service.upsert_blocked_models(updates)
+    return create_response(data={"blocked": blocked, "total": len(blocked)}, msg="已更新")
 
 
 @router.get("/models")

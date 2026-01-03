@@ -17,6 +17,13 @@ from app.services.monitor_service import EndpointMonitor
 from app.settings.config import get_settings
 
 
+def is_dashboard_admin_user(user: AuthenticatedUser) -> bool:
+    claims = getattr(user, "claims", {}) or {}
+    user_metadata = claims.get("user_metadata") or {}
+    username = str(user_metadata.get("username") or "").strip()
+    return username == "admin" or bool(user_metadata.get("is_admin", False))
+
+
 def create_response(
     data: Any = None,
     *,
@@ -105,6 +112,10 @@ async def require_llm_admin(
     if getattr(settings, "debug", False):
         return
 
+    # Dashboard 本地 admin：兼容 /base/access_token 生成的测试 JWT（SSOT：user_metadata.is_admin 或 username=admin）
+    if is_dashboard_admin_user(current_user):
+        return
+
     admin_key = (getattr(settings, "llm_admin_api_key", None) or "").strip()
     if admin_key and x_llm_admin_key and x_llm_admin_key.strip() == admin_key:
         return
@@ -133,4 +144,5 @@ __all__ = [
     "SyncDirection",
     "SyncRequest",
     "require_llm_admin",
+    "is_dashboard_admin_user",
 ]

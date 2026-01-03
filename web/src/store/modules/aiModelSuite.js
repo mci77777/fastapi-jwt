@@ -4,6 +4,7 @@ import {
   fetchModels,
   fetchMappings,
   fetchPrompts,
+  fetchBlockedModels,
   saveMapping,
   activateMapping,
   updateModel,
@@ -20,6 +21,8 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
     mappingsLoading: false,
     prompts: [],
     promptsLoading: false,
+    blockedModels: [],
+    blockedModelsLoading: false,
     syncingEndpoints: new Set(),
     syncAllLoading: false,
     mailApiKey: localStorage.getItem('ai_suite_mail_api_key') || '',
@@ -34,13 +37,14 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
     },
     modelCandidates(state) {
       const models = new Set()
+      const blocked = new Set(state.blockedModels || [])
       ;(state.models || []).forEach((endpoint) => {
         if (Array.isArray(endpoint.model_list)) {
           endpoint.model_list.forEach((model) => {
-            if (model) models.add(model)
+            if (model && !blocked.has(model)) models.add(model)
           })
         } else if (endpoint.model) {
-          models.add(endpoint.model)
+          if (!blocked.has(endpoint.model)) models.add(endpoint.model)
         }
       })
       return Array.from(models).sort()
@@ -54,6 +58,15 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
         this.models = data || []
       } finally {
         this.modelsLoading = false
+      }
+    },
+    async loadBlockedModels() {
+      this.blockedModelsLoading = true
+      try {
+        const { data } = await fetchBlockedModels()
+        this.blockedModels = data?.blocked || []
+      } finally {
+        this.blockedModelsLoading = false
       }
     },
     async setDefaultModel(model) {

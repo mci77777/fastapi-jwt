@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
 
-from .llm_common import create_response, get_mapping_service
+from .llm_common import create_response, get_mapping_service, require_llm_admin
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 
@@ -55,6 +55,7 @@ async def list_model_groups(
 async def upsert_model_group(
     payload: ModelMappingPayload,
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     service = get_mapping_service(request)
@@ -67,6 +68,7 @@ async def activate_model_group(
     mapping_id: str,
     payload: ActivateMappingRequest,
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     service = get_mapping_service(request)
@@ -77,6 +79,7 @@ async def activate_model_group(
 @router.post("/model-groups/sync-to-supabase")
 async def sync_mappings_to_supabase(
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     """同步所有模型映射到 Supabase。

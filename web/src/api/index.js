@@ -111,6 +111,9 @@ export default {
     request.get(`/llm/prompts/${promptId}/tests`, { params }),
   // llm test
   testPrompt: (data = {}) => request.post('/llm/prompts/test', data),
+  // exercise library (admin)
+  getExerciseLibraryMeta: () => request.get('/exercise/library/meta'),
+  publishExerciseLibrarySeed: (items) => request.post('/admin/exercise/library/publish', items),
   // depts
   getDepts: (params = {}) => request.get('/dept/list', { params }),
   createDept: (data = {}) => request.post('/dept/create', data),

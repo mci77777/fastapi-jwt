@@ -12,6 +12,7 @@ from typing import Any
 from app.services.ai_config_service import AIConfigService
 
 MAPPING_KEY = "__model_mapping"
+BLOCKED_MODELS_KEY = "__blocked_models"
 
 
 def _utc_now() -> str:
@@ -58,7 +59,58 @@ class ModelMappingService:
         self._storage_dir = storage_dir
         self._storage_dir.mkdir(parents=True, exist_ok=True)
         self._file_path = self._storage_dir / "model_mappings.json"
+        self._blocked_file_path = self._storage_dir / "blocked_models.json"
         self._lock = asyncio.Lock()
+
+    async def list_blocked_models(self) -> list[str]:
+        payload = await self._read_blocked()
+        blocked = payload.get("blocked") if isinstance(payload, dict) else None
+        if not isinstance(blocked, list):
+            return []
+        items: list[str] = []
+        for value in blocked:
+            text = str(value or "").strip()
+            if text:
+                items.append(text)
+        return sorted(set(items))
+
+    async def upsert_blocked_models(self, updates: list[dict[str, Any]]) -> list[str]:
+        normalized: list[tuple[str, bool]] = []
+        for item in updates:
+            if not isinstance(item, dict):
+                continue
+            model = str(item.get("model") or "").strip()
+            if not model:
+                continue
+            blocked = bool(item.get("blocked", True))
+            normalized.append((model, blocked))
+
+        async with self._lock:
+            payload = await self._read_blocked_unlocked()
+            existing = payload.get("blocked") if isinstance(payload, dict) else None
+            blocked_set: set[str] = set()
+            if isinstance(existing, list):
+                for value in existing:
+                    text = str(value or "").strip()
+                    if text:
+                        blocked_set.add(text)
+
+            for model, blocked in normalized:
+                if blocked:
+                    blocked_set.add(model)
+                else:
+                    blocked_set.discard(model)
+
+            new_payload = {
+                "updated_at": _utc_now(),
+                "blocked": sorted(blocked_set),
+            }
+            await asyncio.to_thread(
+                self._blocked_file_path.write_text,
+                json.dumps(new_payload, ensure_ascii=False, indent=2),
+                "utf-8",
+            )
+            return list(new_payload["blocked"])
 
     async def list_mappings(
         self,
@@ -148,19 +200,36 @@ class ModelMappingService:
             candidates.append(("tenant", str(tenant_id), "fallback"))
         candidates.append(("global", "global", "fallback"))
 
+        blocked_models = set(await self.list_blocked_models())
+
         def _pick(mapping: dict[str, Any]) -> tuple[str | None, float | None, str | None]:
             default_model = mapping.get("default_model")
+            candidates_list = mapping.get("candidates") or []
+
+            ordered: list[tuple[str, str]] = []
             if isinstance(default_model, str) and default_model.strip():
-                model = default_model.strip()
-            else:
-                candidates_list = mapping.get("candidates") or []
-                model = candidates_list[0] if isinstance(candidates_list, list) and candidates_list else None
+                ordered.append((default_model.strip(), "default_model"))
+            if isinstance(candidates_list, list):
+                for value in candidates_list:
+                    text = str(value or "").strip()
+                    if text:
+                        ordered.append((text, "first_candidate"))
+
+            model = None
+            picked_from = None
+            for candidate, reason in ordered:
+                if candidate in blocked_models:
+                    continue
+                model = candidate
+                picked_from = reason
+                break
+
             meta = mapping.get("metadata") or {}
             temperature = meta.get("temperature") if isinstance(meta, dict) else None
             temp_value = None
             if isinstance(temperature, (int, float)):
                 temp_value = float(temperature)
-            return model, temp_value, "default_model" if default_model else "first_candidate"
+            return model, temp_value, picked_from
 
         for scope_type, scope_key, source in candidates:
             found = False
@@ -200,7 +269,7 @@ class ModelMappingService:
                     "temperature": temperature,
                     "hit": {"scope_type": scope_type, "scope_key": scope_key, "source": source},
                     "chain": chain,
-                    "reason": "mapping_empty",
+                    "reason": "mapping_empty_or_blocked",
                 }
 
             return {
@@ -212,6 +281,20 @@ class ModelMappingService:
             }
 
         return {"model": None, "temperature": None, "hit": None, "chain": chain, "reason": "mapping_not_found"}
+
+    async def _read_blocked(self) -> dict[str, Any]:
+        async with self._lock:
+            return await self._read_blocked_unlocked()
+
+    async def _read_blocked_unlocked(self) -> dict[str, Any]:
+        if not self._blocked_file_path.exists():
+            return {"updated_at": None, "blocked": []}
+        try:
+            raw = await asyncio.to_thread(self._blocked_file_path.read_text, "utf-8")
+            data = json.loads(raw)
+            return data if isinstance(data, dict) else {"updated_at": None, "blocked": []}
+        except Exception:
+            return {"updated_at": None, "blocked": []}
 
     async def _collect_prompt_mappings(self) -> list[ModelMapping]:
         items: list[ModelMapping] = []

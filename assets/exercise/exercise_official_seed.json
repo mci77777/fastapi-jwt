@@ -1,0 +1,2117 @@
+{
+  "$schema": "./exercise_schema.json",
+  "schemaVersion": "1.0.0",
+  "entity": "EXERCISE",
+  "entityVersion": 2,
+  "generatedAt": 1767398400000,
+  "totalCount": 60,
+  "description": "GymBro 官方动作库种子数据 - 每个部位 10 个精选训练动作（共 60 个）",
+  "payload": [
+    {
+      "id": "off_5023c57c",
+      "name": "杠铃卧推",
+      "description": "经典胸部复合动作，兼顾力量与肌肉增长。",
+      "muscleGroup": "CHEST",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "BARBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "CHEST",
+        "SHOULDERS",
+        "TRICEPS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 120,
+      "steps": [
+        "肩胛下沉后缩，稳定上背",
+        "握距略宽于肩，杠铃下放至胸中部",
+        "发力推起至手臂伸直但不过度锁死"
+      ],
+      "tips": [
+        "全程控制杠铃轨迹",
+        "避免肘外展过大，保护肩关节"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1718716800000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_a9a8603d",
+      "name": "哑铃卧推",
+      "description": "哑铃提供更大活动范围，强化胸肌拉伸与控制。",
+      "muscleGroup": "CHEST",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "CHEST",
+        "SHOULDERS",
+        "TRICEPS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 90,
+      "steps": [
+        "平躺凳上，哑铃置于胸侧",
+        "下降至上臂与地面平行或略低",
+        "向上推起并在顶端收缩胸肌"
+      ],
+      "tips": [
+        "手腕保持中立，避免外翻",
+        "下放更慢，顶端更稳"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1718716800000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_2e0b6890",
+      "name": "上斜杠铃卧推",
+      "description": "强调上胸与前三角肌，改善胸型厚度。",
+      "muscleGroup": "CHEST",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "BARBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "CHEST",
+        "SHOULDERS",
+        "TRICEPS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 8,
+      "restTimeSeconds": 120,
+      "steps": [
+        "调整卧推凳至 30°–45°",
+        "杠铃下放至上胸区域",
+        "推起至顶端保持稳定"
+      ],
+      "tips": [
+        "角度过高会偏肩，优先 30°",
+        "下放控制避免弹胸"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_cff83088",
+      "name": "上斜哑铃卧推",
+      "description": "上斜角度 + 哑铃轨迹，提升上胸发力感。",
+      "muscleGroup": "CHEST",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "CHEST",
+        "SHOULDERS",
+        "TRICEPS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 90,
+      "steps": [
+        "凳子 30°–45°，哑铃起于肩上方",
+        "下降到胸上方两侧",
+        "推起并收紧胸肌"
+      ],
+      "tips": [
+        "肩胛保持稳定",
+        "肘部略内收，减少肩压"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_71b67f27",
+      "name": "下斜杠铃卧推",
+      "description": "更偏下胸与整体推举力量，关节压力相对更低。",
+      "muscleGroup": "CHEST",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "BARBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "CHEST",
+        "TRICEPS",
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 8,
+      "restTimeSeconds": 120,
+      "steps": [
+        "固定好下斜凳并系紧腿部",
+        "杠铃下放至下胸",
+        "推起回到起始位置"
+      ],
+      "tips": [
+        "保持臀部贴凳",
+        "不要用反弹借力"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_a19df483",
+      "name": "哑铃飞鸟",
+      "description": "孤立胸肌拉伸与收缩，强化胸肌外侧感觉。",
+      "muscleGroup": "CHEST",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "CHEST"
+      ],
+      "secondaryMuscles": [
+        "SHOULDERS"
+      ],
+      "difficulty": "NOVICE",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 75,
+      "steps": [
+        "平躺凳上，双臂微屈保持固定",
+        "向两侧缓慢打开至胸部充分拉伸",
+        "夹胸回到顶端"
+      ],
+      "tips": [
+        "肘角固定，避免变成推举",
+        "下放不过度，保护肩前束"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_3a373146",
+      "name": "绳索夹胸（站姿）",
+      "description": "绳索持续张力，适合泵感与胸中缝收缩。",
+      "muscleGroup": "CHEST",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "CABLE"
+      ],
+      "targetMuscles": [
+        "CHEST"
+      ],
+      "secondaryMuscles": [
+        "SHOULDERS"
+      ],
+      "difficulty": "NOVICE",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "站于龙门架中间，双手握把",
+        "双臂向前内收并在胸前交叉",
+        "缓慢还原保持张力"
+      ],
+      "tips": [
+        "躯干稳定不耸肩",
+        "顶端停 1 秒收缩"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_1430ea07",
+      "name": "俯卧撑（标准）",
+      "description": "徒手胸部基础动作，适合热身与容量补充。",
+      "muscleGroup": "CHEST",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "NONE"
+      ],
+      "targetMuscles": [
+        "CHEST",
+        "TRICEPS",
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "双手略宽于肩，身体一条直线",
+        "下放至胸接近地面",
+        "推起回到起始位置"
+      ],
+      "tips": [
+        "保持核心收紧避免塌腰",
+        "肘部与躯干约 45°"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_283cb641",
+      "name": "器械坐姿推胸",
+      "description": "轨迹稳定，适合新手建立推举发力与容量。",
+      "muscleGroup": "CHEST",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "MACHINE"
+      ],
+      "targetMuscles": [
+        "CHEST",
+        "TRICEPS"
+      ],
+      "secondaryMuscles": [
+        "SHOULDERS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 90,
+      "steps": [
+        "调整座椅使握把与胸同高",
+        "控制推起至接近伸直",
+        "缓慢回到胸部拉伸位"
+      ],
+      "tips": [
+        "肩胛贴靠靠背",
+        "不要耸肩代偿"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_bc9c09ea",
+      "name": "夹胸机（蝴蝶机）",
+      "description": "稳定夹胸轨迹，强化胸肌收缩峰值。",
+      "muscleGroup": "CHEST",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "MACHINE"
+      ],
+      "targetMuscles": [
+        "CHEST"
+      ],
+      "secondaryMuscles": [
+        "SHOULDERS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "前臂贴垫或握把，胸挺起",
+        "向内夹至胸前收缩",
+        "缓慢外放回到拉伸位"
+      ],
+      "tips": [
+        "动作范围以胸部拉伸为准",
+        "避免用肩带动"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_63bab238",
+      "name": "引体向上",
+      "description": "经典背部自重复合动作，强化背阔肌与上背控制。",
+      "muscleGroup": "BACK",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "PULL_UP_BAR"
+      ],
+      "targetMuscles": [
+        "BACK",
+        "ARMS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 8,
+      "restTimeSeconds": 120,
+      "steps": [
+        "握杠悬垂，肩胛下沉",
+        "用背部发力拉起至下巴过杠",
+        "控制下降回到悬垂"
+      ],
+      "tips": [
+        "避免耸肩缩颈",
+        "全程控制下降"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1718716800000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_dee0cb74",
+      "name": "杠铃划船",
+      "description": "厚背核心动作，提升背阔肌与菱形肌厚度。",
+      "muscleGroup": "BACK",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "BARBELL"
+      ],
+      "targetMuscles": [
+        "BACK"
+      ],
+      "secondaryMuscles": [
+        "CORE",
+        "HAMSTRINGS"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 4,
+      "defaultReps": 8,
+      "restTimeSeconds": 120,
+      "steps": [
+        "髋部后坐，背部中立俯身",
+        "杠铃拉向下腹/肚脐",
+        "控制下放保持背部张力"
+      ],
+      "tips": [
+        "避免借力摆动",
+        "拉到身体贴近再下放"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1718716800000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_ccd3a791",
+      "name": "高位下拉",
+      "description": "替代引体向上，适合补足背阔肌训练容量。",
+      "muscleGroup": "BACK",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "LAT_PULLDOWN"
+      ],
+      "targetMuscles": [
+        "BACK",
+        "ARMS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 90,
+      "steps": [
+        "坐稳固定大腿，胸挺",
+        "下拉至锁骨附近",
+        "缓慢回放至手臂伸展"
+      ],
+      "tips": [
+        "先下沉肩胛再拉",
+        "不要后仰过度"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_149d2347",
+      "name": "坐姿绳索划船",
+      "description": "稳定轨迹，强化背部水平拉与肩胛后缩。",
+      "muscleGroup": "BACK",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "CABLES"
+      ],
+      "targetMuscles": [
+        "BACK"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 90,
+      "steps": [
+        "坐稳，背部中立",
+        "拉把手至下腹并肩胛后缩",
+        "控制还原至肩胛前伸但不塌腰"
+      ],
+      "tips": [
+        "不要耸肩",
+        "拉时胸部保持打开"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_be2c31ec",
+      "name": "单臂哑铃划船",
+      "description": "改善左右差异，强化背阔肌单侧控制。",
+      "muscleGroup": "BACK",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "BACK"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "NOVICE",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 90,
+      "steps": [
+        "一手一膝支撑凳面保持稳定",
+        "哑铃拉向髋部",
+        "缓慢下放至肩胛伸展"
+      ],
+      "tips": [
+        "拉向“裤袋”位置更背阔",
+        "避免身体旋转借力"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_b4b7a10c",
+      "name": "T 杠划船",
+      "description": "更易维持躯干角度，强化中背厚度。",
+      "muscleGroup": "BACK",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "BARBELL"
+      ],
+      "targetMuscles": [
+        "BACK"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 8,
+      "restTimeSeconds": 120,
+      "steps": [
+        "俯身固定躯干角度",
+        "握把拉向胸下/上腹",
+        "控制下放保持张力"
+      ],
+      "tips": [
+        "顶端停 1 秒收缩",
+        "避免腰部塌陷"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_23a2e725",
+      "name": "直臂下压（绳索）",
+      "description": "孤立背阔肌下部，作为背部训练收尾。",
+      "muscleGroup": "BACK",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "CABLE"
+      ],
+      "targetMuscles": [
+        "BACK"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "站立微前倾，手臂伸直握绳",
+        "将绳子压至大腿旁",
+        "缓慢回到肩前位置"
+      ],
+      "tips": [
+        "手臂角度固定",
+        "感受腋下发力"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_f25db232",
+      "name": "面拉（Face Pull）",
+      "description": "强化后束与肩胛稳定，改善圆肩。",
+      "muscleGroup": "BACK",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "CABLE"
+      ],
+      "targetMuscles": [
+        "BACK",
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [
+        "TRAPEZIUS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "绳索与眼睛同高，握绳",
+        "拉向面部并外旋",
+        "缓慢还原保持张力"
+      ],
+      "tips": [
+        "肘高于肩略外展",
+        "顶端夹紧肩胛"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_37fe28a3",
+      "name": "反向飞鸟（上背）",
+      "description": "针对菱形肌与后束，提升上背线条。",
+      "muscleGroup": "BACK",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL"
+      ],
+      "targetMuscles": [
+        "BACK",
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [
+        "TRAPEZIUS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "髋部后坐俯身，背部中立",
+        "双臂向两侧打开至肩胛后缩",
+        "控制还原至拉伸位"
+      ],
+      "tips": [
+        "动作慢，避免借力甩动",
+        "手肘略弯保持固定"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_1e40366a",
+      "name": "罗马椅背伸",
+      "description": "强化下背与髋伸展控制，作为后链补充。",
+      "muscleGroup": "BACK",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "OTHER"
+      ],
+      "targetMuscles": [
+        "LOWER_BACK"
+      ],
+      "secondaryMuscles": [
+        "GLUTES",
+        "HAMSTRINGS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "固定好踝部，髋部贴垫",
+        "上身前屈至臀后链拉伸",
+        "髋伸展回到身体直线"
+      ],
+      "tips": [
+        "避免腰部过伸",
+        "发力来自臀与后链"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_eb02d317",
+      "name": "杠铃深蹲",
+      "description": "下肢力量基石动作，强化股四头、臀与核心稳定。",
+      "muscleGroup": "LEGS",
+      "category": "LOWER_BODY",
+      "equipment": [
+        "BARBELL",
+        "SQUAT_RACK"
+      ],
+      "targetMuscles": [
+        "LEGS",
+        "QUADRICEPS",
+        "GLUTES"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 4,
+      "defaultReps": 6,
+      "restTimeSeconds": 150,
+      "steps": [
+        "杠铃置于上背，双脚与肩同宽",
+        "髋后坐下蹲至大腿平行或略低",
+        "驱动脚掌推地站起"
+      ],
+      "tips": [
+        "膝盖方向与脚尖一致",
+        "背部保持中立不塌腰"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1718716800000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_615f2a8a",
+      "name": "硬拉",
+      "description": "后链复合动作，训练臀腿与背部整体力量。",
+      "muscleGroup": "LEGS",
+      "category": "LOWER_BODY",
+      "equipment": [
+        "BARBELL"
+      ],
+      "targetMuscles": [
+        "LEGS",
+        "HAMSTRINGS",
+        "GLUTES",
+        "LOWER_BACK"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "ADVANCED",
+      "defaultSets": 3,
+      "defaultReps": 5,
+      "restTimeSeconds": 180,
+      "steps": [
+        "杠铃贴近胫骨，背部中立",
+        "收紧核心并向上拉起至站直",
+        "控制下放回到地面"
+      ],
+      "tips": [
+        "全程杠铃贴近身体",
+        "避免圆背"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1718716800000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_e5e8da20",
+      "name": "前蹲（杠铃）",
+      "description": "更强调股四头，提升核心与直立姿势控制。",
+      "muscleGroup": "LEGS",
+      "category": "LOWER_BODY",
+      "equipment": [
+        "BARBELL",
+        "SQUAT_RACK"
+      ],
+      "targetMuscles": [
+        "LEGS",
+        "QUADRICEPS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 6,
+      "restTimeSeconds": 150,
+      "steps": [
+        "杠铃置于锁骨前，肘抬高",
+        "保持躯干直立下蹲",
+        "推地站起保持肘高"
+      ],
+      "tips": [
+        "脚跟稳固不抬起",
+        "避免肘部下掉"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_fa841310",
+      "name": "腿举（Leg Press）",
+      "description": "稳定轨迹下肢大重量训练，适合容量与力量。",
+      "muscleGroup": "LEGS",
+      "category": "LOWER_BODY",
+      "equipment": [
+        "LEG_PRESS"
+      ],
+      "targetMuscles": [
+        "LEGS",
+        "QUADRICEPS",
+        "GLUTES"
+      ],
+      "secondaryMuscles": [
+        "HAMSTRINGS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 4,
+      "defaultReps": 10,
+      "restTimeSeconds": 120,
+      "steps": [
+        "调整座椅，脚掌踩于踏板",
+        "屈膝下降至舒适深度",
+        "推起但不锁死膝关节"
+      ],
+      "tips": [
+        "膝盖方向与脚尖一致",
+        "腰背贴靠不塌腰"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_92075a88",
+      "name": "保加利亚分腿蹲",
+      "description": "单腿训练，改善左右差异并强化臀腿。",
+      "muscleGroup": "LEGS",
+      "category": "LOWER_BODY",
+      "equipment": [
+        "DUMBBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "LEGS",
+        "GLUTES",
+        "QUADRICEPS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 8,
+      "restTimeSeconds": 120,
+      "steps": [
+        "后脚置于凳上，前脚稳定",
+        "下蹲至后膝接近地面",
+        "推地站起回到起始"
+      ],
+      "tips": [
+        "前脚重心在中后部",
+        "躯干微前倾更臀部"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_e0a8763b",
+      "name": "行走弓步",
+      "description": "动态下肢训练，提升臀腿力量与稳定。",
+      "muscleGroup": "LEGS",
+      "category": "LOWER_BODY",
+      "equipment": [
+        "DUMBBELL"
+      ],
+      "targetMuscles": [
+        "LEGS",
+        "GLUTES",
+        "QUADRICEPS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "NOVICE",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 90,
+      "steps": [
+        "迈步向前下蹲至双膝约 90°",
+        "前脚推地起身并换步",
+        "保持躯干稳定连续前进"
+      ],
+      "tips": [
+        "步幅足够避免膝盖过前",
+        "躯干保持直立或微前倾"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_ef0ff73e",
+      "name": "腿屈伸（腿伸）",
+      "description": "孤立股四头肌，适合作为腿部补充。",
+      "muscleGroup": "LEGS",
+      "category": "LOWER_BODY",
+      "equipment": [
+        "MACHINE"
+      ],
+      "targetMuscles": [
+        "LEGS",
+        "QUADRICEPS"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "调整座椅与滚垫位置",
+        "伸膝抬起至接近锁死",
+        "缓慢下放保持张力"
+      ],
+      "tips": [
+        "避免甩动借力",
+        "顶端停 1 秒收缩"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_db9fc741",
+      "name": "腿弯举（腿后侧）",
+      "description": "孤立腘绳肌，平衡前后侧力量。",
+      "muscleGroup": "LEGS",
+      "category": "LOWER_BODY",
+      "equipment": [
+        "MACHINE"
+      ],
+      "targetMuscles": [
+        "LEGS",
+        "HAMSTRINGS"
+      ],
+      "secondaryMuscles": [
+        "GLUTES"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "固定好身体与腿部",
+        "屈膝卷起至顶端收缩",
+        "缓慢还原至伸展位"
+      ],
+      "tips": [
+        "控制离心更有效",
+        "避免腰部抬起"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_f82823fb",
+      "name": "站姿提踵",
+      "description": "强化小腿腓肠肌，提升踝关节稳定。",
+      "muscleGroup": "LEGS",
+      "category": "LOWER_BODY",
+      "equipment": [
+        "MACHINE"
+      ],
+      "targetMuscles": [
+        "LEGS",
+        "CALVES"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "BEGINNER",
+      "defaultSets": 4,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "前脚掌踩台阶，脚跟下沉",
+        "提踵至最高点收缩",
+        "缓慢下降到拉伸位"
+      ],
+      "tips": [
+        "顶端停 1 秒",
+        "全程控制不弹跳"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_f2d461d3",
+      "name": "臀推（Hip Thrust）",
+      "description": "臀部王牌动作，提升髋伸展力量与臀肌围度。",
+      "muscleGroup": "LEGS",
+      "category": "LOWER_BODY",
+      "equipment": [
+        "BARBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "LEGS",
+        "GLUTES"
+      ],
+      "secondaryMuscles": [
+        "HAMSTRINGS",
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 4,
+      "defaultReps": 8,
+      "restTimeSeconds": 120,
+      "steps": [
+        "上背靠凳，杠铃置于髋部",
+        "髋伸展顶起至躯干水平",
+        "控制下放至臀部接近地面"
+      ],
+      "tips": [
+        "下巴微收保持骨盆中立",
+        "顶端臀部收紧不腰过伸"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_b7ccaf9d",
+      "name": "杠铃推举",
+      "description": "肩部推举核心动作，提升整体上肢推力。",
+      "muscleGroup": "SHOULDERS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "BARBELL"
+      ],
+      "targetMuscles": [
+        "SHOULDERS",
+        "TRAPEZIUS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 4,
+      "defaultReps": 6,
+      "restTimeSeconds": 150,
+      "steps": [
+        "站姿或坐姿，杠铃置于锁骨前",
+        "垂直推起至头顶",
+        "控制下放回到起始"
+      ],
+      "tips": [
+        "核心收紧避免后仰",
+        "推起路线贴近面部"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1718716800000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_93566fbc",
+      "name": "哑铃侧平举",
+      "description": "孤立中束，打造肩部宽度与线条。",
+      "muscleGroup": "SHOULDERS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL"
+      ],
+      "targetMuscles": [
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [
+        "TRAPEZIUS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "双手持哑铃自然下垂",
+        "肘微屈侧向抬起至肩高",
+        "缓慢下降至起始"
+      ],
+      "tips": [
+        "小指略高于拇指",
+        "避免耸肩借力"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1718716800000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_940b4503",
+      "name": "哑铃推举",
+      "description": "自由轨迹推举，提升肩部稳定与力量。",
+      "muscleGroup": "SHOULDERS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [
+        "TRICEPS"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 8,
+      "restTimeSeconds": 120,
+      "steps": [
+        "坐姿靠背，哑铃置于耳旁",
+        "向上推起至手臂接近伸直",
+        "控制下降回到起始"
+      ],
+      "tips": [
+        "肘略在手腕下方",
+        "避免腰背塌陷"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_bc4fa773",
+      "name": "阿诺德推举",
+      "description": "增加旋转轨迹，全面刺激前三角与中束。",
+      "muscleGroup": "SHOULDERS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [
+        "TRICEPS"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 90,
+      "steps": [
+        "掌心向内起始，哑铃置于胸前",
+        "推起同时外旋掌心向前",
+        "控制回放并内旋还原"
+      ],
+      "tips": [
+        "旋转过程平滑",
+        "不要耸肩"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_881575cf",
+      "name": "哑铃前平举",
+      "description": "强化前三角，提升前侧肩部线条。",
+      "muscleGroup": "SHOULDERS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL"
+      ],
+      "targetMuscles": [
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [
+        "TRAPEZIUS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "双手持哑铃于大腿前",
+        "向前抬起至肩高",
+        "控制下放回到起始"
+      ],
+      "tips": [
+        "避免身体后仰",
+        "用肩发力而非手臂摆动"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_dc1cb2ff",
+      "name": "俯身哑铃飞鸟（后束）",
+      "description": "重点训练后束，改善圆肩与肩部平衡。",
+      "muscleGroup": "SHOULDERS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL"
+      ],
+      "targetMuscles": [
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [
+        "BACK"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "髋后坐俯身，背部中立",
+        "双臂向两侧打开至肩胛后缩",
+        "缓慢还原"
+      ],
+      "tips": [
+        "动作幅度可小但要控制",
+        "避免耸肩"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_f58faea9",
+      "name": "绳索侧平举",
+      "description": "持续张力侧平举，提高中束泵感。",
+      "muscleGroup": "SHOULDERS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "CABLE"
+      ],
+      "targetMuscles": [
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [
+        "TRAPEZIUS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "站在滑轮旁侧，单手握把",
+        "侧向抬起至肩高",
+        "控制还原保持张力"
+      ],
+      "tips": [
+        "上身保持稳定",
+        "肘部略弯固定"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_68c41e00",
+      "name": "立姿杠铃划船",
+      "description": "强化三角肌与斜方肌（注意肩夹角）。",
+      "muscleGroup": "SHOULDERS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "BARBELL"
+      ],
+      "targetMuscles": [
+        "SHOULDERS",
+        "TRAPEZIUS"
+      ],
+      "secondaryMuscles": [
+        "ARMS"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 90,
+      "steps": [
+        "站立握杠，手距略窄于肩",
+        "沿身体向上拉至胸上部",
+        "控制下放回到起始"
+      ],
+      "tips": [
+        "肘高于手腕但不过肩高",
+        "肩不适可改绳索"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_7f5e020e",
+      "name": "耸肩（哑铃）",
+      "description": "针对斜方肌上束，提升上背肩颈支撑。",
+      "muscleGroup": "SHOULDERS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL"
+      ],
+      "targetMuscles": [
+        "TRAPEZIUS",
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "BEGINNER",
+      "defaultSets": 4,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "双手持哑铃自然下垂",
+        "向上耸肩至最高点",
+        "缓慢下降回到起始"
+      ],
+      "tips": [
+        "避免转肩绕圈",
+        "顶端停 1 秒"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_215dfcd3",
+      "name": "绳索后束飞鸟",
+      "description": "器械稳定后束训练，改善肩部平衡。",
+      "muscleGroup": "SHOULDERS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "CABLE"
+      ],
+      "targetMuscles": [
+        "SHOULDERS"
+      ],
+      "secondaryMuscles": [
+        "BACK"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "双手交叉握把，轻微前倾",
+        "向外打开至肩后方收缩",
+        "控制还原保持张力"
+      ],
+      "tips": [
+        "肘部略弯固定",
+        "不要耸肩借力"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_eafd145e",
+      "name": "杠铃弯举",
+      "description": "肱二头基础动作，提升臂围与力量。",
+      "muscleGroup": "ARMS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "BARBELL"
+      ],
+      "targetMuscles": [
+        "BICEPS",
+        "ARMS"
+      ],
+      "secondaryMuscles": [
+        "FOREARMS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 60,
+      "steps": [
+        "站姿握杠，肘贴近身体",
+        "屈肘卷起至顶端收缩",
+        "控制下放回到起始"
+      ],
+      "tips": [
+        "避免身体摆动借力",
+        "顶端停 1 秒"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1718716800000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_a87e1409",
+      "name": "双杠臂屈伸",
+      "description": "强力肱三头与胸部复合动作（可前倾偏胸）。",
+      "muscleGroup": "ARMS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "PARALLEL_BARS"
+      ],
+      "targetMuscles": [
+        "TRICEPS",
+        "ARMS"
+      ],
+      "secondaryMuscles": [
+        "CHEST",
+        "SHOULDERS"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 8,
+      "restTimeSeconds": 120,
+      "steps": [
+        "双手撑杆，身体稳定",
+        "屈肘下降至上臂接近平行",
+        "推起至起始位置"
+      ],
+      "tips": [
+        "保持肩胛下沉",
+        "肘部沿身体后侧轨迹"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1718716800000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_70b199a3",
+      "name": "哑铃锤式弯举",
+      "description": "强调肱肌与前臂，提升手臂厚度。",
+      "muscleGroup": "ARMS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL"
+      ],
+      "targetMuscles": [
+        "BICEPS",
+        "FOREARMS",
+        "ARMS"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "掌心相对握哑铃",
+        "屈肘卷起至顶端",
+        "控制下放回到起始"
+      ],
+      "tips": [
+        "手腕保持中立",
+        "肘贴近身体"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_3039b9f9",
+      "name": "交替哑铃弯举",
+      "description": "单侧控制更好，适合补容量与泵感。",
+      "muscleGroup": "ARMS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL"
+      ],
+      "targetMuscles": [
+        "BICEPS",
+        "ARMS"
+      ],
+      "secondaryMuscles": [
+        "FOREARMS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "双手持哑铃自然下垂",
+        "单侧屈肘卷起并旋转掌心向上",
+        "控制下放并换侧"
+      ],
+      "tips": [
+        "避免耸肩",
+        "动作慢一些更有效"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_f1940f02",
+      "name": "牧师凳弯举",
+      "description": "固定上臂，减少借力，集中刺激肱二头。",
+      "muscleGroup": "ARMS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "MACHINE"
+      ],
+      "targetMuscles": [
+        "BICEPS",
+        "ARMS"
+      ],
+      "secondaryMuscles": [
+        "FOREARMS"
+      ],
+      "difficulty": "NOVICE",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 75,
+      "steps": [
+        "上臂贴靠垫，握把起始下方",
+        "屈肘卷起至顶端收缩",
+        "缓慢下放至伸展位"
+      ],
+      "tips": [
+        "不要抬肘",
+        "下放控制更重要"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_cdc1a196",
+      "name": "绳索下压（肱三头）",
+      "description": "稳定肱三头训练，适合高次数泵感。",
+      "muscleGroup": "ARMS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "CABLE"
+      ],
+      "targetMuscles": [
+        "TRICEPS",
+        "ARMS"
+      ],
+      "secondaryMuscles": [
+        "FOREARMS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "肘夹紧身体两侧，握绳",
+        "向下压至手臂伸直",
+        "控制回到 90° 左右"
+      ],
+      "tips": [
+        "避免身体前后摆动",
+        "顶端外旋分开绳端"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_c3900bca",
+      "name": "仰卧臂屈伸（法式推举）",
+      "description": "长头重点动作，提升肱三头围度。",
+      "muscleGroup": "ARMS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "BARBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "TRICEPS",
+        "ARMS"
+      ],
+      "secondaryMuscles": [
+        "FOREARMS"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 90,
+      "steps": [
+        "平躺凳上，杠铃举于胸上方",
+        "屈肘下放至额头附近",
+        "伸肘推起回到起始"
+      ],
+      "tips": [
+        "肘尽量固定",
+        "不要让肩参与过多"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_29639a3a",
+      "name": "过顶哑铃臂屈伸",
+      "description": "更强调三头长头，适合补充训练。",
+      "muscleGroup": "ARMS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "DUMBBELL"
+      ],
+      "targetMuscles": [
+        "TRICEPS",
+        "ARMS"
+      ],
+      "secondaryMuscles": [
+        "CORE"
+      ],
+      "difficulty": "NOVICE",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 75,
+      "steps": [
+        "双手托哑铃置于头后",
+        "屈肘下放至拉伸位",
+        "伸肘举起至头顶"
+      ],
+      "tips": [
+        "肘夹紧避免外展",
+        "动作慢保持张力"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_43ea5427",
+      "name": "窄距卧推",
+      "description": "复合推举动作，三头主导同时带动胸肩。",
+      "muscleGroup": "ARMS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "BARBELL",
+        "BENCH"
+      ],
+      "targetMuscles": [
+        "TRICEPS",
+        "ARMS"
+      ],
+      "secondaryMuscles": [
+        "CHEST",
+        "SHOULDERS"
+      ],
+      "difficulty": "INTERMEDIATE",
+      "defaultSets": 4,
+      "defaultReps": 6,
+      "restTimeSeconds": 150,
+      "steps": [
+        "握距略窄于肩，平躺",
+        "杠铃下放至胸中部",
+        "推起至顶端保持稳定"
+      ],
+      "tips": [
+        "肘部贴近身体",
+        "使用可控重量"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_0257c258",
+      "name": "反手弯举",
+      "description": "加强前臂伸肌与肱桡肌，改善前臂平衡。",
+      "muscleGroup": "ARMS",
+      "category": "UPPER_BODY",
+      "equipment": [
+        "BARBELL"
+      ],
+      "targetMuscles": [
+        "FOREARMS",
+        "ARMS"
+      ],
+      "secondaryMuscles": [
+        "BICEPS"
+      ],
+      "difficulty": "NOVICE",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "反握杠铃，手距与肩同宽",
+        "屈肘卷起至前臂收缩",
+        "控制下放回到起始"
+      ],
+      "tips": [
+        "重量不要太大",
+        "手腕保持中立"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_4beb4c0f",
+      "name": "平板支撑",
+      "description": "核心抗伸展基础动作，提升躯干稳定性。",
+      "muscleGroup": "CORE",
+      "category": "CORE",
+      "equipment": [
+        "NONE"
+      ],
+      "targetMuscles": [
+        "CORE",
+        "ABS"
+      ],
+      "secondaryMuscles": [
+        "GLUTES",
+        "SHOULDERS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 30,
+      "restTimeSeconds": 60,
+      "steps": [
+        "前臂支撑地面，肩在肘正上方",
+        "收紧臀腹保持身体直线",
+        "保持到目标时间结束"
+      ],
+      "tips": [
+        "避免塌腰或翘臀",
+        "保持均匀呼吸"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1718716800000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_c47ad1be",
+      "name": "侧平板支撑",
+      "description": "核心抗侧屈，强化腹斜肌与髋稳定。",
+      "muscleGroup": "CORE",
+      "category": "CORE",
+      "equipment": [
+        "NONE"
+      ],
+      "targetMuscles": [
+        "CORE",
+        "OBLIQUES"
+      ],
+      "secondaryMuscles": [
+        "GLUTES"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 30,
+      "restTimeSeconds": 60,
+      "steps": [
+        "侧卧支撑前臂，肩在肘正上方",
+        "抬髋保持直线",
+        "保持到目标时间结束"
+      ],
+      "tips": [
+        "骨盆不要前倾",
+        "头颈保持中立"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_143db5f1",
+      "name": "仰卧卷腹",
+      "description": "腹直肌基础动作，适合入门与容量。",
+      "muscleGroup": "CORE",
+      "category": "CORE",
+      "equipment": [
+        "NONE"
+      ],
+      "targetMuscles": [
+        "ABS",
+        "CORE"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 15,
+      "restTimeSeconds": 45,
+      "steps": [
+        "仰卧屈膝，腰背贴地",
+        "卷起上背至肩胛离地",
+        "控制下放回到起始"
+      ],
+      "tips": [
+        "下巴微收不抱头拉颈",
+        "控制离心下放"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_01823dec",
+      "name": "反向卷腹",
+      "description": "下腹控制动作，提升骨盆后倾能力。",
+      "muscleGroup": "CORE",
+      "category": "CORE",
+      "equipment": [
+        "NONE"
+      ],
+      "targetMuscles": [
+        "ABS",
+        "CORE"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 45,
+      "steps": [
+        "仰卧抬腿屈膝 90°",
+        "卷起骨盆让膝向胸靠近",
+        "缓慢还原保持腰背贴地"
+      ],
+      "tips": [
+        "动作来自骨盆后倾",
+        "避免摆腿借力"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_8ef0e0cc",
+      "name": "悬垂举腿",
+      "description": "高强度腹部训练，兼顾握力与核心控制。",
+      "muscleGroup": "CORE",
+      "category": "CORE",
+      "equipment": [
+        "PULL_UP_BAR"
+      ],
+      "targetMuscles": [
+        "ABS",
+        "CORE"
+      ],
+      "secondaryMuscles": [
+        "ARMS"
+      ],
+      "difficulty": "ADVANCED",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 90,
+      "steps": [
+        "悬垂于单杠，肩胛下沉",
+        "抬腿至髋部屈曲（可抬至水平）",
+        "控制下放回到悬垂"
+      ],
+      "tips": [
+        "避免摆动借力",
+        "先从屈膝版本开始"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_e7530e73",
+      "name": "俄罗斯转体",
+      "description": "强化旋转能力与腹斜肌，提升核心稳定。",
+      "muscleGroup": "CORE",
+      "category": "CORE",
+      "equipment": [
+        "MEDICINE_BALL"
+      ],
+      "targetMuscles": [
+        "OBLIQUES",
+        "CORE"
+      ],
+      "secondaryMuscles": [
+        "ABS"
+      ],
+      "difficulty": "NOVICE",
+      "defaultSets": 3,
+      "defaultReps": 20,
+      "restTimeSeconds": 45,
+      "steps": [
+        "坐姿微后仰，双脚可离地",
+        "左右转体触碰地面或球",
+        "保持节奏完成次数"
+      ],
+      "tips": [
+        "腰背保持中立不塌陷",
+        "控制速度避免甩动"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_c29993f1",
+      "name": "死虫式（Dead Bug）",
+      "description": "核心稳定训练，适合腰背不适人群。",
+      "muscleGroup": "CORE",
+      "category": "CORE",
+      "equipment": [
+        "NONE"
+      ],
+      "targetMuscles": [
+        "ABS",
+        "CORE"
+      ],
+      "secondaryMuscles": [
+        "LOWER_BACK"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 45,
+      "steps": [
+        "仰卧抬腿屈髋屈膝 90°",
+        "对侧手脚缓慢伸直下放",
+        "回到起始并换侧"
+      ],
+      "tips": [
+        "腰背贴地保持呼吸",
+        "动作慢且可控"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_bef7bf66",
+      "name": "登山者",
+      "description": "核心+心肺综合动作，适合作为热身或代谢训练。",
+      "muscleGroup": "CORE",
+      "category": "CORE",
+      "equipment": [
+        "NONE"
+      ],
+      "targetMuscles": [
+        "CORE",
+        "CARDIO"
+      ],
+      "secondaryMuscles": [
+        "ABS"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 30,
+      "restTimeSeconds": 45,
+      "steps": [
+        "进入俯卧撑撑体位",
+        "交替提膝向胸靠近",
+        "保持稳定节奏完成时间"
+      ],
+      "tips": [
+        "臀部不要抬太高",
+        "核心收紧减少晃动"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_523c8f17",
+      "name": "绳索伐木（Woodchop）",
+      "description": "抗旋转/旋转力量训练，强化腹斜肌链路。",
+      "muscleGroup": "CORE",
+      "category": "CORE",
+      "equipment": [
+        "CABLE"
+      ],
+      "targetMuscles": [
+        "OBLIQUES",
+        "CORE"
+      ],
+      "secondaryMuscles": [
+        "ABS"
+      ],
+      "difficulty": "NOVICE",
+      "defaultSets": 3,
+      "defaultReps": 12,
+      "restTimeSeconds": 60,
+      "steps": [
+        "站姿双手握把，拉力来自高位或低位",
+        "转体下拉/上拉完成切砍动作",
+        "控制还原回到起始"
+      ],
+      "tips": [
+        "髋与肩协同转动",
+        "控制回程避免被拉回"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    },
+    {
+      "id": "off_7cdc799b",
+      "name": "鸟狗式（Bird Dog）",
+      "description": "强化抗旋转稳定与下背控制，适合基础训练。",
+      "muscleGroup": "CORE",
+      "category": "CORE",
+      "equipment": [
+        "NONE"
+      ],
+      "targetMuscles": [
+        "LOWER_BACK",
+        "CORE"
+      ],
+      "secondaryMuscles": [
+        "GLUTES"
+      ],
+      "difficulty": "BEGINNER",
+      "defaultSets": 3,
+      "defaultReps": 10,
+      "restTimeSeconds": 45,
+      "steps": [
+        "四点跪姿，核心收紧",
+        "对侧手脚伸直保持骨盆稳定",
+        "回到起始并换侧"
+      ],
+      "tips": [
+        "保持骨盆不摇摆",
+        "动作慢且呼吸稳定"
+      ],
+      "source": "OFFICIAL",
+      "isCustom": false,
+      "isOfficial": true,
+      "createdAt": 1767398400000,
+      "updatedAt": 1767398400000
+    }
+  ]
+}
