@@ -1,23 +1,34 @@
 <template>
-  <NCard :title="compact ? undefined : '当前模型'" size="small">
+  <NCard :title="compact ? undefined : 'AI 供应商 / 映射模型'" size="small">
     <NSpace vertical :size="12">
       <NSelect
-        v-model:value="selectedModelId"
-        :options="modelOptions"
+        v-model:value="selectedEndpointId"
+        :options="endpointOptions"
         :loading="loading"
-        placeholder="选择模型"
+        placeholder="选择 API（端点）"
         filterable
-        @update:value="handleModelChange"
+        @update:value="handleEndpointChange"
       />
-      <div v-if="!compact && currentModel" class="model-info">
+
+      <NSelect
+        v-model:value="selectedMappedModel"
+        :options="mappedModelOptions"
+        :loading="loading"
+        placeholder="选择映射模型名（推荐）"
+        filterable
+        clearable
+        @update:value="handleMappedModelChange"
+      />
+
+      <div v-if="!compact && currentEndpoint" class="model-info">
         <NText depth="3" style="font-size: 12px">
-          {{ currentModel.base_url }}
+          {{ currentEndpoint.base_url }}
         </NText>
         <NSpace :size="4" style="margin-top: 4px">
-          <NTag v-if="currentModel.is_active" type="success" size="small">启用</NTag>
-          <NTag v-if="currentModel.is_default" type="info" size="small">默认</NTag>
-          <NTag :type="statusType[currentModel.status] || 'default'" size="small">
-            {{ statusLabel[currentModel.status] || '未知' }}
+          <NTag v-if="currentEndpoint.is_active" type="success" size="small">启用</NTag>
+          <NTag v-if="currentEndpoint.is_default" type="info" size="small">默认</NTag>
+          <NTag :type="statusType[currentEndpoint.status] || 'default'" size="small">
+            {{ statusLabel[currentEndpoint.status] || '未知' }}
           </NTag>
         </NSpace>
       </div>
@@ -46,7 +57,11 @@ const store = useAiModelSuiteStore()
 const { models, modelsLoading, mappings, mappingsLoading } = storeToRefs(store)
 const message = useMessage()
 
-const selectedModelId = ref(null)
+const ENDPOINT_ID_KEY = 'dashboard_default_endpoint_id'
+const MAPPED_MODEL_KEY = 'dashboard_default_mapped_model'
+
+const selectedEndpointId = ref(null)
+const selectedMappedModel = ref('')
 const actionLoading = ref(false)
 const loading = computed(() => modelsLoading.value || actionLoading.value || mappingsLoading.value)
 
@@ -65,106 +80,134 @@ const statusLabel = {
   unknown: '未知',
 }
 
-// 标准模型名称映射（从 Model Mapping 数据生成）
-const standardModelMap = computed(() => {
-  const map = new Map()
-
-  // 从 mappings 中提取标准模型名称
-  mappings.value.forEach((mapping) => {
-    if (mapping.default_model && mapping.candidates && mapping.candidates.length > 0) {
-      // 使用 mapping.name 作为标准模型名称
-      const standardName = mapping.name || mapping.default_model
-      const apiModel = mapping.default_model
-
-      // 查找对应的 model 对象
-      const modelObj = models.value.find((m) => m.model === apiModel || m.name === apiModel)
-      if (modelObj) {
-        map.set(standardName, {
-          standardName,
-          apiModel,
-          modelId: modelObj.id,
-          modelObj,
-        })
-      }
-    }
-  })
-
-  return map
-})
-
-// 模型选项（优先使用标准模型名称）
-const modelOptions = computed(() => {
-  // 如果有 Model Mapping 数据，使用标准名称
-  if (standardModelMap.value.size > 0) {
-    return Array.from(standardModelMap.value.values()).map((item) => ({
-      label: `${item.standardName} (${item.apiModel})`,
-      value: item.modelId,
-      disabled: !item.modelObj.is_active,
-    }))
-  }
-
-  // 否则回退到原始模型列表
-  return models.value.map((model) => ({
-    label: `${model.model || model.name} (${model.provider || 'Unknown'})`,
-    value: model.id,
-    disabled: !model.is_active,
+const endpointOptions = computed(() => {
+  return (models.value || []).map((endpoint) => ({
+    label: endpoint.name || endpoint.base_url || String(endpoint.id),
+    value: endpoint.id,
+    disabled: !endpoint.is_active,
   }))
 })
 
-// 当前选中的模型对象
-const currentModel = computed(() => {
-  return models.value.find((m) => m.id === selectedModelId.value)
+const currentEndpoint = computed(() => {
+  return (models.value || []).find((m) => m.id === selectedEndpointId.value)
+})
+
+function buildMappedModelOptionsForEndpoint(endpoint) {
+  const items = Array.isArray(mappings.value) ? mappings.value : []
+  const active = items.filter((m) => m && m.is_active !== false && (m.name || m.id || m.scope_key))
+
+  const endpointModels = new Set()
+  if (endpoint && Array.isArray(endpoint.model_list)) {
+    endpoint.model_list.forEach((x) => {
+      if (typeof x === 'string' && x.trim()) endpointModels.add(x.trim())
+    })
+  }
+
+  const filtered =
+    endpoint && endpointModels.size
+      ? active.filter((m) => {
+          const target = new Set()
+          if (typeof m.default_model === 'string' && m.default_model.trim()) target.add(m.default_model.trim())
+          if (Array.isArray(m.candidates)) {
+            m.candidates.forEach((x) => {
+              if (typeof x === 'string' && x.trim()) target.add(x.trim())
+            })
+          }
+          for (const t of target) {
+            if (endpointModels.has(t)) return true
+          }
+          return false
+        })
+      : active
+
+  const list = filtered.length ? filtered : active
+  return list.map((m) => {
+    const name = (m.name || '').trim()
+    const fallback = typeof m.id === 'string' && m.id ? m.id : `${m.scope_type}:${m.scope_key}`
+    const value = name || fallback
+    const target =
+      (typeof m.default_model === 'string' && m.default_model.trim() ? m.default_model.trim() : '') ||
+      (Array.isArray(m.candidates) && typeof m.candidates[0] === 'string' ? String(m.candidates[0]) : '')
+    const suffix = target ? ` → ${target}` : ''
+    return { label: `${value}${suffix}`, value }
+  })
+}
+
+const mappedModelOptions = computed(() => {
+  return buildMappedModelOptionsForEndpoint(currentEndpoint.value)
 })
 
 // 监听 mappings 变化，自动刷新选项
 watch(
   () => mappings.value,
   () => {
-    // 如果当前选中的模型不在新的选项中，重置为默认模型
-    if (selectedModelId.value) {
-      const exists = modelOptions.value.some((opt) => opt.value === selectedModelId.value)
-      if (!exists) {
-        const defaultModel = models.value.find((m) => m.is_default)
-        if (defaultModel) {
-          selectedModelId.value = defaultModel.id
-        }
-      }
+    // mappings 变更时：若当前映射模型不可用则清理
+    const exists = mappedModelOptions.value.some((opt) => opt.value === selectedMappedModel.value)
+    if (selectedMappedModel.value && !exists) {
+      selectedMappedModel.value = ''
     }
   },
   { deep: true }
 )
 
 /**
- * 处理模型切换
+ * 处理端点切换（仍保留“设为默认端点”的语义）
  */
-async function handleModelChange(modelId) {
-  if (!modelId) return
+async function handleEndpointChange(endpointId) {
+  if (!endpointId) return
 
   actionLoading.value = true
   try {
-    const model = models.value.find((m) => m.id === modelId)
-    if (!model) {
-      message.error('模型不存在')
+    const endpoint = models.value.find((m) => m.id === endpointId)
+    if (!endpoint) {
+      message.error('端点不存在')
       return
     }
 
-    // 调用 store action 设置默认模型
-    await store.setDefaultModel(model)
+    // 调用 store action 设置默认端点（SSOT：后端 config）
+    await store.setDefaultModel(endpoint)
 
-    emit('change', modelId)
-    message.success(`已切换到模型: ${model.model || model.name}`)
+    selectedEndpointId.value = endpointId
+    try {
+      localStorage.setItem(ENDPOINT_ID_KEY, String(endpointId))
+    } catch {
+      // ignore
+    }
+
+    emit('change', {
+      endpoint_id: endpointId,
+      model_source: 'mapping',
+      model: selectedMappedModel.value || null,
+    })
+    message.success(`已切换到端点: ${endpoint.name || endpoint.base_url}`)
   } catch (error) {
-    console.error('模型切换失败:', error)
-    message.error('模型切换失败，请重试')
+    console.error('端点切换失败:', error)
+    message.error('端点切换失败，请重试')
 
     // 恢复到之前的选择
-    const defaultModel = models.value.find((m) => m.is_default)
-    if (defaultModel) {
-      selectedModelId.value = defaultModel.id
+    const defaultEndpoint = models.value.find((m) => m.is_default)
+    if (defaultEndpoint) {
+      selectedEndpointId.value = defaultEndpoint.id
     }
   } finally {
     actionLoading.value = false
   }
+}
+
+function handleMappedModelChange(value) {
+  const v = typeof value === 'string' ? value.trim() : ''
+  selectedMappedModel.value = v
+  try {
+    if (v) localStorage.setItem(MAPPED_MODEL_KEY, v)
+    else localStorage.removeItem(MAPPED_MODEL_KEY)
+  } catch {
+    // ignore
+  }
+  emit('change', {
+    endpoint_id: selectedEndpointId.value,
+    model_source: 'mapping',
+    model: v || null,
+  })
 }
 
 /**
@@ -176,17 +219,39 @@ async function initializeModels() {
     // 并行加载模型列表和映射数据
     await Promise.all([store.loadModels(), store.loadMappings()])
 
-    // 设置默认选中的模型
-    const defaultModel = models.value.find((m) => m.is_default)
-    if (defaultModel) {
-      selectedModelId.value = defaultModel.id
-    } else if (models.value.length > 0) {
-      // 如果没有默认模型，选择第一个启用的模型
-      const firstActive = models.value.find((m) => m.is_active)
-      if (firstActive) {
-        selectedModelId.value = firstActive.id
+    // 1) 端点：优先 localStorage，其次后端 default，其次第一个启用
+    const savedEndpointIdRaw = (() => {
+      try {
+        return localStorage.getItem(ENDPOINT_ID_KEY)
+      } catch {
+        return null
       }
+    })()
+    const savedEndpointId = savedEndpointIdRaw ? Number(savedEndpointIdRaw) : null
+    const savedEndpoint = savedEndpointId ? models.value.find((m) => m.id === savedEndpointId) : null
+
+    const defaultEndpoint = models.value.find((m) => m.is_default)
+    const firstActive = models.value.find((m) => m.is_active)
+    selectedEndpointId.value = (savedEndpoint || defaultEndpoint || firstActive || models.value[0] || {}).id ?? null
+
+    // 2) 映射模型：只做客户端默认值（不修改后端）
+    try {
+      const savedMapped = localStorage.getItem(MAPPED_MODEL_KEY)
+      if (savedMapped) selectedMappedModel.value = savedMapped
+    } catch {
+      // ignore
     }
+
+    // 如果当前映射不在候选中，自动选择第一个
+    if (!mappedModelOptions.value.some((opt) => opt.value === selectedMappedModel.value)) {
+      selectedMappedModel.value = mappedModelOptions.value[0]?.value || ''
+    }
+
+    emit('change', {
+      endpoint_id: selectedEndpointId.value,
+      model_source: 'mapping',
+      model: selectedMappedModel.value || null,
+    })
   } catch (error) {
     console.error('加载模型列表失败:', error)
     message.error('加载模型列表失败')

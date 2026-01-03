@@ -1,8 +1,24 @@
 <template>
   <n-card :title="compact ? undefined : 'Prompt 选择器'">
     <n-space vertical :size="12">
+      <n-space align="center" justify="space-between">
+        <n-text depth="3">Prompt 模式</n-text>
+        <n-select
+          v-model:value="promptMode"
+          :options="promptModeOptions"
+          :disabled="loading"
+          size="small"
+          style="min-width: 180px"
+          @update:value="handlePromptModeChange"
+        />
+      </n-space>
+
+      <n-alert v-if="promptMode === 'passthrough'" type="info" :show-icon="false">
+        透传模式：客户端请求默认跳过后端 prompt 注入；下方 Prompt 选择仅用于不透传时的组装与激活。
+      </n-alert>
+
       <!-- Tabs 分类：System 和 Tools -->
-      <n-tabs v-model:value="activeTab" type="segment" size="small">
+      <n-tabs v-if="promptMode !== 'passthrough'" v-model:value="activeTab" type="segment" size="small">
         <n-tab-pane name="system" tab="System Prompts">
           <n-select
             v-model:value="selectedSystemPromptId"
@@ -43,7 +59,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
 
@@ -60,6 +76,12 @@ const activeTab = ref('system')
 const loading = computed(() => promptsLoading.value)
 const selectedSystemPromptId = ref(null)
 const selectedToolsPromptId = ref(null)
+const PROMPT_MODE_KEY = 'dashboard_prompt_mode'
+const promptMode = ref('server') // 'server' | 'passthrough'
+const promptModeOptions = [
+  { label: '不透传（后端组装/注入）', value: 'server' },
+  { label: '透传（跳过后端默认注入）', value: 'passthrough' },
+]
 
 /**
  * 判断 Prompt 类型（基于 tools_json 字段）
@@ -112,6 +134,7 @@ async function handlePromptChange(promptId) {
   try {
     await store.activatePrompt(promptId)
     emit('change', {
+      prompt_mode: promptMode.value,
       system_prompt_id: selectedSystemPromptId.value,
       tools_prompt_id: selectedToolsPromptId.value,
     })
@@ -126,6 +149,21 @@ async function handlePromptChange(promptId) {
   }
 }
 
+function handlePromptModeChange(mode) {
+  const resolved = mode === 'passthrough' ? 'passthrough' : 'server'
+  promptMode.value = resolved
+  try {
+    localStorage.setItem(PROMPT_MODE_KEY, resolved)
+  } catch {
+    // ignore
+  }
+  emit('change', {
+    prompt_mode: promptMode.value,
+    system_prompt_id: selectedSystemPromptId.value,
+    tools_prompt_id: selectedToolsPromptId.value,
+  })
+}
+
 onMounted(async () => {
   try {
     await store.loadPrompts()
@@ -133,10 +171,27 @@ onMounted(async () => {
     const activeTools = prompts.value.find((p) => p.is_active && getPromptType(p) === 'tools')
     selectedSystemPromptId.value = activeSystem ? activeSystem.id : null
     selectedToolsPromptId.value = activeTools ? activeTools.id : null
+
+    try {
+      const saved = localStorage.getItem(PROMPT_MODE_KEY)
+      if (saved === 'passthrough' || saved === 'server') {
+        promptMode.value = saved
+      }
+    } catch {
+      // ignore
+    }
   } catch (error) {
     window.$message?.error('加载 Prompt 列表失败')
   }
 })
+
+watch(
+  () => promptMode.value,
+  (mode) => {
+    const resolved = mode === 'passthrough' ? 'passthrough' : 'server'
+    if (resolved !== mode) promptMode.value = resolved
+  }
+)
 </script>
 
 <style scoped>
