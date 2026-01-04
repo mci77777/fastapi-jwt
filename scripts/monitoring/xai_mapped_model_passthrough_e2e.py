@@ -41,6 +41,7 @@ import asyncio
 import sys
 import time
 import uuid
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,6 +54,54 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.monitoring.e2e_trace import TraceLogger, TraceReport, _safe_sse_event
+
+
+def _load_dotenv(repo_root: Path) -> dict[str, str]:
+    """最小 .env 读取器（仅供 E2E 脚本使用，避免依赖额外包）。"""
+
+    path = repo_root / ".env"
+    if not path.exists():
+        return {}
+    env: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("'").strip('"')
+        if key and value and key not in env:
+            env[key] = value
+    return env
+
+
+def _get_env_value(name: str, *fallback_names: str, default: str = "", dotenv: dict[str, str] | None = None) -> str:
+    for key in (name, *fallback_names):
+        v = (os.getenv(key) or "").strip()
+        if v:
+            return v
+        if dotenv:
+            dv = str(dotenv.get(key) or "").strip()
+            if dv:
+                return dv
+        # WSL 兼容：若变量只在 Windows 环境中设置，尝试从 cmd.exe 读取
+        try:
+            result = subprocess.run(
+                ["cmd.exe", "/c", f"echo %{key}%"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            win_value = (result.stdout or "").strip()
+            if win_value and win_value != f"%{key}%":
+                return win_value
+        except Exception:
+            pass
+    return default
 
 
 def _require_env(name: str) -> str:
@@ -633,27 +682,27 @@ async def _run_one(
 
 async def main() -> int:
     request_id = uuid.uuid4().hex
+    dotenv = _load_dotenv(Path(__file__).resolve().parents[2])
     report = TraceReport(
         request_id=request_id,
         context={
             "api_base": os.getenv("E2E_API_BASE") or "http://127.0.0.1:9999/api/v1",
             "mapped_model_key": os.getenv("E2E_MAPPED_MODEL_KEY") or "global:xai",
-            "xai_base_url": os.getenv("XAI_API_BASE_URL") or "https://api.x.ai",
+            "xai_base_url": _get_env_value("XAI_API_BASE_URL", "XAI_BASEURL", default="https://api.x.ai", dotenv=dotenv),
             "xai_provider_model": os.getenv("XAI_PROVIDER_MODEL") or "grok-4.1-思考",
         },
     )
     log = TraceLogger(report, verbose=_as_bool(os.getenv("E2E_VERBOSE") or "true", default=True))
 
-    try:
-        xai_api_key = _require_env("XAI_API_KEY")
-    except KeyError:
+    xai_api_key = _get_env_value("XAI_API_KEY", default="", dotenv=dotenv)
+    if not xai_api_key:
         log.log("missing_env=XAI_API_KEY")
         return 2
 
     api_base = (os.getenv("E2E_API_BASE") or "http://127.0.0.1:9999/api/v1").strip()
     username = (os.getenv("E2E_ADMIN_USERNAME") or "admin").strip()
     password = (os.getenv("E2E_ADMIN_PASSWORD") or "123456").strip()
-    xai_base_url = (os.getenv("XAI_API_BASE_URL") or "https://api.x.ai").strip()
+    xai_base_url = _get_env_value("XAI_API_BASE_URL", "XAI_BASEURL", default="https://api.x.ai", dotenv=dotenv).strip()
     provider_model = (os.getenv("XAI_PROVIDER_MODEL") or "grok-4.1-思考").strip()
 
     mapped_key = (os.getenv("E2E_MAPPED_MODEL_KEY") or "global:xai").strip()
