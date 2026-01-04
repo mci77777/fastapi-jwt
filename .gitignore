@@ -18,6 +18,9 @@ venv/
 *~
 
 # ============ 数据库 ============
+data/
+data/**/*.sqlite3*
+data/**/*.db
 db.sqlite3
 db.sqlite3-journal
 db.sqlite3-shm
