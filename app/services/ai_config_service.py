@@ -292,6 +292,11 @@ class AIConfigService:
     async def ensure_env_default_endpoint(self) -> Optional[dict[str, Any]]:
         """当本地无“可用端点”(active + 有 api_key + 非 offline) 时，用环境变量注入一个最小可用默认端点（用于本地 Docker/E2E）。"""
 
+        # SSOT：生产环境端点必须来自“自定义配置”（SQLite 持久化）。
+        # 仅在允许测试端点时，才启用 env-default 注入，避免“删不掉/回弹”与链路混乱。
+        if not bool(getattr(self._settings, "allow_test_ai_endpoints", False)):
+            return None
+
         row = await self._db.fetchone(
             """
             SELECT COUNT(1) AS cnt

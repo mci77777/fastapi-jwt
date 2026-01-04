@@ -64,6 +64,17 @@ def _sanitize_thinkingml_reply(reply: str) -> str:
     return text[:inner_start] + inner + text[thinking_end:]
 
 
+def _is_dashboard_admin_user(user: AuthenticatedUser) -> bool:
+    claims = getattr(user, "claims", {}) or {}
+    if not isinstance(claims, dict):
+        return False
+    user_metadata = claims.get("user_metadata") or {}
+    if not isinstance(user_metadata, dict):
+        return False
+    username = str(user_metadata.get("username") or "").strip()
+    return username == "admin" or bool(user_metadata.get("is_admin", False))
+
+
 @dataclass(slots=True)
 class AIMessageInput:
     text: Optional[str] = None
@@ -709,7 +720,11 @@ class AIService:
             return reply_text, model_used, request_payload, None, None, None, None
 
         openai_req = await self._build_openai_request(message, user_details=user_details)
-        preferred_endpoint_id = _parse_optional_int((message.metadata or {}).get("endpoint_id") or (message.metadata or {}).get("endpointId"))
+        preferred_endpoint_id: Optional[int] = None
+        if getattr(self._settings, "allow_test_ai_endpoints", False) and _is_dashboard_admin_user(user):
+            preferred_endpoint_id = _parse_optional_int(
+                (message.metadata or {}).get("endpoint_id") or (message.metadata or {}).get("endpointId")
+            )
         selected_endpoint, selected_model, provider_name = await self._select_endpoint_and_model(
             openai_req,
             preferred_endpoint_id=preferred_endpoint_id,

@@ -28,6 +28,7 @@ function buildRoutes(routes = []) {
       route.children = e.children.map((e_child) => ({
         name: e_child.name,
         path: e_child.path,
+        alias: e_child.alias,
         component: vueModules[`/src/views${e_child.component}/index.vue`],
         isHidden: e_child.is_hidden,
         meta: {

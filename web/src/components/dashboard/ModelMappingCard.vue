@@ -250,15 +250,9 @@ async function handleDiagnose() {
   diagnosing.value = true
   try {
     const { diagnoseModels } = await import('@/api/aiModelSuite')
-    const response = await diagnoseModels()
-    const results = response.data || []
-
-    const availableCount = results.filter((r) => r.status === 'available').length
-    const unavailableCount = results.filter((r) => r.status === 'unavailable').length
-
-    message.success(`诊断完成：${availableCount} 个可用，${unavailableCount} 个不可用`)
-
-    // 刷新模型列表
+    await diagnoseModels()
+    message.success('已触发端点检测（后台刷新中）')
+    // 刷新模型候选列表（端点状态/模型列表会异步更新）
     await store.loadModels()
   } catch (error) {
     message.error('诊断失败：' + (error.message || '未知错误'))

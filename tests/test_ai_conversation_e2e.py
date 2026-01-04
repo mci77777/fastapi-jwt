@@ -253,7 +253,10 @@ class TestModelSelection:
         """metadata.endpoint_id 指定时，优先命中该端点（不会按 model_list 自动切换）。"""
         with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
             mock_verifier = MagicMock()
-            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
+            mock_verifier.verify_token.return_value = AuthenticatedUser(
+                uid="test-user-123",
+                claims={"user_metadata": {"username": "admin", "is_admin": True}},
+            )
             mock_get_verifier.return_value = mock_verifier
 
             mappings = [

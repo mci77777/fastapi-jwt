@@ -45,6 +45,7 @@ import {
   checkEndpointConnectivity,
   checkAllEndpointsConnectivity,
 } from '@/api/aiModelSuite'
+import api from '@/api'
 import HeroIcon from '@/components/common/HeroIcon.vue'
 
 defineOptions({ name: 'EndpointConnectivityCard' })
@@ -159,16 +160,25 @@ async function loadEndpoints() {
 async function handleCheckAll() {
   checking.value = true
   try {
-    const { data } = await checkAllEndpointsConnectivity()
-    const results = data || []
+    await checkAllEndpointsConnectivity()
+    message.success('已触发批量检测（后台刷新中）')
 
-    // 更新端点状态（后端返回完整的端点对象）
-    endpoints.value = results.map((endpoint) => ({
-      ...endpoint,
-      checking: false,
-    }))
+    const start = Date.now()
+    const timeoutMs = 30000
+    const intervalMs = 1200
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const res = await api.getMonitorStatus()
+        const snap = res?.data
+        if (snap && snap.probe_running === false) break
+      } catch {
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs))
+    }
 
-    message.success(`检测完成：${onlineCount.value} 个在线，${offlineCount.value} 个离线`)
+    await loadEndpoints()
+    message.success(`已刷新：${onlineCount.value} 个在线，${offlineCount.value} 个离线`)
   } catch (error) {
     message.error('批量检测失败：' + (error.message || '未知错误'))
   } finally {

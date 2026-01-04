@@ -7,6 +7,7 @@ import logging
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth import AuthenticatedUser, get_current_user
@@ -382,9 +383,34 @@ async def check_all_endpoints(
     _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
-    service = get_service(request)
-    results = await service.refresh_all_status()
-    return create_response(data=results, msg="批量检测完成")
+    monitor = get_monitor(request)
+    monitor.trigger_probe()
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content=create_response(
+            data=monitor.snapshot(),
+            code=status.HTTP_202_ACCEPTED,
+            msg="已触发批量检测",
+        ),
+    )
+
+
+@router.get("/models/check-all")
+async def check_all_endpoints_get(
+    request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    monitor = get_monitor(request)
+    monitor.trigger_probe()
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content=create_response(
+            data=monitor.snapshot(),
+            code=status.HTTP_202_ACCEPTED,
+            msg="已触发批量检测",
+        ),
+    )
 
 
 @router.post("/models/{endpoint_id}/sync")

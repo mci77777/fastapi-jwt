@@ -365,7 +365,8 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
             "children": [
                 {
                     "name": "模型目录",
-                    "path": "catalog",
+                    "path": "",
+                    "alias": "/ai/catalog",
                     "component": "/ai/model-suite/catalog",
                     "icon": "mdi:database-cog",
                     "order": 1,

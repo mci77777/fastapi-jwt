@@ -114,7 +114,7 @@ const defaultQuickAccessCards = [
     icon: 'rectangle-stack',
     title: '模型目录',
     description: '查看和管理 AI 模型',
-    path: '/ai/catalog',
+    path: '/ai',
     iconColor: '#667eea',
   },
   {

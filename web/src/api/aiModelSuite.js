@@ -3,7 +3,8 @@ import { request } from '@/utils'
 export const fetchModels = (params = {}) =>
   request.get('/llm/models', { params: { view: 'endpoints', ...params } })
 export const updateModel = (data = {}) => request.put('/llm/models', data)
-export const diagnoseModels = () => request.post('/llm/models/check-all')
+// 触发端点批量检测（后端 202 Accepted，后台刷新；返回 monitor snapshot）
+export const diagnoseModels = () => request.post('/llm/models/check-all', {}, { timeout: 10000 })
 export const syncModel = (endpointId, options = {}) =>
   request.post(`/llm/models/${endpointId}/sync`, {
     direction: options.direction ?? 'push',
@@ -139,4 +140,4 @@ export const checkEndpointConnectivity = (endpointId) =>
  * @returns {Promise<Array<{id: number, name: string, status: string, latency: number}>>}
  */
 export const checkAllEndpointsConnectivity = () =>
-  request.post('/llm/models/check-all', {}, { timeout: 60000 })
+  request.post('/llm/models/check-all', {}, { timeout: 10000 })

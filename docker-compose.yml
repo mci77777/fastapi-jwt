@@ -57,6 +57,9 @@ services:
       # HTTP 配置
       - HTTP_TIMEOUT_SECONDS=10.0
       - SSE_HEARTBEAT_SECONDS=15.0
+
+      # 运行态目录（SSOT：必须在 data volume 内，避免容器重启/重建丢失）
+      - AI_RUNTIME_STORAGE_DIR=data/ai_runtime
       
       # 限流配置
       - RATE_LIMIT_ENABLED=true

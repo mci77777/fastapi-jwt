@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from shutil import copy2, copytree
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,6 +47,25 @@ async def lifespan(app: FastAPI):
     await sqlite_manager.init()
     app.state.sqlite_manager = sqlite_manager
     storage_dir = Path(getattr(settings, "ai_runtime_storage_dir", "storage/ai_runtime"))
+    legacy_storage_dir = Path("storage") / "ai_runtime"
+    if storage_dir.resolve() != legacy_storage_dir.resolve() and legacy_storage_dir.exists():
+        # 兼容迁移：历史版本把映射/屏蔽列表/JWT 压测落在 storage/ai_runtime；当前默认迁移到 data(volume)。
+        # 注意：不移动目录本身（避免删除 repo 中的 .gitkeep），只做“文件级别的缺失补齐”。
+        try:
+            storage_dir.mkdir(parents=True, exist_ok=True)
+            for filename in ("model_mappings.json", "blocked_models.json", "jwt_runs.json"):
+                src = legacy_storage_dir / filename
+                dst = storage_dir / filename
+                if src.exists() and not dst.exists():
+                    copy2(src, dst)
+
+            src_backups = legacy_storage_dir / "backups"
+            dst_backups = storage_dir / "backups"
+            if src_backups.exists() and not dst_backups.exists():
+                copytree(src_backups, dst_backups, dirs_exist_ok=True)
+        except Exception:
+            # 兜底：迁移失败不阻断启动
+            pass
     app.state.ai_config_service = AIConfigService(sqlite_manager, settings, storage_dir)
     # 本地最小闭环：若没有任何 active endpoint，则用环境变量注入一个默认端点，避免 E2E/SSE 直接报 no_active_ai_endpoint。
     try:
