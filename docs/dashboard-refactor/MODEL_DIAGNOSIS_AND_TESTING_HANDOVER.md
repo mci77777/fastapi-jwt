@@ -175,42 +175,22 @@ JWT 模型管理测试
 
 ---
 
-### 6. Mock 用户 UI 与 AI 对话测试
+### 6. JWT 测试页（SSOT）与 AI 对话测试
 
-**页面路径**：`web/src/views/test/mock-user.vue`（新增）
+> 历史 `/test/*` 测试页面已移除：避免绕过 SSOT 与产生歧义入口。当前唯一入口为 `/ai/jwt`。
+
+**页面路径**：`web/src/views/ai/model-suite/jwt/RealUserSseSsot.vue`
 
 **功能说明**：
-- 输入真实 email 地址和密码
-- 点击"获取 JWT"按钮，调用 `/api/v1/base/access_token`
-- 显示获取到的 JWT token（可复制）
-- 使用 token 调用 AI 对话 API（`POST /api/v1/messages`）
-- 显示 AI 响应结果（SSE 流式接收）
-
-**路由配置**：
-- 路由路径：`/test/mock-user`
-- 菜单位置：开发工具 → Mock 用户测试
-- 路由文件：`web/src/views/test/route.js`（新增）
+- 创建/选择测试用户并获取 JWT（不污染全局登录态）
+- 仅使用“映射后的 model key”（`data[].name`）发起对话：`POST /api/v1/messages`
+- SSE 拉流：`GET /api/v1/messages/{id}/events`
 
 **AI 对话测试流程**：
-1. 用户输入：email、password、对话内容
-2. 后端调用：
-   - `POST /api/v1/base/access_token` → 获取 JWT
-   - `POST /api/v1/messages` → 创建对话（携带 JWT）
-   - `GET /api/v1/messages/{id}/events` → SSE 流式响应
-3. 前端显示：实时显示 AI 响应内容
-
-**使用示例**：
-1. 访问 `http://localhost:3101/test/mock-user`
-2. 输入 email 和 password
-3. 点击"获取 JWT Token"
-4. 输入对话内容
-5. 点击"发送消息"
-6. 查看 AI 响应和 SSE 事件日志
-
-**注意事项**：
-- 需要真实的 Supabase 用户账号
-- SSE 连接需要后端支持（`/api/v1/messages/{id}/events`）
-- 前端使用 `EventSource` API 接收 SSE 事件
+1. 获取 JWT（真实用户/匿名用户之一）
+2. 选择模型（SSOT：映射 model key）
+3. 发送消息：`POST /api/v1/messages`
+4. SSE 拉流：`GET /api/v1/messages/{id}/events`
 
 ---
 
@@ -222,7 +202,7 @@ JWT 模型管理测试
 |---------|------|------|------|
 | `/api/v1/llm/models` | GET | 获取模型列表 | ✅ 已存在 |
 | `/api/v1/llm/models` | PUT | 更新模型信息 | ✅ 已存在 |
-| `/api/v1/llm/models/check-all` | POST | 批量诊断模型 | ✅ 已存在 |
+| `/api/v1/llm/models/check-all` | GET | 批量诊断模型（202 异步触发） | ✅ 已存在 |
 | `/api/v1/llm/model-groups` | GET | 获取模型映射 | ✅ 已存在 |
 | `/api/v1/llm/model-groups` | POST | 创建/更新映射 | ✅ 已存在 |
 | `/api/v1/llm/model-groups/sync-to-supabase` | POST | 同步映射到 Supabase | ✅ 新增（占位） |
@@ -267,8 +247,7 @@ export const syncMappingsToSupabase = () => request.post('/llm/model-groups/sync
 - [x] **前端组件已更新**：ModelMappingCard 添加诊断和同步按钮
 - [x] **业务域默认值已设置**：`scope_type` 默认为 `'user'`
 - [x] **JWT 测试脚本已创建**：`scripts/test_jwt_with_models.py`
-- [x] **Mock 用户 UI 已创建**：`web/src/views/test/mock-user.vue`
-- [x] **路由配置已添加**：`web/src/views/test/route.js`
+- [x] **JWT 测试页（SSOT）**：`web/src/views/ai/model-suite/jwt/RealUserSseSsot.vue`
 - [x] **代码规范**：遵循 Vue 3 Composition API 规范（`<script setup>`）
 - [x] **样式一致**：使用 Naive UI 组件库
 
@@ -310,4 +289,3 @@ export const syncMappingsToSupabase = () => request.post('/llm/model-groups/sync
 **交接完成**  
 **文档版本**：v1.0  
 **最后更新**：2025-01-14
-
