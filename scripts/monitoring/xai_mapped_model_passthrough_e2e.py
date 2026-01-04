@@ -56,15 +56,17 @@ sys.path.insert(0, str(REPO_ROOT))
 from scripts.monitoring.e2e_trace import TraceLogger, TraceReport, _safe_sse_event
 
 
-def _load_dotenv(repo_root: Path) -> dict[str, str]:
+def _load_dotenv(repo_root: Path) -> tuple[dict[str, str], list[str]]:
     """最小 dotenv 读取器（仅供 E2E 脚本使用，避免依赖额外包）。"""
 
     candidates = [".env", ".env.local", ".env.docker.local"]
     merged: dict[str, str] = {}
+    loaded: list[str] = []
     for filename in candidates:
         path = repo_root / filename
         if not path.exists():
             continue
+        loaded.append(filename)
         env: dict[str, str] = {}
         for raw_line in path.read_text(encoding="utf-8").splitlines():
             line = raw_line.strip()
@@ -80,7 +82,7 @@ def _load_dotenv(repo_root: Path) -> dict[str, str]:
             if key and value:
                 env[key] = value
         merged.update(env)
-    return merged
+    return merged, loaded
 
 
 def _get_env_value(name: str, *fallback_names: str, default: str = "", dotenv: dict[str, str] | None = None) -> str:
@@ -686,7 +688,8 @@ async def _run_one(
 
 async def main() -> int:
     request_id = uuid.uuid4().hex
-    dotenv = _load_dotenv(Path(__file__).resolve().parents[2])
+    repo_root = Path(__file__).resolve().parents[2]
+    dotenv, dotenv_files = _load_dotenv(repo_root)
     report = TraceReport(
         request_id=request_id,
         context={
@@ -694,13 +697,20 @@ async def main() -> int:
             "mapped_model_key": os.getenv("E2E_MAPPED_MODEL_KEY") or "global:xai",
             "xai_base_url": _get_env_value("XAI_API_BASE_URL", "XAI_BASEURL", default="https://api.x.ai", dotenv=dotenv),
             "xai_provider_model": os.getenv("XAI_PROVIDER_MODEL") or "grok-4.1-思考",
+            "dotenv_files": dotenv_files,
         },
     )
     log = TraceLogger(report, verbose=_as_bool(os.getenv("E2E_VERBOSE") or "true", default=True))
 
     xai_api_key = _get_env_value("XAI_API_KEY", default="", dotenv=dotenv)
     if not xai_api_key:
-        log.log("missing_env=XAI_API_KEY")
+        hint = {
+            "dotenv_files": dotenv_files,
+            "has_XAI_API_KEY_in_dotenv": "XAI_API_KEY" in dotenv,
+            "has_XAI_BASEURL_in_dotenv": "XAI_BASEURL" in dotenv or "XAI_API_BASE_URL" in dotenv,
+            "note": "请确认把 XAI_API_KEY 写入仓库根目录 .env.local（或 .env/.env.docker.local），或在当前 WSL shell export 后再运行脚本。",
+        }
+        log.step("missing_env", ok=False, started_at=time.time(), finished_at=time.time(), notes=hint)
         return 2
 
     api_base = (os.getenv("E2E_API_BASE") or "http://127.0.0.1:9999/api/v1").strip()
@@ -713,7 +723,6 @@ async def main() -> int:
     scope_key = mapped_key.split(":", 1)[1] if ":" in mapped_key else mapped_key
     text = (os.getenv("E2E_MESSAGE_TEXT") or "给我一份三分化训练方案").strip()
 
-    repo_root = Path(__file__).resolve().parents[2]
     system_prompt_text, openai_tools = _load_asset_prompts(repo_root)
     tools_prompt_text = _build_tools_prompt_text(openai_tools)
 
