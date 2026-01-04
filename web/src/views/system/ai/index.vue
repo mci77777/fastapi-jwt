@@ -1,5 +1,6 @@
 <script setup>
 import { computed, h, onBeforeUnmount, onMounted, ref, resolveDirective, withDirectives } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   NAlert,
   NButton,
@@ -25,13 +26,13 @@ import TheIcon from '@/components/icon/TheIcon.vue'
 
 import { renderIcon } from '@/utils'
 import { useCRUD } from '@/composables'
-import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
 import api from '@/api'
 
 defineOptions({ name: 'AIConfigModels' })
 
 const vPermission = resolveDirective('permission')
 const $table = ref(null)
+const router = useRouter()
 
 const supabaseStatus = ref(null)
 const supabaseLoading = ref(false)
@@ -102,12 +103,8 @@ const monitorIntervalOptions = [
 ]
 let monitorStatusTimer = null
 
-const aiStore = useAiModelSuiteStore()
-const mailApiKeyInput = ref(aiStore.mailApiKey)
-
-function handleSaveMailApiKey() {
-  aiStore.setMailApiKey(mailApiKeyInput.value)
-  window.$message.success('Mail API Key 配置已更新')
+function handleGoMapping() {
+  router.push('/ai')
 }
 
 const initForm = {
@@ -586,9 +583,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <CommonPage show-footer title="AI 接入配置">
+  <CommonPage show-footer title="AI 供应商（Endpoints）">
     <template #action>
       <NSpace justify="end">
+        <NButton tertiary @click="handleGoMapping">
+          <TheIcon icon="mdi:graph-outline" :size="18" class="mr-5" />去模型映射
+        </NButton>
         <NDropdown
           :options="syncOptions"
           trigger="click"
@@ -624,6 +624,16 @@ onBeforeUnmount(() => {
     </template>
 
     <NSpace vertical size="large">
+      <NAlert type="info" :bordered="false">
+        <div class="flex flex-wrap items-center gap-2">
+          <span>
+            此页仅用于维护供应商 endpoints（Base URL / API Key / 连通性）。App/JWT 只消费「模型映射」输出的
+            <code>model</code>（<code>/api/v1/llm/models</code> 的 <code>data[].name</code>）。
+          </span>
+          <NButton text type="primary" @click="handleGoMapping">去模型映射</NButton>
+        </div>
+      </NAlert>
+
       <NCard :loading="supabaseLoading" title="Supabase 状态" size="small">
         <template #header-extra>
           <NButton text size="small" @click="loadSupabaseStatus">
@@ -647,7 +657,7 @@ onBeforeUnmount(() => {
           </NAlert>
         </NSpace>
       </NCard>
-      <NCard :loading="monitorLoading" size="small" title="Endpoint Monitor">
+      <NCard :loading="monitorLoading" size="small" title="端点巡检（Monitor）">
         <NSpace vertical size="small">
           <div class="flex flex-wrap items-center gap-3">
             <NSelect
@@ -663,7 +673,7 @@ onBeforeUnmount(() => {
               :disabled="monitorStatus.is_running"
               @click="handleStartMonitor"
             >
-              <TheIcon icon="mdi:play" :size="16" class="mr-5" />Start Monitor
+              <TheIcon icon="mdi:play" :size="16" class="mr-5" />开始
             </NButton>
             <NButton
               type="default"
@@ -672,13 +682,13 @@ onBeforeUnmount(() => {
               :disabled="!monitorStatus.is_running"
               @click="handleStopMonitor"
             >
-              <TheIcon icon="mdi:stop" :size="16" class="mr-5" />Stop Monitor
+              <TheIcon icon="mdi:stop" :size="16" class="mr-5" />停止
             </NButton>
           </div>
           <div class="text-sm text-gray-500">
-            <span>Status: {{ monitorStatus.is_running ? 'Running' : 'Stopped' }}</span>
-            <span class="ml-4">Last run: {{ monitorStatus.last_run_at || '--' }}</span>
-            <span class="ml-4">Interval (s): {{ monitorStatus.interval_seconds }}</span>
+            <span>状态：{{ monitorStatus.is_running ? '运行中' : '已停止' }}</span>
+            <span class="ml-4">最近一次：{{ monitorStatus.last_run_at || '--' }}</span>
+            <span class="ml-4">间隔（秒）：{{ monitorStatus.interval_seconds }}</span>
             <span v-if="monitorStatus.last_error" class="ml-4 text-error"
               >Error: {{ monitorStatus.last_error }}</span
             >
@@ -761,25 +771,5 @@ onBeforeUnmount(() => {
         </NFormItem>
       </NForm>
     </CrudModal>
-
-    <NCard title="测试环境配置" size="small" class="mt-4">
-       <NForm inline label-placement="left" label-width="auto">
-         <NFormItem label="Mail API Key (E2E Test)">
-           <NInput
-             v-model:value="mailApiKeyInput"
-             type="password"
-             placeholder="输入用于测试的 Mail API Key"
-             show-password-on="click"
-             style="width: 300px"
-           />
-         </NFormItem>
-         <NFormItem>
-           <NButton type="primary" @click="handleSaveMailApiKey">保存配置</NButton>
-         </NFormItem>
-       </NForm>
-       <div class="text-xs text-gray-500 mt-2">
-         此 Key 用于 JWT 测试页面的「生成测试用户」功能。设置为 <code>test-key-mock</code> 可开启 Mock 模式。
-       </div>
-    </NCard>
   </CommonPage>
 </template>

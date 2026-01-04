@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import {
   NAlert,
   NButton,
@@ -21,10 +22,18 @@ import {
   refreshMailUserToken,
   createMessage,
 } from '@/api/aiModelSuite'
+import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
 
 defineOptions({ name: 'RealUserSseSsot' })
 
 const message = useMessage()
+const aiStore = useAiModelSuiteStore()
+const { mailApiKey } = storeToRefs(aiStore)
+
+function handleSaveMailApiKey() {
+  aiStore.setMailApiKey(mailApiKey.value)
+  message.success('Mail API Key 已保存（仅本地）')
+}
 
 // ---------------- JWT ----------------
 const jwtToken = ref('')
@@ -77,7 +86,9 @@ async function handleCreateTestUser(forceNew) {
   if (forceNew) creatingTestUserForce.value = true
   else creatingTestUser.value = true
   try {
+    const key = String(mailApiKey.value || '').trim()
     const res = await createMailUser({
+      mail_api_key: key || undefined,
       username_prefix: 'gymbro-test-01',
       force_new: !!forceNew,
     })
@@ -344,6 +355,24 @@ onMounted(() => {
 <template>
   <NSpace vertical :size="16">
     <NCard title="JWT 测试（SSOT：仅使用映射后的 model key）" size="small">
+      <NForm inline label-placement="left" label-width="auto">
+        <NFormItem label="Mail API Key">
+          <NInput
+            v-model:value="mailApiKey"
+            type="password"
+            placeholder="用于生成测试用户（可选）"
+            show-password-on="click"
+            style="width: 320px"
+          />
+        </NFormItem>
+        <NFormItem>
+          <NButton secondary @click="handleSaveMailApiKey">保存</NButton>
+        </NFormItem>
+      </NForm>
+      <NAlert type="info" :bordered="false" class="mt-2">
+        此 Key 仅保存在浏览器 localStorage，用于「生成测试用户」。设置为 <code>test-key-mock</code> 可开启 Mock 模式。
+      </NAlert>
+
       <NSpace wrap>
         <NButton type="primary" :loading="creatingTestUser" @click="handleCreateTestUser(false)">
           一键获取测试用户（复用/refresh）
@@ -436,4 +465,3 @@ onMounted(() => {
   margin-top: 12px;
 }
 </style>
-
