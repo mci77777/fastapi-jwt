@@ -265,13 +265,11 @@ class TestRequestIdSSOT:
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
             mock_get_verifier.return_value = mock_verifier
 
-            original_provider = fastapi_app.state.ai_service._provider
-            try:
-                bad_provider = MagicMock()
-                bad_provider.get_user_details.side_effect = ProviderError("forced_provider_error")
-                bad_provider.sync_chat_record = MagicMock()
-                fastapi_app.state.ai_service._provider = bad_provider
-
+            with patch.object(
+                fastapi_app.state.ai_service,
+                "_call_openai_chat_completions",
+                side_effect=ProviderError("forced_provider_error"),
+            ):
                 create = await async_client.post(
                     "/api/v1/messages",
                     headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": request_id},
@@ -294,5 +292,3 @@ class TestRequestIdSSOT:
                 last_error = next(item for item in reversed(events) if item["event"] == "error")
                 assert isinstance(last_error["data"], dict)
                 assert last_error["data"].get("request_id") == request_id
-            finally:
-                fastapi_app.state.ai_service._provider = original_provider

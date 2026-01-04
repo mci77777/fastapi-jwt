@@ -416,7 +416,7 @@ async def _ensure_xai_endpoint(
         "base_url": base_url,
         "model": provider_model,
         "api_key": api_key,
-        "timeout": 60,
+        "timeout": 120,
         "is_active": True,
         "is_default": True,
     }
@@ -869,7 +869,8 @@ async def main() -> int:
             "model": mapped_key,
             "messages": [{"role": "system", "content": system_prompt_text}, {"role": "user", "content": text}],
             "tools": openai_tools,
-            "tool_choice": "auto",
+            # 透传模式下避免触发 tool_calls（当前后端不执行工具），确保能拿到结构化 reply
+            "tool_choice": "none",
         }
         r2 = await _run_one(
             api_base=api_base,

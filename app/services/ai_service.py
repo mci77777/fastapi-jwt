@@ -353,9 +353,16 @@ class AIService:
         error_message: Optional[str] = None
 
         try:
-            user_details = await to_thread.run_sync(
-                self._provider.get_user_details,
-                user.uid,
+            # KISS/性能：对话链路不依赖外部 Provider 拉取用户资料（避免 Supabase 抖动导致 SSE 直接失败）。
+            # 仅从 JWT claims 组装最小 UserDetails，确保端到端可用。
+            claims = getattr(user, "claims", {}) or {}
+            user_meta = claims.get("user_metadata") if isinstance(claims, dict) else None
+            user_details = UserDetails(
+                uid=user.uid,
+                email=claims.get("email") if isinstance(claims, dict) else None,
+                display_name=(user_meta or {}).get("full_name") if isinstance(user_meta, dict) else None,
+                avatar_url=(user_meta or {}).get("avatar_url") if isinstance(user_meta, dict) else None,
+                metadata=user_meta if isinstance(user_meta, dict) else {},
             )
 
             await broker.publish(
@@ -366,39 +373,94 @@ class AIService:
                 ),
             )
 
-            (
-                reply_text,
-                model_used,
-                request_payload,
-                response_payload,
-                upstream_request_id,
-                endpoint_id_used,
-                provider_used,
-            ) = await self._generate_reply(message, user, user_details)
+            # 先做“路由决策”，确保即使上游超时/失败也能在 SSE error 中对账 provider/resolved_model。
+            reply_text: str
+            if self._ai_config_service is None:
+                reply_text = await self._call_openai_completion_settings(message)
+                model_used = self._settings.ai_model or "gpt-4o-mini"
+                provider_used = "openai"
+                request_payload = json.dumps({"model": model_used, "text": message.text}, ensure_ascii=False)
 
-            logger.info(
-                "AI endpoint selected message_id=%s request_id=%s endpoint_id=%s model=%s",
-                message_id,
-                request_id,
-                endpoint_id_used,
-                model_used,
-            )
+                await broker.publish(
+                    message_id,
+                    MessageEvent(
+                        event="status",
+                        data={
+                            "state": "routed",
+                            "message_id": message_id,
+                            "request_id": request_id,
+                            "provider": provider_used,
+                            "resolved_model": model_used,
+                            "endpoint_id": None,
+                            "upstream_request_id": None,
+                        },
+                    ),
+                )
+            else:
+                openai_req = await self._build_openai_request(message, user_details=user_details)
+                preferred_endpoint_id = _parse_optional_int(
+                    (message.metadata or {}).get("endpoint_id") or (message.metadata or {}).get("endpointId")
+                )
+                selected_endpoint, selected_model, provider_name = await self._select_endpoint_and_model(
+                    openai_req,
+                    preferred_endpoint_id=preferred_endpoint_id,
+                )
 
-            await broker.publish(
-                message_id,
-                MessageEvent(
-                    event="status",
-                    data={
-                        "state": "routed",
-                        "message_id": message_id,
-                        "request_id": request_id,
-                        "provider": provider_used,
-                        "resolved_model": model_used,
-                        "endpoint_id": endpoint_id_used,
-                        "upstream_request_id": upstream_request_id,
+                endpoint_id_used = _parse_optional_int(selected_endpoint.get("id"))
+                model_used = selected_model
+                provider_used = provider_name
+
+                logger.info(
+                    "AI endpoint selected message_id=%s request_id=%s endpoint_id=%s model=%s provider=%s",
+                    message_id,
+                    request_id,
+                    endpoint_id_used,
+                    model_used,
+                    provider_used,
+                )
+
+                await broker.publish(
+                    message_id,
+                    MessageEvent(
+                        event="status",
+                        data={
+                            "state": "routed",
+                            "message_id": message_id,
+                            "request_id": request_id,
+                            "provider": provider_used,
+                            "resolved_model": model_used,
+                            "endpoint_id": endpoint_id_used,
+                            "upstream_request_id": None,
+                        },
+                    ),
+                )
+
+                api_key = await self._get_endpoint_api_key(selected_endpoint)
+                if not api_key:
+                    raise ProviderError("endpoint_missing_api_key")
+
+                request_payload = json.dumps(
+                    {
+                        "conversation_id": message.conversation_id,
+                        "text": message.text,
+                        "model": openai_req.get("model"),
+                        "messages": openai_req.get("messages"),
                     },
-                ),
-            )
+                    ensure_ascii=False,
+                )
+
+                if provider_name == "claude":
+                    reply_text, response_payload, upstream_request_id = await self._call_anthropic_messages(
+                        selected_endpoint,
+                        api_key,
+                        openai_req,
+                    )
+                else:
+                    reply_text, response_payload, upstream_request_id = await self._call_openai_chat_completions(
+                        selected_endpoint,
+                        api_key,
+                        openai_req,
+                    )
 
             async for chunk in self._stream_chunks(reply_text):
                 await broker.publish(
@@ -451,7 +513,7 @@ class AIService:
             )
             success = True
         except ProviderError as exc:  # pragma: no cover - 运行时防护
-            error_message = str(exc)[:200]
+            error_message = (str(exc) or type(exc).__name__)[:200]
             logger.error("AI 会话处理失败（provider） message_id=%s request_id=%s error=%s", message_id, request_id, exc)
             await broker.publish(
                 message_id,
@@ -459,7 +521,7 @@ class AIService:
                     event="error",
                     data={
                         "message_id": message_id,
-                        "error": str(exc),
+                        "error": str(exc) or type(exc).__name__,
                         "request_id": request_id,
                         "provider": provider_used,
                         "resolved_model": model_used,
@@ -468,7 +530,7 @@ class AIService:
                 ),
             )
         except Exception as exc:  # pragma: no cover - 运行时防护
-            error_message = str(exc)[:200]
+            error_message = (str(exc) or type(exc).__name__)[:200]
             logger.exception("AI 会话处理失败 message_id=%s request_id=%s", message_id, request_id)
             await broker.publish(
                 message_id,
@@ -476,7 +538,7 @@ class AIService:
                     event="error",
                     data={
                         "message_id": message_id,
-                        "error": str(exc),
+                        "error": str(exc) or type(exc).__name__,
                         "request_id": request_id,
                         "provider": provider_used,
                         "resolved_model": model_used,
@@ -941,7 +1003,8 @@ class AIService:
             if key in openai_req and openai_req[key] is not None:
                 payload[key] = openai_req[key]
 
-        async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+        timeout = endpoint.get("timeout") or self._settings.http_timeout_seconds
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(chat_url, json=payload, headers=headers)
             try:
                 response.raise_for_status()
@@ -1000,7 +1063,8 @@ class AIService:
         if request_id:
             headers[REQUEST_ID_HEADER_NAME] = request_id
 
-        async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+        timeout = endpoint.get("timeout") or self._settings.http_timeout_seconds
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(messages_url, json=anthropic_payload, headers=headers)
             try:
                 response.raise_for_status()
