@@ -1,6 +1,7 @@
 """FastAPI 应用初始化逻辑。"""
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from shutil import copy2, copytree
 
@@ -52,16 +53,23 @@ async def lifespan(app: FastAPI):
         # 注意：不移动目录本身（避免删除 repo 中的 .gitkeep），只做“文件级别的缺失补齐”。
         try:
             storage_dir.mkdir(parents=True, exist_ok=True)
-            for filename in ("model_mappings.json", "blocked_models.json"):
-                src = legacy_storage_dir / filename
-                dst = storage_dir / filename
-                if src.exists() and not dst.exists():
-                    copy2(src, dst)
+            marker = storage_dir / ".legacy_import_done"
+            if not marker.exists():
+                for filename in ("model_mappings.json", "blocked_models.json"):
+                    src = legacy_storage_dir / filename
+                    dst = storage_dir / filename
+                    if src.exists() and not dst.exists():
+                        copy2(src, dst)
 
-            src_backups = legacy_storage_dir / "backups"
-            dst_backups = storage_dir / "backups"
-            if src_backups.exists() and not dst_backups.exists():
-                copytree(src_backups, dst_backups, dirs_exist_ok=True)
+                src_backups = legacy_storage_dir / "backups"
+                dst_backups = storage_dir / "backups"
+                if src_backups.exists() and not dst_backups.exists():
+                    copytree(src_backups, dst_backups, dirs_exist_ok=True)
+
+                marker.write_text(
+                    datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                    encoding="utf-8",
+                )
         except Exception:
             # 兜底：迁移失败不阻断启动
             pass
@@ -78,8 +86,12 @@ async def lifespan(app: FastAPI):
             app.state.endpoint_monitor.trigger_probe()
         except Exception:
             pass
-    app.state.model_mapping_service = ModelMappingService(app.state.ai_config_service, storage_dir)
-    # 启动期兜底：确保存在最小 global 映射（避免首次请求因映射缺失导致 model 白名单为空）
+    app.state.model_mapping_service = ModelMappingService(
+        app.state.ai_config_service,
+        storage_dir,
+        auto_seed_enabled=bool(getattr(settings, "allow_test_ai_endpoints", False)),
+    )
+    # 启动期兜底：仅测试环境自动生成最小 global 映射（生产环境禁止“删不掉/回弹”）
     try:
         await app.state.model_mapping_service.ensure_minimal_global_mapping()
     except Exception:

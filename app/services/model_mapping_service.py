@@ -54,13 +54,14 @@ class ModelMapping:
 class ModelMappingService:
     """负责读取/写入 Prompt 及 fallback JSON 中的模型映射配置。"""
 
-    def __init__(self, ai_service: AIConfigService, storage_dir: Path) -> None:
+    def __init__(self, ai_service: AIConfigService, storage_dir: Path, *, auto_seed_enabled: bool = False) -> None:
         self._ai_service = ai_service
         self._storage_dir = storage_dir
         self._storage_dir.mkdir(parents=True, exist_ok=True)
         self._file_path = self._storage_dir / "model_mappings.json"
         self._blocked_file_path = self._storage_dir / "blocked_models.json"
         self._lock = asyncio.Lock()
+        self._auto_seed_enabled = bool(auto_seed_enabled)
 
     async def list_blocked_models(self) -> list[str]:
         payload = await self._read_blocked()
@@ -155,6 +156,9 @@ class ModelMappingService:
         existing = await self.list_mappings(scope_type="global", scope_key="global")
         if existing:
             return existing[0]
+
+        if not self._auto_seed_enabled:
+            return None
 
         endpoints, _ = await self._ai_service.list_endpoints(only_active=True, page=1, page_size=200)
         active = [ep for ep in endpoints if isinstance(ep, dict) and ep.get("is_active") and ep.get("has_api_key")]

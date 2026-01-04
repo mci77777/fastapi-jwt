@@ -206,7 +206,8 @@ class AIService:
             and str(item.get("scope_key") or "").strip() == "global"
             for item in mappings
         )
-        if not has_global_mapping:
+        # 仅测试环境做 auto-seed：生产环境禁止“删不掉/回弹”，由管理员显式配置映射。
+        if not has_global_mapping and bool(getattr(self._settings, "allow_test_ai_endpoints", False)):
             try:
                 await self._model_mapping_service.ensure_minimal_global_mapping()
                 mappings = await self._model_mapping_service.list_mappings()
@@ -314,7 +315,7 @@ class AIService:
         items = _collect_items(mappings)
 
         # 端到端兜底：当白名单为空但存在可用端点时，自动修复 global:global（避免配置漂移导致 App 无法选择模型）。
-        if not items and candidates:
+        if bool(getattr(self._settings, "allow_test_ai_endpoints", False)) and not items and candidates:
             default_endpoint = next((item for item in candidates if item.get("is_default")), candidates[0])
             seed_candidates: list[str] = []
             preferred = str(default_endpoint.get("model") or "").strip()
