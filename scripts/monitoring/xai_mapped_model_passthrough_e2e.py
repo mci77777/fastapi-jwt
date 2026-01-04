@@ -221,6 +221,64 @@ def _validate_expected_structure(reply: str) -> tuple[bool, str]:
     return True, "ok"
 
 
+async def _resolve_xai_provider_model(
+    *,
+    base_url: str,
+    api_key: str,
+    requested: str,
+) -> tuple[str, dict[str, Any]]:
+    """将“人类可读模型名”解析为 xAI /v1/models 实际可用 id。"""
+
+    url = base_url.rstrip("/") + "/v1/models"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+    items = data.get("data") if isinstance(data, dict) else None
+    ids: list[str] = []
+    if isinstance(items, list):
+        for item in items:
+            if isinstance(item, dict) and "id" in item:
+                ids.append(str(item["id"]))
+
+    requested_text = str(requested or "").strip()
+    if not requested_text:
+        requested_text = "grok-4.1-思考"
+
+    # 1) 直接命中
+    if requested_text in ids:
+        return requested_text, {"source": "exact", "models_total": len(ids)}
+
+    lowered = requested_text.lower()
+    alias_map = {
+        # “思考/推理” → reasoning
+        "grok-4.1-思考": "grok-4-1-fast-reasoning",
+        "grok-4.1": "grok-4-1-fast-reasoning",
+        "grok-4.1-thinking": "grok-4-1-fast-reasoning",
+        "grok-4.1-reasoning": "grok-4-1-fast-reasoning",
+    }
+    if requested_text in alias_map and alias_map[requested_text] in ids:
+        return alias_map[requested_text], {"source": "alias_map", "models_total": len(ids), "requested": requested_text}
+
+    # 2) 规则兜底：优先 4.1 reasoning
+    prefers_41 = ("4.1" in lowered) or ("4-1" in lowered)
+    prefers_reasoning = ("思考" in requested_text) or ("thinking" in lowered) or ("reason" in lowered)
+    if prefers_reasoning:
+        preferred = "grok-4-1-fast-reasoning" if prefers_41 else "grok-4-fast-reasoning"
+        if preferred in ids:
+            return preferred, {"source": "heuristic_reasoning", "models_total": len(ids), "requested": requested_text}
+
+    # 3) 最后兜底：任选一个 grok 模型（保证 E2E 可跑通）
+    grok_ids = [m for m in ids if "grok" in m.lower()]
+    if grok_ids:
+        return grok_ids[0], {"source": "fallback_first_grok", "models_total": len(ids), "requested": requested_text}
+
+    return (ids[0] if ids else requested_text), {"source": "fallback_first", "models_total": len(ids), "requested": requested_text}
+
+
 def _find_routed(frames: list[dict[str, Any]]) -> dict[str, Any] | None:
     for evt in frames:
         if not isinstance(evt, dict):
@@ -326,7 +384,7 @@ async def _ensure_xai_endpoint(
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "X-Request-Id": request_id}
     async with httpx.AsyncClient(timeout=30.0) as client:
         started = time.time()
-        resp = await client.get(url_list, headers=headers, params={"view": "endpoints", "page": 1, "page_size": 200})
+        resp = await client.get(url_list, headers=headers, params={"view": "endpoints", "page": 1, "page_size": 100})
         finished = time.time()
     data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
     endpoints = data.get("data") if isinstance(data, dict) else None
@@ -717,7 +775,19 @@ async def main() -> int:
     username = (os.getenv("E2E_ADMIN_USERNAME") or "admin").strip()
     password = (os.getenv("E2E_ADMIN_PASSWORD") or "123456").strip()
     xai_base_url = _get_env_value("XAI_API_BASE_URL", "XAI_BASEURL", default="https://api.x.ai", dotenv=dotenv).strip()
-    provider_model = (os.getenv("XAI_PROVIDER_MODEL") or "grok-4.1-思考").strip()
+    provider_model_raw = (os.getenv("XAI_PROVIDER_MODEL") or "grok-4.1-思考").strip()
+    provider_model, provider_model_notes = await _resolve_xai_provider_model(
+        base_url=xai_base_url,
+        api_key=xai_api_key,
+        requested=provider_model_raw,
+    )
+    log.step(
+        "resolve_xai_provider_model",
+        ok=bool(provider_model),
+        started_at=time.time(),
+        finished_at=time.time(),
+        notes={"requested": provider_model_raw, "resolved": provider_model, **(provider_model_notes or {})},
+    )
 
     mapped_key = (os.getenv("E2E_MAPPED_MODEL_KEY") or "global:xai").strip()
     scope_key = mapped_key.split(":", 1)[1] if ":" in mapped_key else mapped_key
