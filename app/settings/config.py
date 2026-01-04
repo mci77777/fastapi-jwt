@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     ai_model: Optional[str] = Field(default=None, alias="AI_MODEL")
     ai_api_base_url: Optional[AnyHttpUrl] = Field(default=None, alias="AI_API_BASE_URL")
     ai_api_key: Optional[str] = Field(default=None, alias="AI_API_KEY")
+    ai_runtime_storage_dir: str = Field(default="storage/ai_runtime", alias="AI_RUNTIME_STORAGE_DIR")
     mail_api_key: Optional[str] = Field(default=None, alias="MAIL_API_KEY")
     mail_api_base_url: Optional[AnyHttpUrl] = Field(default=None, alias="MAIL_API_BASE_URL")
     mail_domain: Optional[str] = Field(default=None, alias="MAIL_DOMAIN")

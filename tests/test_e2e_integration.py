@@ -53,7 +53,9 @@ class TestE2EIntegration:
 
         # 1. 创建消息
         response = client.post(
-            "/api/v1/messages", json={"text": "Hello AI", "conversation_id": "conv-123"}, headers=auth_headers
+            "/api/v1/messages",
+            json={"text": "Hello AI", "conversation_id": "conv-123", "model": "global:global"},
+            headers=auth_headers,
         )
 
         assert response.status_code == 202
@@ -81,7 +83,7 @@ class TestE2EIntegration:
         custom_request_id = "custom-request-12345"
         headers = {**auth_headers, "x-request-id": custom_request_id}
 
-        response = client.post("/api/v1/messages", json={"text": "Hello with trace"}, headers=headers)
+        response = client.post("/api/v1/messages", json={"text": "Hello with trace", "model": "global:global"}, headers=headers)
 
         assert response.status_code == 202
         # 验证响应头中包含相同的 Request ID
@@ -161,9 +163,9 @@ class TestE2EIntegration:
 
         # 测试不同类型的消息
         test_cases = [
-            {"text": "Hello", "conversation_id": "conv-1"},
-            {"text": "How are you?", "conversation_id": "conv-2", "metadata": {"source": "web"}},
-            {"text": "Tell me a joke"},  # 无conversation_id
+            {"text": "Hello", "conversation_id": "conv-1", "model": "global:global"},
+            {"text": "How are you?", "conversation_id": "conv-2", "metadata": {"source": "web"}, "model": "global:global"},
+            {"text": "Tell me a joke", "model": "global:global"},  # 无conversation_id
         ]
 
         for case in test_cases:

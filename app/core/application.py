@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
     sqlite_manager = SQLiteManager(db_path)
     await sqlite_manager.init()
     app.state.sqlite_manager = sqlite_manager
-    storage_dir = Path("storage") / "ai_runtime"
+    storage_dir = Path(getattr(settings, "ai_runtime_storage_dir", "storage/ai_runtime"))
     app.state.ai_config_service = AIConfigService(sqlite_manager, settings, storage_dir)
     # 本地最小闭环：若没有任何 active endpoint，则用环境变量注入一个默认端点，避免 E2E/SSE 直接报 no_active_ai_endpoint。
     try:
@@ -59,6 +59,11 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     app.state.model_mapping_service = ModelMappingService(app.state.ai_config_service, storage_dir)
+    # 启动期兜底：确保存在最小 global 映射（避免首次请求因映射缺失导致 model 白名单为空）
+    try:
+        await app.state.model_mapping_service.ensure_minimal_global_mapping()
+    except Exception:
+        pass
     app.state.jwt_test_service = JWTTestService(app.state.ai_config_service, settings, storage_dir)
 
     # Dashboard 服务层（Phase 1）

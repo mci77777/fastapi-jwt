@@ -78,6 +78,19 @@ class TestAIEndpointSelectionPrefersNonTest:
                 original_allow_test = fastapi_app.state.ai_service._settings.allow_test_ai_endpoints
                 fastapi_app.state.ai_service._settings.allow_test_ai_endpoints = False
                 try:
+                    mappings = [
+                        {
+                            "id": "global:global",
+                            "scope_type": "global",
+                            "scope_key": "global",
+                            "name": "App Default",
+                            "default_model": "gpt-4o-mini",
+                            "candidates": ["gpt-4o-mini"],
+                            "is_active": True,
+                            "source": "fallback",
+                            "metadata": {},
+                        }
+                    ]
                     await fastapi_app.state.ai_config_service.create_endpoint(
                         {
                             "name": "openai-real",
@@ -107,11 +120,16 @@ class TestAIEndpointSelectionPrefersNonTest:
                     mock_response.headers = {"x-request-id": "upstream-rid"}
                     mock_httpx.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
 
-                    create = await async_client.post(
-                        "/api/v1/messages",
-                        headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": request_id},
-                        json={"text": "Hello", "model": "gpt-4o-mini"},
-                    )
+                    with patch.object(
+                        fastapi_app.state.model_mapping_service,
+                        "list_mappings",
+                        new=AsyncMock(return_value=mappings),
+                    ):
+                        create = await async_client.post(
+                            "/api/v1/messages",
+                            headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": request_id},
+                            json={"text": "Hello", "model": "global:global"},
+                        )
                     assert create.status_code == status.HTTP_202_ACCEPTED
                     message_id = create.json()["message_id"]
 
@@ -133,4 +151,3 @@ class TestAIEndpointSelectionPrefersNonTest:
                     assert called_url.startswith("https://api.openai.com")
                 finally:
                     fastapi_app.state.ai_service._settings.allow_test_ai_endpoints = original_allow_test
-

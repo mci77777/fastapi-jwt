@@ -408,7 +408,7 @@ class TestJWTHardeningIntegration:
                 with _mock_jwt_header_and_key():
                     response = client.post(
                         "/api/v1/messages",
-                        json={"text": "Hello AI", "conversation_id": "conv-123"},
+                        json={"text": "Hello AI", "conversation_id": "conv-123", "model": "global:global"},
                         headers={"Authorization": "Bearer mock.supabase.jwt"},
                     )
 
@@ -517,7 +517,7 @@ class TestJWTHardeningIntegration:
                 with _mock_jwt_header_and_key():
                     response = client.post(
                         "/api/v1/messages",
-                        json={"text": "Hello AI"},
+                        json={"text": "Hello AI", "model": "global:global"},
                         headers={"Authorization": "Bearer skewed.time.jwt"},
                     )
 
@@ -541,7 +541,7 @@ class TestJWTHardeningIntegration:
                 with _mock_jwt_header_and_key():
                     response = client.post(
                         "/api/v1/messages",
-                        json={"text": "Hello AI"},
+                        json={"text": "Hello AI", "model": "global:global"},
                         headers={"Authorization": "Bearer valid.nbf.jwt"},
                     )
 
@@ -580,7 +580,7 @@ class TestJWTHardeningIntegration:
                 with _mock_jwt_header_and_key(alg="ES256", kid="test-kid"):
                     response = client.post(
                         "/api/v1/messages",
-                        json={"text": "Hello AI"},
+                        json={"text": "Hello AI", "model": "global:global"},
                         headers={"Authorization": "Bearer es256.jwt"},
                     )
 
@@ -707,7 +707,7 @@ class TestAPIEndpoints:
         headers = {"Authorization": "Bearer mock-jwt-token"}
         response = client.post(
             "/api/v1/messages",
-            json={"text": "Hello AI", "conversation_id": "conv-123"},
+            json={"text": "Hello AI", "conversation_id": "conv-123", "model": "global:global"},
             headers=headers,
         )
 

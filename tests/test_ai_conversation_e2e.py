@@ -18,11 +18,25 @@ class TestModelSelection:
 
     @pytest.mark.asyncio
     async def test_model_from_request_overrides_default(self, async_client: AsyncClient, mock_jwt_token: str):
-        """Test that model from request overrides default setting."""
+        """请求 model 必须来自白名单（mapping.id）；并能解析为真实 vendor model。"""
         with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
             mock_verifier = MagicMock()
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
             mock_get_verifier.return_value = mock_verifier
+
+            mappings = [
+                {
+                    "id": "user:test-user-123",
+                    "scope_type": "user",
+                    "scope_key": "test-user-123",
+                    "name": "User Override",
+                    "default_model": "gpt-4o",
+                    "candidates": ["gpt-4o"],
+                    "is_active": True,
+                    "source": "fallback",
+                    "metadata": {},
+                }
+            ]
 
             with patch("app.services.ai_service.httpx.AsyncClient") as mock_client:
                 await fastapi_app.state.ai_config_service.create_endpoint(
@@ -43,20 +57,25 @@ class TestModelSelection:
                 mock_response.raise_for_status = MagicMock()
                 mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
 
-                response = await async_client.post(
-                    "/api/v1/messages",
-                    headers={"Authorization": f"Bearer {mock_jwt_token}"},
-                    json={
-                        "text": "Hello, AI!",
-                        "model": "gpt-4o",  # Specific model
-                    },
-                )
+                with patch.object(
+                    fastapi_app.state.model_mapping_service,
+                    "list_mappings",
+                    new=AsyncMock(return_value=mappings),
+                ):
+                    response = await async_client.post(
+                        "/api/v1/messages",
+                        headers={"Authorization": f"Bearer {mock_jwt_token}"},
+                        json={
+                            "text": "Hello, AI!",
+                            "model": "user:test-user-123",
+                        },
+                    )
 
                 assert response.status_code == status.HTTP_202_ACCEPTED
                 data = response.json()
                 assert "message_id" in data
 
-                # Verify OpenAI was called with the specified model
+                # Verify OpenAI was called with the resolved vendor model
                 call_args = mock_client.return_value.__aenter__.return_value.post.call_args
                 assert call_args is not None
                 payload = call_args[1]["json"]
@@ -126,7 +145,7 @@ class TestModelSelection:
 
     @pytest.mark.asyncio
     async def test_model_name_is_not_used_as_mapping_key(self, async_client: AsyncClient, mock_jwt_token: str):
-        """映射 name 仅用于展示；改名不应成为请求 key。"""
+        """映射 name 仅用于展示；请求 key 必须为 mapping.id（否则 422）。"""
         with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
             mock_verifier = MagicMock()
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
@@ -179,16 +198,17 @@ class TestModelSelection:
                         },
                     )
 
-                assert response.status_code == status.HTTP_202_ACCEPTED
+                assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+                payload = response.json()
+                assert payload.get("code") == "model_not_allowed"
+                assert payload.get("request_id")
 
                 call_args = mock_client.return_value.__aenter__.return_value.post.call_args
-                assert call_args is not None
-                payload = call_args[1]["json"]
-                assert payload["model"] == "Renamable Label"
+                assert call_args is None
 
     @pytest.mark.asyncio
     async def test_model_fallback_to_default(self, async_client: AsyncClient, mock_jwt_token: str):
-        """Test that missing model falls back to default."""
+        """未提供 model（顶层或 metadata.model）应 422。"""
         with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
             mock_verifier = MagicMock()
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
@@ -222,14 +242,11 @@ class TestModelSelection:
                     },
                 )
 
-                assert response.status_code == status.HTTP_202_ACCEPTED
-
-                # Verify OpenAI was called with default model
-                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
-                assert call_args is not None
-                payload = call_args[1]["json"]
-                # Should use AI_MODEL from settings or fallback to gpt-4o-mini
-                assert payload["model"] in ["gpt-4o-mini", "gpt-4o"]
+                assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+                payload = response.json()
+                assert payload.get("code") == "model_required"
+                assert payload.get("request_id")
+                assert mock_client.return_value.__aenter__.return_value.post.call_args is None
 
     @pytest.mark.asyncio
     async def test_endpoint_override_from_metadata(self, async_client: AsyncClient, mock_jwt_token: str):
@@ -238,6 +255,20 @@ class TestModelSelection:
             mock_verifier = MagicMock()
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
             mock_get_verifier.return_value = mock_verifier
+
+            mappings = [
+                {
+                    "id": "user:test-user-123",
+                    "scope_type": "user",
+                    "scope_key": "test-user-123",
+                    "name": "User Override",
+                    "default_model": "gpt-4o",
+                    "candidates": ["gpt-4o"],
+                    "is_active": True,
+                    "source": "fallback",
+                    "metadata": {},
+                }
+            ]
 
             with patch("app.services.ai_service.httpx.AsyncClient") as mock_client:
                 endpoint_a = await fastapi_app.state.ai_config_service.create_endpoint(
@@ -268,15 +299,20 @@ class TestModelSelection:
                 mock_response.raise_for_status = MagicMock()
                 mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
 
-                response = await async_client.post(
-                    "/api/v1/messages",
-                    headers={"Authorization": f"Bearer {mock_jwt_token}"},
-                    json={
-                        "text": "Hello, AI!",
-                        "model": "gpt-4o",
-                        "metadata": {"endpoint_id": endpoint_b["id"]},
-                    },
-                )
+                with patch.object(
+                    fastapi_app.state.model_mapping_service,
+                    "list_mappings",
+                    new=AsyncMock(return_value=mappings),
+                ):
+                    response = await async_client.post(
+                        "/api/v1/messages",
+                        headers={"Authorization": f"Bearer {mock_jwt_token}"},
+                        json={
+                            "text": "Hello, AI!",
+                            "model": "user:test-user-123",
+                            "metadata": {"endpoint_id": endpoint_b["id"]},
+                        },
+                    )
 
                 assert response.status_code == status.HTTP_202_ACCEPTED
 
@@ -314,7 +350,7 @@ class TestConditionalPersistence:
         with patch.object(
             ai_service,
             "_generate_reply",
-            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None),
+            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None, "openai"),
         ):
             await ai_service.run_conversation(message_id, user, message, broker)
 
@@ -348,7 +384,7 @@ class TestConditionalPersistence:
         with patch.object(
             ai_service,
             "_generate_reply",
-            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None),
+            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None, "openai"),
         ):
             await ai_service.run_conversation(message_id, user, message, broker)
 
@@ -378,7 +414,7 @@ class TestConditionalPersistence:
         with patch.object(
             ai_service,
             "_generate_reply",
-            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None),
+            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None, "openai"),
         ):
             await ai_service.run_conversation(message_id, user, message, broker)
 
@@ -419,7 +455,7 @@ class TestPrometheusMetrics:
         with patch.object(
             ai_service,
             "_generate_reply",
-            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None),
+            return_value=("Hi there!", "gpt-4o-mini", "req", "resp", None, None, "openai"),
         ):
             await ai_service.run_conversation(message_id, user, message, broker)
 
@@ -488,7 +524,7 @@ class TestE2EFlow:
                     json={
                         "text": "What is the best workout?",
                         "conversation_id": "conv-test-001",
-                        "model": "gpt-4o-mini",
+                        "model": "global:global",
                         "metadata": {"save_history": True},
                     },
                 )

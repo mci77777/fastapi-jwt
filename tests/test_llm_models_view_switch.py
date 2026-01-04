@@ -49,12 +49,14 @@ def test_llm_models_default_view_is_mapped_and_endpoints_view_still_works(mock_g
     mapped = client.get("/api/v1/llm/models", headers={"Authorization": "Bearer mock-jwt-token"})
     assert mapped.status_code == 200
     mapped_items = mapped.json().get("data") or []
-    assert any(item.get("scope_key") == "test-mapped" for item in mapped_items)
+    assert any(item.get("name") == mapping_id for item in mapped_items)
 
-    picked = next(item for item in mapped_items if item.get("scope_key") == "test-mapped")
+    picked = next(item for item in mapped_items if item.get("name") == mapping_id)
     assert "base_url" not in picked
     assert "model_list" not in picked
-    assert picked["candidates_count"] == len(picked.get("candidates") or [])
+    assert picked.get("scope_type") == "tenant"
+    assert picked.get("scope_key") == "test-mapped"
+    assert int(picked.get("candidates_count") or 0) >= 1
 
     # view=endpoints：管理后台仍可拉取供应商 endpoint 列表
     endpoints = client.get("/api/v1/llm/models?view=endpoints", headers={"Authorization": "Bearer mock-jwt-token"})
@@ -64,4 +66,3 @@ def test_llm_models_default_view_is_mapped_and_endpoints_view_still_works(mock_g
     assert "id" in endpoint_items[0]
 
     client.delete(f"/api/v1/llm/model-groups/{mapping_id}", headers=headers)
-

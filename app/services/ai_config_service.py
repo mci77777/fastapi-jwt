@@ -298,9 +298,18 @@ class AIConfigService:
         return endpoint
 
     async def ensure_env_default_endpoint(self) -> Optional[dict[str, Any]]:
-        """当本地无可用端点时，使用环境变量注入一个最小可用默认端点（用于本地 Docker/E2E）。"""
+        """当本地无“可用端点”(active + 有 api_key + 非 offline) 时，用环境变量注入一个最小可用默认端点（用于本地 Docker/E2E）。"""
 
-        row = await self._db.fetchone("SELECT COUNT(1) AS cnt FROM ai_endpoints WHERE is_active = 1")
+        row = await self._db.fetchone(
+            """
+            SELECT COUNT(1) AS cnt
+            FROM ai_endpoints
+            WHERE is_active = 1
+              AND api_key IS NOT NULL
+              AND TRIM(api_key) != ''
+              AND (status IS NULL OR lower(status) != 'offline')
+            """
+        )
         count = int(row["cnt"]) if row and row.get("cnt") is not None else 0
         if count > 0:
             return None
@@ -471,26 +480,55 @@ class AIConfigService:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(models_url, headers=headers)
                 latency_ms = (perf_counter() - start) * 1000
-                response.raise_for_status()
-                payload = response.json()
+                # 兼容性：401/403/405/429 多数表示“可达但需要鉴权/限流”，不应判定为 offline。
+                if response.status_code == 200:
+                    payload = response.json()
+                    items: list[Any]
+                    if isinstance(payload, dict):
+                        items = payload.get("data") or payload.get("models") or payload.get("items") or []
+                    elif isinstance(payload, list):
+                        items = payload
+                    else:
+                        items = []
+                    for item in items:
+                        if isinstance(item, dict) and "id" in item:
+                            model_ids.append(str(item["id"]))
+                        elif isinstance(item, str):
+                            model_ids.append(item)
+                    status_value = "online"
+                elif response.status_code in (401, 403, 405, 429):
+                    status_value = "online"
+                    error_text = f"models_unavailable_status={response.status_code} url={models_url}"
+                else:
+                    status_value = "offline"
+                    error_text = f"models_unexpected_status={response.status_code} url={models_url}"
         except httpx.HTTPError as exc:
             latency_ms = (perf_counter() - start) * 1000
             status_value = "offline"
             error_text = str(exc)
-        else:
-            items: list[Any]
-            if isinstance(payload, dict):
-                items = payload.get("data") or payload.get("models") or payload.get("items") or []
-            elif isinstance(payload, list):
-                items = payload
+
+        # 兼容性探针：/v1/models 可用不代表 /v1/chat/completions 可用（常见误配置：供应商不支持 chat 端点导致 404）。
+        # 这里用 GET 探测“路由是否存在”即可：405/401/403 视为存在；仅 404 视为不存在并标记 offline。
+        if status_value == "online":
+            name = str(endpoint.get("name") or "").lower()
+            base_url = str(endpoint.get("base_url") or "").lower()
+            is_claude = "anthropic" in base_url or "claude" in name or "anthropic" in name
+            if is_claude:
+                probe_url = f"{_normalize_ai_base_url(str(endpoint.get('base_url') or ''))}/v1/messages"
+                not_found_reason = "anthropic_messages_not_found"
             else:
-                items = []
-            for item in items:
-                if isinstance(item, dict) and "id" in item:
-                    model_ids.append(str(item["id"]))
-                elif isinstance(item, str):
-                    model_ids.append(item)
-            status_value = "online"
+                probe_url = self._build_resolved_endpoints(endpoint["base_url"])["chat_completions"]
+                not_found_reason = "chat_completions_not_found"
+
+            try:
+                async with httpx.AsyncClient(timeout=min(timeout, 5)) as client:
+                    probe_resp = await client.get(probe_url, headers={"Content-Type": "application/json"})
+                if probe_resp.status_code == 404:
+                    status_value = "offline"
+                    error_text = f"{not_found_reason}: {probe_url}"
+            except httpx.HTTPError as exc:
+                # 不因探针失败覆盖 models 结果；真实调用仍会兜底并写入 last_error
+                logger.debug("compat probe failed endpoint_id=%s error=%s", endpoint_id, exc)
 
         await self.update_endpoint(
             endpoint_id,

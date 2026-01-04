@@ -66,6 +66,31 @@ async def create_message(
 
     message_id = AIService.new_message_id()
 
+    # SSOT：model 白名单强校验（顶层 model 优先，metadata.model 兜底）
+    explicit_model = payload.model.strip() if isinstance(payload.model, str) else ""
+    meta_model = ""
+    if isinstance(payload.metadata, dict):
+        meta_model = str(payload.metadata.get("model") or "").strip()
+
+    if explicit_model and meta_model and explicit_model != meta_model:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "model_conflict", "message": "model 与 metadata.model 不一致"},
+        )
+
+    requested_model = explicit_model or meta_model
+    if not requested_model:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "model_required", "message": "model 不能为空，请从 /api/v1/llm/models 获取白名单并选择"},
+        )
+
+    if not await ai_service.is_model_allowed(requested_model, user_id=current_user.uid):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "model_not_allowed", "message": "model 不在白名单内（请以 /api/v1/llm/models 返回的 name 为准）"},
+        )
+
     conversation_id = None
     if payload.conversation_id:
         try:
@@ -86,7 +111,7 @@ async def create_message(
         conversation_id=conversation_id,
         metadata=payload.metadata,
         skip_prompt=payload.skip_prompt,
-        model=payload.model,
+        model=requested_model,
         messages=payload.messages,
         system_prompt=payload.system_prompt,
         tools=payload.tools,

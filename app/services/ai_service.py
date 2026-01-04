@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any, AsyncIterator, Dict, Optional
 from uuid import uuid4
@@ -17,6 +17,7 @@ from anyio import to_thread
 from app.auth import AuthenticatedUser, ProviderError, UserDetails, get_auth_provider
 from app.auth.provider import AuthProvider
 from app.core.middleware import REQUEST_ID_HEADER_NAME, get_current_request_id
+from app.services.ai_endpoint_rules import looks_like_test_endpoint
 from app.services.ai_config_service import AIConfigService
 from app.services.model_mapping_service import ModelMappingService
 from app.settings.config import get_settings
@@ -124,6 +125,201 @@ class AIService:
         self._ai_config_service = ai_config_service
         self._model_mapping_service = model_mapping_service
 
+    async def list_model_whitelist(
+        self,
+        *,
+        user_id: str | None = None,
+        include_inactive: bool = False,
+        include_debug_fields: bool = False,
+    ) -> list[dict[str, Any]]:
+        """返回“客户端可发送的 model 白名单”。
+
+        约束：
+        - name 是客户端可发送的 model（SSOT）
+        - 列表中的每个 name 必须可路由到可用的 provider+endpoint（否则过滤掉）
+        """
+
+        if self._model_mapping_service is None or self._ai_config_service is None:
+            return []
+
+        blocked = set(await self._model_mapping_service.list_blocked_models())
+
+        try:
+            mappings = await self._model_mapping_service.list_mappings()
+        except Exception:
+            mappings = []
+
+        # 端到端兜底：保证存在 global:global 映射（避免某些用户只配置了 user 映射导致其他用户“白名单为空”）。
+        has_global_mapping = any(
+            isinstance(item, dict)
+            and str(item.get("scope_type") or "").strip() == "global"
+            and str(item.get("scope_key") or "").strip() == "global"
+            for item in mappings
+        )
+        if not has_global_mapping:
+            try:
+                await self._model_mapping_service.ensure_minimal_global_mapping()
+                mappings = await self._model_mapping_service.list_mappings()
+            except Exception:
+                # 不中断：若落盘失败，仍按现有 mappings 计算（可能为空）。
+                pass
+
+        endpoints, _ = await self._ai_config_service.list_endpoints(only_active=True, page=1, page_size=200)
+        candidates = [item for item in endpoints if item.get("is_active") and item.get("has_api_key")]
+        candidates = [item for item in candidates if str(item.get("status") or "").strip().lower() != "offline"]
+        if not getattr(self._settings, "allow_test_ai_endpoints", False):
+            non_test = [item for item in candidates if not looks_like_test_endpoint(item)]
+            if non_test:
+                candidates = non_test
+
+        def _collect_items(mappings_list: list[Any]) -> list[dict[str, Any]]:
+            collected: list[dict[str, Any]] = []
+            for mapping in mappings_list:
+                if not isinstance(mapping, dict):
+                    continue
+
+                scope_type = str(mapping.get("scope_type") or "").strip()
+                scope_key = str(mapping.get("scope_key") or "").strip()
+                if not scope_type or scope_type == "prompt":
+                    # prompt 级映射需要 prompt_id 参与解析，不作为“通用白名单 model”
+                    continue
+                if scope_type == "user":
+                    if not user_id or scope_key != user_id:
+                        continue
+                elif scope_type == "global":
+                    if scope_key != "global":
+                        continue
+                else:
+                    # 其他 scope（tenant/module/...）默认同样纳入白名单（user scope 仍需 user_id 精确匹配）
+                    pass
+
+                is_active = bool(mapping.get("is_active", True))
+                if not include_inactive and not is_active:
+                    continue
+
+                model_key = mapping.get("id")
+                if not isinstance(model_key, str) or not model_key.strip():
+                    continue
+                model_key = model_key.strip()
+
+                raw_candidates = mapping.get("candidates") if isinstance(mapping.get("candidates"), list) else []
+                raw_default = mapping.get("default_model")
+
+                full_candidates: list[str] = []
+                default_model = str(raw_default).strip() if isinstance(raw_default, str) else ""
+                if default_model:
+                    full_candidates.append(default_model)
+                for value in raw_candidates:
+                    text = str(value or "").strip()
+                    if text:
+                        full_candidates.append(text)
+                # 去重保持顺序（同时避免前端“候选重复”）
+                full_candidates = list(dict.fromkeys(full_candidates))
+
+                blocked_candidates = [name for name in full_candidates if name in blocked]
+                allowed_candidates = [name for name in full_candidates if name and name not in blocked]
+
+                resolved_model: Optional[str] = None
+                endpoint: Optional[dict[str, Any]] = None
+                for candidate_name in allowed_candidates:
+                    hit = next((ep for ep in candidates if _endpoint_supports_model(ep, candidate_name)), None)
+                    if hit is None:
+                        continue
+                    resolved_model = candidate_name
+                    endpoint = hit
+                    break
+                if not resolved_model or endpoint is None:
+                    continue
+
+                label = mapping.get("name")
+                display_label = (
+                    str(label).strip()
+                    if isinstance(label, str) and label.strip()
+                    else str(mapping.get("scope_key") or model_key).strip() or model_key
+                )
+
+                item: dict[str, Any] = {
+                    "name": model_key,
+                    "label": display_label,
+                    "scope_type": scope_type,
+                    "scope_key": scope_key,
+                    "updated_at": mapping.get("updated_at"),
+                    "candidates_count": len(full_candidates),
+                }
+
+                if include_debug_fields:
+                    item.update(
+                        {
+                            "candidates": full_candidates,
+                            "blocked_candidates": blocked_candidates,
+                            "resolved_model": resolved_model,
+                            "provider": self._infer_provider(endpoint),
+                            "endpoint_id": endpoint.get("id"),
+                        }
+                    )
+
+                collected.append(item)
+            return collected
+
+        items = _collect_items(mappings)
+
+        # 端到端兜底：当白名单为空但存在可用端点时，自动修复 global:global（避免配置漂移导致 App 无法选择模型）。
+        if not items and candidates:
+            default_endpoint = next((item for item in candidates if item.get("is_default")), candidates[0])
+            seed_candidates: list[str] = []
+            preferred = str(default_endpoint.get("model") or "").strip()
+            if preferred and preferred not in blocked:
+                seed_candidates.append(preferred)
+            model_list = default_endpoint.get("model_list") or []
+            if isinstance(model_list, list):
+                for value in model_list:
+                    text = str(value or "").strip()
+                    if text and text not in blocked and text not in seed_candidates:
+                        seed_candidates.append(text)
+                    if len(seed_candidates) >= 10:
+                        break
+
+            if seed_candidates:
+                try:
+                    await self._model_mapping_service.upsert_mapping(
+                        {
+                            "scope_type": "global",
+                            "scope_key": "global",
+                            "name": "Default",
+                            "default_model": seed_candidates[0],
+                            "candidates": seed_candidates,
+                            "is_active": True,
+                            "metadata": {"source": "auto_repair"},
+                        }
+                    )
+                    mappings = await self._model_mapping_service.list_mappings()
+                    items = _collect_items(mappings)
+                except Exception:
+                    pass
+
+        # 去重保持顺序（同名以更靠前的为准）
+        deduped: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in items:
+            name = str(item.get("name") or "")
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            deduped.append(item)
+
+        return deduped
+
+    async def is_model_allowed(self, model_name: str, *, user_id: str | None = None) -> bool:
+        name = str(model_name or "").strip()
+        if not name:
+            return False
+        whitelist = await self.list_model_whitelist(
+            user_id=user_id,
+            include_inactive=False,
+            include_debug_fields=False,
+        )
+        return any(item.get("name") == name for item in whitelist)
+
     @staticmethod
     def new_message_id() -> str:
         return uuid4().hex
@@ -152,6 +348,7 @@ class AIService:
         request_payload: Optional[str] = None
         response_payload: Optional[str] = None
         upstream_request_id: Optional[str] = None
+        provider_used: Optional[str] = None
         error_message: Optional[str] = None
 
         try:
@@ -175,6 +372,7 @@ class AIService:
                 response_payload,
                 upstream_request_id,
                 endpoint_id_used,
+                provider_used,
             ) = await self._generate_reply(message, user, user_details)
 
             logger.info(
@@ -183,6 +381,22 @@ class AIService:
                 request_id,
                 endpoint_id_used,
                 model_used,
+            )
+
+            await broker.publish(
+                message_id,
+                MessageEvent(
+                    event="status",
+                    data={
+                        "state": "routed",
+                        "message_id": message_id,
+                        "request_id": request_id,
+                        "provider": provider_used,
+                        "resolved_model": model_used,
+                        "endpoint_id": endpoint_id_used,
+                        "upstream_request_id": upstream_request_id,
+                    },
+                ),
             )
 
             async for chunk in self._stream_chunks(reply_text):
@@ -199,6 +413,12 @@ class AIService:
                 metadata = dict(message.metadata or {})
                 if upstream_request_id:
                     metadata["upstream_request_id"] = upstream_request_id
+                if provider_used:
+                    metadata.setdefault("provider", provider_used)
+                if model_used:
+                    metadata.setdefault("resolved_model", model_used)
+                if endpoint_id_used is not None:
+                    metadata.setdefault("endpoint_id", endpoint_id_used)
 
                 record = {
                     "message_id": message_id,
@@ -217,7 +437,15 @@ class AIService:
                 message_id,
                 MessageEvent(
                     event="completed",
-                    data={"message_id": message_id, "reply": reply_text},
+                    data={
+                        "message_id": message_id,
+                        "reply": reply_text,
+                        "request_id": request_id,
+                        "provider": provider_used,
+                        "resolved_model": model_used,
+                        "endpoint_id": endpoint_id_used,
+                        "upstream_request_id": upstream_request_id,
+                    },
                 ),
             )
             success = True
@@ -228,7 +456,14 @@ class AIService:
                 message_id,
                 MessageEvent(
                     event="error",
-                    data={"message_id": message_id, "error": str(exc), "request_id": request_id},
+                    data={
+                        "message_id": message_id,
+                        "error": str(exc),
+                        "request_id": request_id,
+                        "provider": provider_used,
+                        "resolved_model": model_used,
+                        "endpoint_id": endpoint_id_used,
+                    },
                 ),
             )
         except Exception as exc:  # pragma: no cover - 运行时防护
@@ -238,7 +473,14 @@ class AIService:
                 message_id,
                 MessageEvent(
                     event="error",
-                    data={"message_id": message_id, "error": str(exc), "request_id": request_id},
+                    data={
+                        "message_id": message_id,
+                        "error": str(exc),
+                        "request_id": request_id,
+                        "provider": provider_used,
+                        "resolved_model": model_used,
+                        "endpoint_id": endpoint_id_used,
+                    },
                 ),
             )
         finally:
@@ -286,12 +528,12 @@ class AIService:
         message: AIMessageInput,
         user: AuthenticatedUser,
         user_details: UserDetails,
-    ) -> tuple[str, Optional[str], Optional[str], Optional[str], Optional[str], Optional[int]]:
+    ) -> tuple[str, Optional[str], Optional[str], Optional[str], Optional[str], Optional[int], Optional[str]]:
         if self._ai_config_service is None:
             reply_text = await self._call_openai_completion_settings(message)
             model_used = self._settings.ai_model or "gpt-4o-mini"
             request_payload = json.dumps({"model": model_used, "text": message.text}, ensure_ascii=False)
-            return reply_text, model_used, request_payload, None, None, None
+            return reply_text, model_used, request_payload, None, None, None, None
 
         openai_req = await self._build_openai_request(message, user_details=user_details)
         preferred_endpoint_id = _parse_optional_int((message.metadata or {}).get("endpoint_id") or (message.metadata or {}).get("endpointId"))
@@ -321,7 +563,7 @@ class AIService:
                 openai_req,
             )
             endpoint_id = _parse_optional_int(selected_endpoint.get("id"))
-            return reply_text, selected_model, request_payload, response_payload, upstream_request_id, endpoint_id
+            return reply_text, selected_model, request_payload, response_payload, upstream_request_id, endpoint_id, provider_name
 
         reply_text, response_payload, upstream_request_id = await self._call_openai_chat_completions(
             selected_endpoint,
@@ -329,7 +571,7 @@ class AIService:
             openai_req,
         )
         endpoint_id = _parse_optional_int(selected_endpoint.get("id"))
-        return reply_text, selected_model, request_payload, response_payload, upstream_request_id, endpoint_id
+        return reply_text, selected_model, request_payload, response_payload, upstream_request_id, endpoint_id, provider_name
 
     async def _call_openai_completion_settings(self, message: AIMessageInput) -> str:
         text = (message.text or "").strip()
@@ -571,8 +813,11 @@ class AIService:
 
         endpoints, _ = await self._ai_config_service.list_endpoints(only_active=True, page=1, page_size=200)
         candidates = [item for item in endpoints if item.get("is_active") and item.get("has_api_key")]
+        candidates = [item for item in candidates if str(item.get("status") or "").strip().lower() != "offline"]
         if not getattr(self._settings, "allow_test_ai_endpoints", False):
-            candidates = [item for item in candidates if not _looks_like_test_endpoint(item)]
+            non_test = [item for item in candidates if not looks_like_test_endpoint(item)]
+            if non_test:
+                candidates = non_test
         if not candidates:
             raise ProviderError("no_active_ai_endpoint")
 
@@ -681,7 +926,30 @@ class AIService:
 
         async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
             response = await client.post(chat_url, json=payload, headers=headers)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                # 端到端兜底：若 chat_completions 路由不存在（404），将该 endpoint 标记为 offline，
+                # 避免继续被选中进入白名单/路由。
+                if (
+                    exc.response is not None
+                    and exc.response.status_code == 404
+                    and self._ai_config_service is not None
+                ):
+                    endpoint_id = _parse_optional_int(endpoint.get("id"))
+                    if endpoint_id is not None:
+                        try:
+                            await self._ai_config_service.update_endpoint(
+                                endpoint_id,
+                                {
+                                    "status": "offline",
+                                    "last_checked_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                                    "last_error": f"chat_completions_not_found: {chat_url}",
+                                },
+                            )
+                        except Exception:  # pragma: no cover
+                            pass
+                raise
 
         data = response.json()
         choices = data.get("choices") or []
@@ -717,7 +985,28 @@ class AIService:
 
         async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
             response = await client.post(messages_url, json=anthropic_payload, headers=headers)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                if (
+                    exc.response is not None
+                    and exc.response.status_code == 404
+                    and self._ai_config_service is not None
+                ):
+                    endpoint_id = _parse_optional_int(endpoint.get("id"))
+                    if endpoint_id is not None:
+                        try:
+                            await self._ai_config_service.update_endpoint(
+                                endpoint_id,
+                                {
+                                    "status": "offline",
+                                    "last_checked_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                                    "last_error": f"anthropic_messages_not_found: {messages_url}",
+                                },
+                            )
+                        except Exception:  # pragma: no cover
+                            pass
+                raise
 
         data = response.json()
         content_blocks = data.get("content") if isinstance(data, dict) else None
@@ -860,13 +1149,6 @@ class AIService:
             )
         except Exception as exc:
             logger.warning("Failed to record AI request stats request_id=%s error=%s", get_current_request_id(), exc)
-
-
-def _looks_like_test_endpoint(endpoint: dict[str, Any]) -> bool:
-    name = str(endpoint.get("name") or "").strip().lower()
-    if not name:
-        return False
-    return name.startswith(("test-", "test_", "env-default-"))
 
 
 def _endpoint_supports_model(endpoint: dict[str, Any], model: str) -> bool:

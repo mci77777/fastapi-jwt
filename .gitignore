@@ -123,3 +123,4 @@ frpc.pid
 .mcp.json
 web/package.json
 tmp_test/*.sqlite3*
+tmp_test/

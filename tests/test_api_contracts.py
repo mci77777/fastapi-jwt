@@ -57,7 +57,9 @@ class TestAPIContracts:
 
         # 测试成功创建消息
         response = client.post(
-            "/api/v1/messages", json={"text": "Hello AI", "conversation_id": "conv-123"}, headers=auth_headers
+            "/api/v1/messages",
+            json={"text": "Hello AI", "conversation_id": "conv-123", "model": "global:global"},
+            headers=auth_headers,
         )
 
         assert response.status_code == 202
@@ -152,7 +154,7 @@ class TestAPIContracts:
         mock_get_verifier.return_value = mock_verifier
 
         # 先创建一个消息
-        response = client.post("/api/v1/messages", json={"text": "Hello"}, headers=auth_headers)
+        response = client.post("/api/v1/messages", json={"text": "Hello", "model": "global:global"}, headers=auth_headers)
         assert response.status_code == 202
         message_id = response.json()["message_id"]
 

@@ -13,6 +13,7 @@ from app.auth import AuthenticatedUser, get_current_user
 from app.core.middleware import get_current_request_id
 
 from app.settings.config import get_settings
+from app.services.ai_service import AIService
 
 from .llm_common import (
     SyncDirection,
@@ -82,107 +83,40 @@ async def list_app_models(
     debug: bool = Query(default=False, description="是否返回调试字段（仅 DEBUG=true 生效）"),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
-    """App 侧模型列表（返回“映射模型 key”，避免客户端直接选择供应商原始 model）。"""
+    """App 侧模型列表（SSOT：/api/v1/llm/models 的白名单逻辑）。"""
 
-    mapping_service = get_mapping_service(request)
+    ai_service = getattr(request.app.state, "ai_service", None)
+    if not isinstance(ai_service, AIService):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=create_response(code=503, msg="AI service unavailable"),
+        )
+
     settings = get_settings()
-    blocked_models = set(await mapping_service.list_blocked_models())
     allow_debug = bool(debug) and (getattr(settings, "debug", False) or is_dashboard_admin_user(current_user))
 
-    try:
-        all_mappings = await mapping_service.list_mappings()
-    except Exception:
-        all_mappings = []
+    items = await ai_service.list_model_whitelist(
+        user_id=current_user.uid,
+        include_inactive=bool(include_inactive),
+        include_debug_fields=allow_debug,
+    )
 
-    # App 端到端兜底：若没有任何映射，自动种一个最小 global 映射，避免 “可选模型为空” 导致对话无法选择模型。
-    if not all_mappings:
-        try:
-            await mapping_service.ensure_minimal_global_mapping()
-            all_mappings = await mapping_service.list_mappings()
-        except Exception:
-            all_mappings = []
-
-    candidates: list[dict[str, Any]] = []
-    for mapping in all_mappings:
-        if not isinstance(mapping, dict):
+    # 兼容旧 schema：同时返回 model（=name）
+    normalized: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
             continue
-        scope_type = mapping.get("scope_type")
-        scope_key = mapping.get("scope_key")
-        if scope_type == "user" and scope_key != current_user.uid:
+        name = str(item.get("name") or "").strip()
+        if not name:
             continue
-        if scope_type == "global" and scope_key != "global":
-            continue
-        if scope_type not in {"user", "global"}:
-            continue
+        copy = dict(item)
+        copy.setdefault("model", name)
+        normalized.append(copy)
 
-        is_active = bool(mapping.get("is_active", True))
-        if not include_inactive and not is_active:
-            continue
-
-        model_key = mapping.get("id")
-        if not isinstance(model_key, str) or not model_key.strip():
-            continue
-        model_key = model_key.strip()
-
-        candidates_list = mapping.get("candidates") if isinstance(mapping.get("candidates"), list) else []
-        filtered_candidates = [
-            item
-            for item in candidates_list
-            if isinstance(item, str) and item.strip() and item.strip() not in blocked_models
-        ]
-
-        resolved_model = mapping.get("default_model")
-        if isinstance(resolved_model, str):
-            resolved_model = resolved_model.strip()
-        if not isinstance(resolved_model, str) or not resolved_model or resolved_model in blocked_models:
-            resolved_model = filtered_candidates[0] if filtered_candidates else None
-
-        # 无可用真实模型：该映射对 App 无意义（且可能会把 mapping key 直打上游），直接过滤掉
-        if resolved_model is None:
-            continue
-
-        item: dict[str, Any] = {
-            "model": model_key,
-            "label": (mapping.get("name") or model_key).strip()
-            if isinstance(mapping.get("name") or model_key, str)
-            else model_key,
-            "scope_type": scope_type,
-        }
-
-        if allow_debug:
-            item.update(
-                {
-                    "resolved_model": resolved_model,
-                    "candidates": filtered_candidates,
-                    "blocked_candidates": sorted(
-                        {
-                            str(value).strip()
-                            for value in candidates_list
-                            if isinstance(value, str) and value.strip() and value.strip() in blocked_models
-                        }
-                    ),
-                    "updated_at": mapping.get("updated_at"),
-                    "source": mapping.get("source"),
-                }
-            )
-
-        candidates.append(item)
-
-    # 去重并保持顺序（user 优先于 global）
-    deduped: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in sorted(candidates, key=lambda x: 0 if x.get("scope_type") == "user" else 1):
-        model_key = str(item.get("model") or "")
-        if not model_key or model_key in seen:
-            continue
-        seen.add(model_key)
-        deduped.append(item)
-
-    recommended_model = deduped[0]["model"] if deduped else None
-
+    recommended_model = normalized[0].get("name") if normalized else None
     return create_response(
-        data=deduped,
-        total=len(deduped),
+        data=normalized,
+        total=len(normalized),
         recommended_model=recommended_model,
     )
 
@@ -217,87 +151,57 @@ async def list_ai_models(
         default="mapped",
         description="视图：mapped=返回映射后的标准模型；endpoints=返回供应商 endpoint 列表（管理后台用）",
     ),
-    scope_type: str = Query(default="tenant", description="映射 scope_type（view=mapped 生效）"),  # noqa: B008
-    scope_key: Optional[str] = Query(default=None, description="映射 scope_key（view=mapped 可选过滤）"),  # noqa: B008
+    scope_type: Optional[str] = Query(default=None, description="映射 scope_type 过滤（view=mapped 生效）"),  # noqa: B008
+    scope_key: Optional[str] = Query(default=None, description="映射 scope_key 过滤（view=mapped 生效）"),  # noqa: B008
     keyword: Optional[str] = Query(default=None, description="关键词"),  # noqa: B008
     only_active: Optional[bool] = Query(default=None, description="是否仅活跃"),  # noqa: B008
     refresh_missing_models: bool = Query(default=False, description="是否刷新缺失的 model_list（会触发 /v1/models 探测）"),  # noqa: B008
     page: int = Query(default=1, ge=1),  # noqa: B008
     page_size: int = Query(default=20, ge=1, le=100),  # noqa: B008
+    debug: bool = Query(default=False, description="是否返回调试字段（仅 DEBUG=true 或管理员生效）"),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     if view == "mapped":
-        mapping_service = get_mapping_service(request)
-        blocked_models = set(await mapping_service.list_blocked_models())
+        ai_service = getattr(request.app.state, "ai_service", None)
+        if not isinstance(ai_service, AIService):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=create_response(code=503, msg="AI service unavailable"),
+            )
 
-        # 契约默认：只返回启用映射
-        active_only = True if only_active is None else bool(only_active)
+        settings = get_settings()
+        allow_debug = bool(debug) and (getattr(settings, "debug", False) or is_dashboard_admin_user(current_user))
+        include_inactive = not (True if only_active is None else bool(only_active))
 
-        try:
-            mappings = await mapping_service.list_mappings(scope_type=scope_type, scope_key=scope_key)
-        except Exception:
-            mappings = []
+        items = await ai_service.list_model_whitelist(
+            user_id=current_user.uid,
+            include_inactive=include_inactive,
+            include_debug_fields=allow_debug,
+        )
+
+        if scope_type:
+            items = [item for item in items if str(item.get("scope_type") or "") == str(scope_type)]
+        if scope_key:
+            items = [item for item in items if str(item.get("scope_key") or "") == str(scope_key)]
 
         keyword_text = str(keyword or "").strip().lower()
-
-        items: list[dict[str, Any]] = []
-        for mapping in mappings:
-            if not isinstance(mapping, dict):
-                continue
-
-            is_active = bool(mapping.get("is_active", True))
-            if active_only and not is_active:
-                continue
-
-            mapping_scope_type = str(mapping.get("scope_type") or "").strip()
-            mapping_scope_key = str(mapping.get("scope_key") or "").strip()
-            if not mapping_scope_type or not mapping_scope_key:
-                continue
-
-            name = mapping.get("name")
-            display_name = str(name).strip() if isinstance(name, str) and name.strip() else mapping_scope_key
-
-            raw_candidates = mapping.get("candidates") if isinstance(mapping.get("candidates"), list) else []
-            candidates: list[str] = []
-            for value in raw_candidates:
-                text = str(value or "").strip()
-                if not text or text in blocked_models or text in candidates:
+        if keyword_text:
+            filtered: list[dict[str, Any]] = []
+            for item in items:
+                if not isinstance(item, dict):
                     continue
-                candidates.append(text)
-
-            raw_default = mapping.get("default_model")
-            default_model = str(raw_default).strip() if isinstance(raw_default, str) else ""
-            if default_model and default_model not in blocked_models and default_model not in candidates:
-                candidates.insert(0, default_model)
-
-            # 若 default 被屏蔽/为空，则用首个可用 candidates 作为“有效 default”
-            effective_default = candidates[0] if candidates else None
-            if effective_default is None:
-                continue
-
-            if keyword_text:
                 haystack = " ".join(
                     [
-                        display_name,
-                        mapping_scope_type,
-                        mapping_scope_key,
-                        effective_default,
+                        str(item.get("name") or ""),
+                        str(item.get("label") or ""),
+                        str(item.get("scope_type") or ""),
+                        str(item.get("scope_key") or ""),
+                        str(item.get("resolved_model") or ""),
                     ]
                 ).lower()
-                if keyword_text not in haystack:
-                    continue
-
-            items.append(
-                {
-                    "name": display_name,
-                    "scope_type": mapping_scope_type,
-                    "scope_key": mapping_scope_key,
-                    "default_model": effective_default,
-                    "candidates": candidates,
-                    "candidates_count": len(candidates),
-                    "updated_at": mapping.get("updated_at"),
-                }
-            )
+                if keyword_text in haystack:
+                    filtered.append(item)
+            items = filtered
 
         return create_response(
             data=items,

@@ -113,7 +113,7 @@ class TestRequestIdSSOT:
                     headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": request_id},
                     json={
                         "text": "Hello",
-                        "model": "gpt-4o-mini",
+                        "model": "global:global",
                         "system_prompt": "You are a helpful assistant.",
                         "tools": [{"type": "function", "function": {"name": "noop", "parameters": {"type": "object"}}}],
                         "tool_choice": "auto",
@@ -173,6 +173,20 @@ class TestRequestIdSSOT:
                     }
                 )
 
+                # 为本用例创建一个可路由到 Claude 的“映射模型”（避免依赖 global:global 的既有候选）
+                mapping_id = "tenant:claude-test"
+                await fastapi_app.state.model_mapping_service.upsert_mapping(
+                    {
+                        "scope_type": "tenant",
+                        "scope_key": "claude-test",
+                        "name": "claude-test",
+                        "default_model": "claude-3-5-sonnet-20240620",
+                        "candidates": ["claude-3-5-sonnet-20240620"],
+                        "is_active": True,
+                        "metadata": {},
+                    }
+                )
+
                 mock_response = MagicMock()
                 mock_response.json.return_value = {
                     "content": [{"type": "text", "text": "Hello from Claude."}],
@@ -186,7 +200,7 @@ class TestRequestIdSSOT:
                     headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": request_id},
                     json={
                         "text": "Hello",
-                        "model": "claude-3-5-sonnet-20240620",
+                        "model": mapping_id,
                         "metadata": {"client": "pytest"},
                     },
                 )
@@ -213,6 +227,8 @@ class TestRequestIdSSOT:
                 assert hdr.get("anthropic-version") == "2023-06-01"
                 assert "anthropic-beta" not in {k.lower() for k in hdr.keys()}
 
+                await fastapi_app.state.model_mapping_service.delete_mapping(mapping_id)
+
     @pytest.mark.asyncio
     async def test_sse_error_contains_request_id_and_terminates(self, async_client: AsyncClient, mock_jwt_token: str):
         request_id = "rid-provider-error"
@@ -232,7 +248,7 @@ class TestRequestIdSSOT:
                 create = await async_client.post(
                     "/api/v1/messages",
                     headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": request_id},
-                    json={"text": "Hello"},
+                    json={"text": "Hello", "model": "global:global"},
                 )
                 assert create.status_code == status.HTTP_202_ACCEPTED
                 message_id = create.json()["message_id"]

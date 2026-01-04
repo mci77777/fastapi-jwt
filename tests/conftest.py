@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 from typing import Generator
 
 import pytest
@@ -20,13 +21,20 @@ os.environ["LLM_ADMIN_API_KEY"] = "test-llm-admin"
 # 测试环境强制关闭 Supabase Provider（避免真实网络调用/泄露密钥）
 os.environ["SUPABASE_PROJECT_ID"] = ""
 os.environ["SUPABASE_SERVICE_ROLE_KEY"] = ""
+# 确保测试环境存在“最小可用默认端点”，让 model 白名单（/api/v1/llm/models）非空
+os.environ["AI_PROVIDER"] = "openai"
+os.environ["AI_API_KEY"] = "test-ai-key"
 os.environ["AI_MODEL"] = "gpt-4o-mini"
+os.environ["AI_RUNTIME_STORAGE_DIR"] = "tmp_test/ai_runtime"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 os.environ["CORS_ALLOW_ORIGINS"] = "*"
 os.environ["ALLOW_TEST_AI_ENDPOINTS"] = "true"
 
 try:
     os.makedirs("tmp_test", exist_ok=True)
+    # 测试隔离：避免污染仓库内 storage/ai_runtime（会导致映射/屏蔽列表跨用例漂移）
+    shutil.rmtree(os.environ["AI_RUNTIME_STORAGE_DIR"], ignore_errors=True)
+    os.makedirs(os.environ["AI_RUNTIME_STORAGE_DIR"], exist_ok=True)
     if os.path.exists(os.environ["SQLITE_DB_PATH"]):
         os.remove(os.environ["SQLITE_DB_PATH"])
 except Exception:
