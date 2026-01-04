@@ -9,13 +9,13 @@ from typing import Any, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, Field, conint
+from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
 from app.core.middleware import get_current_request_id
 from app.db import get_sqlite_manager
 
-from .llm_common import create_response, get_jwt_test_service, get_mapping_service, get_service
+from .llm_common import create_response, get_mapping_service, get_service, require_llm_admin
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 
@@ -32,32 +32,6 @@ class PromptTestRequest(BaseModel):
     message: str = Field(..., min_length=1, description="测试消息内容")
     model: str | None = Field(None, description="可选模型名称")
     skip_prompt: bool = False
-
-
-class JwtDialogRequest(BaseModel):
-    """JWT 对话模拟请求。"""
-
-    prompt_id: int
-    endpoint_id: int
-    message: str
-    model: str | None = None
-    username: str | None = None
-    skip_prompt: bool = False
-
-
-class JwtLoadTestRequest(BaseModel):
-    """JWT 并发压测请求。"""
-
-    prompt_id: int
-    endpoint_id: int
-    message: str
-    batch_size: conint(ge=1, le=1000) = 1  # type: ignore[valid-type]
-    concurrency: conint(ge=1, le=1000) = 1  # type: ignore[valid-type]
-    model: str | None = None
-    username: str | None = None
-    stop_on_error: bool = False
-    skip_prompt: bool = False
-
 
 class CreateMailUserRequest(BaseModel):
     mail_api_key: Optional[str] = None
@@ -250,6 +224,7 @@ def _resolve_supabase_anon_key(settings: Any) -> str:
 async def test_prompt(
     payload: PromptTestRequest,
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     service = get_service(request)
@@ -283,6 +258,7 @@ async def test_prompt(
 async def create_mail_user(
     payload: CreateMailUserRequest,
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """通过 Mail API 创建测试用户流程（仅用于调试）。
@@ -586,6 +562,7 @@ async def create_mail_user(
 async def list_mail_users(
     request: Request,
     limit: int = Query(default=50, ge=1, le=200),
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     if current_user.is_anonymous:
@@ -607,6 +584,7 @@ async def list_mail_users(
 async def refresh_mail_user_token(
     test_user_id: int,
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     if current_user.is_anonymous:
@@ -723,6 +701,7 @@ async def refresh_mail_user_token(
 async def create_anon_token(
     payload: CreateAnonTokenRequest,
     request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """生成或复用匿名 JWT（真实 Supabase Auth 签发）。"""
@@ -904,75 +883,8 @@ async def create_anon_token(
         )
 
 
-@router.post("/tests/dialog")
-async def simulate_jwt_dialog(
-    payload: JwtDialogRequest,
-    request: Request,
-    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
-) -> dict[str, Any]:
-    service = get_jwt_test_service(request)
-    try:
-        data = payload.model_dump()
-        if isinstance(payload.model, str) and payload.model.strip():
-            mapping_service = get_mapping_service(request)
-            resolved = await mapping_service.resolve_model_key(payload.model.strip())
-            candidate = resolved.get("resolved_model")
-            data["model"] = candidate.strip() if isinstance(candidate, str) and candidate.strip() else None
-        result = await service.simulate_dialog(data)
-        return create_response(data=result)
-    except RuntimeError as exc:
-        # AI 服务调用失败（如 API 超时、模型不存在等）
-        return create_response(code=500, msg=str(exc), data={"error": str(exc)})
-    except ValueError as exc:
-        # 配置错误（如 prompt/endpoint 不存在）
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=create_response(code=404, msg=str(exc)),
-        )
-    except Exception as exc:
-        # 未知错误 - 记录并返回
-        import logging
-        logging.exception("simulate_jwt_dialog error")
-        return create_response(code=500, msg=f"内部错误: {exc}", data={"error": str(exc)})
-
-
-@router.post("/tests/load")
-async def run_jwt_load_test(
-    payload: JwtLoadTestRequest,
-    request: Request,
-    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
-) -> dict[str, Any]:
-    service = get_jwt_test_service(request)
-    data = payload.model_dump()
-    if isinstance(payload.model, str) and payload.model.strip():
-        mapping_service = get_mapping_service(request)
-        resolved = await mapping_service.resolve_model_key(payload.model.strip())
-        candidate = resolved.get("resolved_model")
-        data["model"] = candidate.strip() if isinstance(candidate, str) and candidate.strip() else None
-    result = await service.run_load_test(data)
-    return create_response(data=result, msg="压测完成")
-
-
-@router.get("/tests/runs/{run_id}")
-async def get_jwt_run(
-    run_id: str,
-    request: Request,
-    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
-) -> dict[str, Any]:
-    service = get_jwt_test_service(request)
-    result = await service.get_run(run_id)
-    if not result:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=create_response(code=404, msg="Run 不存在"),
-        )
-    return create_response(data=result)
-
-
 __all__ = [
     "router",
     "PromptTestRequest",
-    "JwtDialogRequest",
-    "JwtLoadTestRequest",
     "CreateMailUserRequest",
 ]

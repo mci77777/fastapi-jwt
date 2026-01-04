@@ -1,5 +1,7 @@
 # 项目测试、脚本与文档全面审计报告
 
+> ⚠️ 说明：该报告为历史审计产物（2025-10）。2026-01 起已移除 `JWTTestService` 与 `/llm/tests/(dialog|load|runs)` 旁路；JWT 验证统一走 `POST /api/v1/messages` + SSE。最新以 `docs/features/model_management/testing.md` 与代码实际状态为准。
+
 **审计日期**: 2025-10-17  
 **审计范围**: tests/, scripts/, docs/, e2e/  
 **审计原则**: YAGNI → SSOT → KISS  
@@ -41,7 +43,7 @@ tests/
 ├── test_jwt_auth.py                     # 🔄 合并 - JWT 基础认证测试
 ├── test_jwt_hardening.py                # 🔄 合并 - JWT 安全强化测试
 ├── test_jwt_integration_hardening.py    # 🔄 合并 - JWT 集成强化测试
-├── test_jwt_test_service.py             # ✅ 保留 - JWT 测试服务
+├── test_app_models_messages_sse_micro_e2e.py  # ✅ 保留 - models→messages→SSE 微E2E
 └── test_model_mapping_service.py        # ✅ 保留 - 模型映射服务测试
 ```
 
@@ -83,7 +85,6 @@ tests/
 | `test_api_contracts.py` | API 契约 | 响应格式、Trace ID | API 稳定性保障 |
 | `test_e2e_integration.py` | E2E 集成 | 消息创建、SSE 流 | 核心功能验证 |
 | `test_jwt_complete.py` | JWT 完整测试 | 认证、安全、集成 | **新建** - 合并 3 个文件 |
-| `test_jwt_test_service.py` | JWT 测试服务 | 并发压测、摘要统计 | 性能测试 |
 | `test_model_mapping_service.py` | 模型映射 | Prompt/Fallback 映射 | 核心业务逻辑 |
 
 ---
@@ -559,4 +560,3 @@ find docs -name "*.md" -exec grep -H "\[.*\](.*)" {} \;
 **审计完成时间**: 预计 9 小时  
 **执行人员**: AI Assistant + 人工复核  
 **复核标准**: Linus 风格 - "这是真问题还是臆想的？有更简单的方法吗？会破坏什么吗？"
-

@@ -1,5 +1,7 @@
 # GymBro 模型管理能力 Spec & Plan
 
+> 说明：该文档为历史规划稿。2026-01 起已移除 `JWTTestService` 与 `/llm/tests/(dialog|load|runs)` 旁路；JWT 验证统一走 `POST /api/v1/messages` + SSE。最新实现以 `docs/features/model_management/implementation.md` 为准。
+
 ## 背景与动机（WHY）
 - 现有 Supabase ↔ SQLite ↔ 前端 已完成基础同步，但本地仍依赖 JSON 缓存，调试和离线回放困难。
 - 新需求要求模型选择、模型映射以及 JWT 对话压测端到端可用，同时保持既有表结构不变，确保上线风险可控。
@@ -25,7 +27,7 @@
 ## 数据模型与存储策略
 - **Supabase**：继续使用 `ai_model`、`ai_prompt`、`ai_prompt_tests` 等表；默认模型标记利用 `is_default`；映射信息通过字符串/JSON 字段记录附加元数据。
 - **SQLite**：复用 `ai_endpoints.model_list`、`ai_endpoints.resolved_endpoints` 等 JSON 字段保存可用模型集合；对话/压测结果写入 `ai_prompt_tests` 的 `request_message`、`response_message`、`latency_ms`、`error` 字段，可在 JSON 中嵌入批次 ID。
-- **JSON fallback**：于 `storage/ai_runtime/`（新建目录）输出结构化记录，字段与 SQLite 对齐；SQLite 可用时自动补写并删除对应 JSON。
+- **JSON fallback**：于 `AI_RUNTIME_STORAGE_DIR/`（默认 `data/ai_runtime/`）输出结构化记录，字段与 SQLite 对齐；SQLite 可用时自动补写并删除对应 JSON。
 - **DAO/Service**：在 `AIConfigService` 内追加封装，确保 Supabase ↔ SQLite ↔ JSON 只有一条写入路径，避免影子状态。
 
 ## 后端设计
@@ -36,7 +38,6 @@
   - `app/api/v1/base.py` 注入新路由，保留旧 `/llm` 兼容行为。
 - **服务层**
   - `AIConfigService`：新增方法用于读写映射、更新默认模型、批量写入测试结果；内部保证单模型默认唯一。
-  - `jwt_test_service.py`（新文件，< 500 行）：封装单次对话与批量压测逻辑，复用现有 http client，增加取消/状态轮询。
   - `model_mapping_service.py`（新文件，< 500 行）：负责解析/写入 `model_list` JSON，提供 scope 级约束与 Supabase 同步。
   - 记录监控指标：成功率、平均延迟、错误摘要写入 `app/log/`，并通知 `EndpointMonitor`。
 - **任务与容错**
@@ -63,9 +64,9 @@
 
 ## 非功能性考虑
 - **性能**：并发上限默认 200（可配置），超过则排队；记录响应时间、错误率。
-+- **容错**：任何写入失败需保留 JSON 备份并上报日志；提供补写命令。
+- **容错**：任何写入失败需保留 JSON 备份并上报日志；提供补写命令。
 - **权限**：沿用 `Depends(get_current_user)` 与管理员角色判断。
-+- **观察性**：关键操作写入审计日志，并在 monitor service 中打点。
+- **观察性**：关键操作写入审计日志，并在 monitor service 中打点。
 
 ## 实施计划
 ### Phase 0 预研（1d）
@@ -75,7 +76,7 @@
 
 ### Phase 1 服务层与数据合同（1.5d）
 - 扩展 `AIConfigService`，实现模型读取/写入、映射解析、结果写入；补充单元测试（mock Supabase）。
-- 编写 JSON fallback 帮助类（读写 storage/ai_runtime）。
+- 编写 JSON fallback 帮助类（读写 `AI_RUNTIME_STORAGE_DIR`，默认 `data/ai_runtime`）。
 - 更新文档说明字段用途与 JSON schema。
 
 ### Phase 2 后端 API（2d）
@@ -100,7 +101,7 @@
 ## 影响面扫描
 - 后端：`app/api/v1`、`app/services/ai_config_service.py`、新增服务文件、监控/日志配置。
 - 前端：`web/src/views/ai/model-suite/`、`web/src/store`、`web/src/api`、`web/src/router`。
-- 工具/文档：`storage/ai_runtime/`、`docs/features`、运维脚本（fallback 补写、CSV 导出）。
+- 工具/文档：`AI_RUNTIME_STORAGE_DIR/`、`docs/features`、运维脚本（fallback 补写、CSV 导出）。
 
 ## 回滚策略
 - 单提交改动，可通过 Git revert 撤销；删除新 API 路由与服务文件即可恢复。

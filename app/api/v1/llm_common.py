@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 from app.auth import AuthenticatedUser, get_current_user
 from app.core.middleware import get_current_request_id
 from app.services.ai_config_service import AIConfigService
-from app.services.jwt_test_service import JWTTestService
 from app.services.model_mapping_service import ModelMappingService
 from app.services.monitor_service import EndpointMonitor
 from app.settings.config import get_settings
@@ -74,18 +73,6 @@ def get_mapping_service(request: Request) -> ModelMappingService:
     return service
 
 
-def get_jwt_test_service(request: Request) -> JWTTestService:
-    """获取 JWTTestService。"""
-
-    service = getattr(request.app.state, "jwt_test_service", None)
-    if not isinstance(service, JWTTestService):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=create_response(code=503, msg="JWT test service unavailable"),
-        )
-    return service
-
-
 class SyncDirection(str, Enum):
     """Supabase 同步方向。"""
 
@@ -140,7 +127,6 @@ __all__ = [
     "get_service",
     "get_monitor",
     "get_mapping_service",
-    "get_jwt_test_service",
     "SyncDirection",
     "SyncRequest",
     "require_llm_admin",

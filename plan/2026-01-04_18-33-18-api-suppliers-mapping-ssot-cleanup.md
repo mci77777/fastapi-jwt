@@ -80,6 +80,6 @@ complexity: complex
 - Commit after: Phase 6（全量回归通过）
 
 ## References
-- 后端：`app/services/ai_service.py`、`app/services/ai_config_service.py`、`app/services/model_mapping_service.py`、`app/api/v1/llm_models.py`、`app/services/jwt_test_service.py`
+- 后端：`app/services/ai_service.py`、`app/services/ai_config_service.py`、`app/services/model_mapping_service.py`、`app/api/v1/llm_models.py`、`app/api/v1/messages.py`
 - 前端：`web/src/router/*`、`web/src/views/ai/*`（以仓库实际结构为准）
 - 部署：`docker-compose.yml`

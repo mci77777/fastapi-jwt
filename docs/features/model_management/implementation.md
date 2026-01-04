@@ -1,23 +1,25 @@
 # 模型管理能力实现说明
 
+> 2026-01 更新：已移除 `JWTTestService` 与 `/llm/tests/(dialog|load|runs)` 旁路；JWT 测试统一走真实链路 `POST /api/v1/messages` + SSE（`/api/v1/messages/{id}/events`）。
+> 运行态目录 SSOT 为 `AI_RUNTIME_STORAGE_DIR`（默认 `data/ai_runtime`，挂载到 Docker volume 以防重启/重建丢失）。
+> `/ai/catalog` 仅保留为 `/ai`（模型映射）路由别名；“模型目录”页面已删除。
+
 ## 概览
 - **后端重构**：`app/api/v1/llm.py` 拆分为 `llm_models.py` / `llm_prompts.py` / `llm_mappings.py` / `llm_tests.py`，共用 `llm_common`。
 - **服务层**：
-  - `ModelMappingService`：复用 `ai_prompts.tools_json` 与 `storage/ai_runtime/model_mappings.json` 维护映射。
-  - `JWTTestService`：封装单次对话与并发压测，结果写入 `ai_prompt_tests` + `storage/ai_runtime/jwt_runs.json`。
-  - `AIConfigService`：新增本地/远端备份目录 `storage/ai_runtime/backups/`（保留 `*-latest.json` + 最近 3 个时间戳归档），推送/拉取前自动快照，并支持覆盖写入与缺失项删除开关。
-- **SQLite**：仍只使用现有表；映射信息写入 JSON 字段；压测明细保存在 `ai_prompt_tests`。
-- **前端**：新增 `web/src/views/ai/model-suite/` 四个页面与 Pinia store，支撑模型 Dashboard、模型目录、映射管理与 JWT 对话压测；同步弹窗支持方向/覆盖/删除选项。
+  - `ModelMappingService`：复用 `ai_prompts.tools_json` 与 `AI_RUNTIME_STORAGE_DIR/model_mappings.json` 维护映射（endpoints→mapping→models）。
+  - `AIConfigService`：使用本地/远端备份目录 `AI_RUNTIME_STORAGE_DIR/backups/`（保留 `*-latest.json` + 最近 3 个时间戳归档），推送/拉取前自动快照，并支持覆盖写入与缺失项删除开关。
+- **SQLite**：仍只使用现有表；映射信息写入 JSON 字段；运行态配置落盘在 `data/` volume（或 `AI_RUNTIME_STORAGE_DIR`）。
+- **前端**：`web/src/views/ai/model-suite/` 以“模型映射”为默认入口；JWT 测试页面复用 `/messages`+SSE 做闭环验证。
 
 ## API 变更
 | 路径 | 方法 | 描述 |
 | --- | --- | --- |
 | `/llm/model-groups` | GET/POST | 查询或保存模型映射（scope_type: prompt/module/tenant）。|
 | `/llm/model-groups/{id}/activate` | POST | 切换映射默认模型。|
-| `/llm/tests/dialog` | POST | 单次 JWT 对话模拟，返回 token + 模型响应。|
-| `/llm/tests/load` | POST | 发起 1~1000 批并发压测，落地 SQLite/JSON。|
 | `/llm/models/sync` | POST | 批量同步端点，支持覆盖、删除缺失控制。|
-| `/llm/tests/runs/{id}` | GET | 查询压测批次摘要及测试样本。|
+| `/messages` | POST | 创建消息（model=映射名），返回 `message_id` + `conversation_id`（202）。|
+| `/messages/{id}/events` | GET | SSE 拉流（status/content_delta/completed/error/heartbeat）。|
 
 > `SyncRequest.overwrite`：当推送时为 False 且远端更新时间不早于本地，将跳过覆盖并标记 `skipped:overwrite_disabled`；拉取时保持原有“仅当远端更新更晚才覆盖”行为。`delete_missing` 在推送/拉取均可触发目标端缺失项清理。
 
@@ -25,9 +27,8 @@
 
 ## 运行时依赖
 - FastAPI lifespan 中新增：
-  - `app.state.model_mapping_service`（目录：`storage/ai_runtime/model_mappings.json`）
-  - `app.state.jwt_test_service`（目录：`storage/ai_runtime/jwt_runs.json`）
-- `storage/ai_runtime/.gitkeep` 保证目录存在；新增 `storage/ai_runtime/backups/` 使用 `name-latest.json` + `name-YYYYMMDDTHHMMSSZ.json` 形式存放最近 3 次快照，便于回滚。
+  - `app.state.model_mapping_service`（目录：`AI_RUNTIME_STORAGE_DIR/model_mappings.json`）
+- `AI_RUNTIME_STORAGE_DIR` 保证目录存在；`AI_RUNTIME_STORAGE_DIR/backups/` 使用 `name-latest.json` + `name-YYYYMMDDTHHMMSSZ.json` 形式存放最近 3 次快照，便于回滚。
 
 ## 前端结构
 
@@ -42,15 +43,14 @@
 - `web/src/store/modules/aiModelSuite.js`：集中加载模型/映射/压测结果，提供候选模型/端点选项与同步状态响应式数据。
 - 视图组件：
   - `dashboard/index.vue`：模型 Dashboard，展示端点状态与映射覆盖并提供跳转入口。
-  - `catalog/index.vue`：模型列表、设为默认、同步。
   - `mapping/index.vue`：映射 CRUD，Prompt 选择、候选模型管理、默认模型弹窗。
-  - `jwt/index.vue`：单次对话 & 压测面板，展示摘要/测试结果，模型选择支持端点候选列表。
+  - `jwt/index.vue`：真实链路验证面板（`/messages` + SSE），模型选择来自“映射后的 models SSOT”。
 - 菜单入口通过 `/base/usermenu` 动态注入。
 
 ## 备份机制
 
 ### 存储路径
-- **备份目录**: `storage/ai_runtime/backups/`
+- **备份目录**: `AI_RUNTIME_STORAGE_DIR/backups/`（默认 `data/ai_runtime/backups/`）
 - **文件命名规则**:
   - 最新版本: `{name}-latest.json`
   - 历史归档: `{name}-YYYYMMDDTHHMMSSfZ.json`

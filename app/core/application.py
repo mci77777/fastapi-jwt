@@ -18,7 +18,6 @@ from app.db import SQLiteManager
 from app.services.ai_config_service import AIConfigService
 from app.services.ai_service import AIService, MessageEventBroker
 from app.services.dashboard_broker import DashboardBroker
-from app.services.jwt_test_service import JWTTestService
 from app.services.log_collector import LogCollector
 from app.services.metrics_collector import MetricsCollector
 from app.services.model_mapping_service import ModelMappingService
@@ -53,7 +52,7 @@ async def lifespan(app: FastAPI):
         # 注意：不移动目录本身（避免删除 repo 中的 .gitkeep），只做“文件级别的缺失补齐”。
         try:
             storage_dir.mkdir(parents=True, exist_ok=True)
-            for filename in ("model_mappings.json", "blocked_models.json", "jwt_runs.json"):
+            for filename in ("model_mappings.json", "blocked_models.json"):
                 src = legacy_storage_dir / filename
                 dst = storage_dir / filename
                 if src.exists() and not dst.exists():
@@ -85,7 +84,6 @@ async def lifespan(app: FastAPI):
         await app.state.model_mapping_service.ensure_minimal_global_mapping()
     except Exception:
         pass
-    app.state.jwt_test_service = JWTTestService(app.state.ai_config_service, settings, storage_dir)
 
     # Dashboard 服务层（Phase 1）
     app.state.log_collector = LogCollector(max_size=100)

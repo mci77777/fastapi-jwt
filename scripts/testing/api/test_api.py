@@ -1,10 +1,16 @@
-"""测试 AI 配置 API"""
+"""测试 AI 配置 API（默认只读）。"""
 
+import argparse
 import json
 
 import requests
 
-BASE_URL = "http://localhost:9999/api/v1"
+parser = argparse.ArgumentParser(description="Test GymBro API endpoints (read-only by default)")
+parser.add_argument("--base-url", default="http://localhost:9999/api/v1", help="API base url")
+parser.add_argument("--apply", action="store_true", help="Apply write operations (create model/prompt)")
+args = parser.parse_args()
+
+BASE_URL = args.base_url.rstrip("/")
 
 # 1. 登录获取token
 print("=" * 50)
@@ -45,44 +51,47 @@ prompts_response = requests.get(f"{BASE_URL}/llm/prompts", headers=headers)
 print(f"Status: {prompts_response.status_code}")
 print(f"Response: {json.dumps(prompts_response.json(), indent=2, ensure_ascii=False)}")
 
-# 5. 创建新模型
-print("\n" + "=" * 50)
-print("5. 创建新模型")
-print("=" * 50)
-create_model_response = requests.post(
-    f"{BASE_URL}/llm/models",
-    headers=headers,
-    json={
-        "name": "测试模型",
-        "model": "gpt-4o-mini",
-        "base_url": "https://api.openai.com/v1",
-        "api_key": "sk-test123456",
-        "description": "测试用模型",
-        "timeout": 60,
-        "is_active": True,
-        "is_default": False,
-    },
-)
-print(f"Status: {create_model_response.status_code}")
-print(f"Response: {json.dumps(create_model_response.json(), indent=2, ensure_ascii=False)}")
+if args.apply:
+    # 5. 创建新端点（危险：会写入 SQLite；默认关闭）
+    print("\n" + "=" * 50)
+    print("5. 创建新端点（--apply 已启用）")
+    print("=" * 50)
+    create_model_response = requests.post(
+        f"{BASE_URL}/llm/models",
+        headers=headers,
+        json={
+            "name": "测试端点（请及时删除）",
+            "model": "gpt-4o-mini",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test***",
+            "description": "仅用于本地调试，默认脚本不会写入。",
+            "timeout": 60,
+            "is_active": True,
+            "is_default": False,
+        },
+    )
+    print(f"Status: {create_model_response.status_code}")
+    print(f"Response: {json.dumps(create_model_response.json(), indent=2, ensure_ascii=False)}")
 
-# 6. 创建新Prompt
-print("\n" + "=" * 50)
-print("6. 创建新Prompt")
-print("=" * 50)
-create_prompt_response = requests.post(
-    f"{BASE_URL}/llm/prompts",
-    headers=headers,
-    json={
-        "name": "测试Prompt",
-        "version": "v1.0",
-        "system_prompt": "你是一个测试助手",
-        "description": "测试用Prompt",
-        "is_active": False,
-    },
-)
-print(f"Status: {create_prompt_response.status_code}")
-print(f"Response: {json.dumps(create_prompt_response.json(), indent=2, ensure_ascii=False)}")
+    # 6. 创建新 Prompt（危险：会写入 SQLite；默认关闭）
+    print("\n" + "=" * 50)
+    print("6. 创建新Prompt（--apply 已启用）")
+    print("=" * 50)
+    create_prompt_response = requests.post(
+        f"{BASE_URL}/llm/prompts",
+        headers=headers,
+        json={
+            "name": "测试Prompt（请及时删除）",
+            "version": "v1.0",
+            "system_prompt": "你是一个测试助手",
+            "description": "仅用于本地调试，默认脚本不会写入。",
+            "is_active": False,
+        },
+    )
+    print(f"Status: {create_prompt_response.status_code}")
+    print(f"Response: {json.dumps(create_prompt_response.json(), indent=2, ensure_ascii=False)}")
+else:
+    print("\n[INFO] 脚本默认只读：跳过创建端点/Prompt。需要写入请加 --apply。")
 
 print("\n" + "=" * 50)
 print("测试完成!")

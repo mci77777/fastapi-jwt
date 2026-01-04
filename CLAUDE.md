@@ -33,9 +33,9 @@ start-dev.ps1
   - 支持 `Authorization: Bearer <token>` header（Supabase JWT）
   - 区分匿名用户 vs 永久用户（`user.user_type`）
   - JWKS 动态验证，时钟偏移容忍 ±120s，兼容无 `nbf` 的 Supabase token
-- **数据库**: SQLite（`app/db/sqlite_manager.py`）存储 AI 配置、模型映射、JWT 测试数据
+- **数据库**: SQLite（`app/db/sqlite_manager.py`）存储 AI 供应商配置、模型映射与运行态数据
 - **服务层**: 单例模式通过 `app.state` 注入（`application.py` 生命周期钩子）
-  - `AIConfigService`, `ModelMappingService`, `JWTTestService` 管理运行时状态
+  - `AIConfigService`, `ModelMappingService` 管理运行时状态（endpoints→mapping→models SSOT）
   - `EndpointMonitor` 收集 Prometheus 指标
 
 ### 前端 (Vue 3.3, Vite 4, Naive UI 2.x)

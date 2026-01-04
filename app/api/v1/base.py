@@ -98,6 +98,17 @@ def _verify_password(password: str, stored: str) -> bool:
         return False
 
 
+def _is_dashboard_admin_user(user: AuthenticatedUser) -> bool:
+    claims = getattr(user, "claims", {}) or {}
+    if not isinstance(claims, dict):
+        return False
+    user_metadata = claims.get("user_metadata") or {}
+    if not isinstance(user_metadata, dict):
+        return False
+    username = str(user_metadata.get("username") or "").strip()
+    return username == "admin" or bool(user_metadata.get("is_admin", False))
+
+
 async def _get_or_seed_local_admin_password_hash(request: Request) -> str:
     db = get_sqlite_manager(request.app)
     row = await db.fetchone("SELECT password_hash FROM local_users WHERE username = ?", ("admin",))
@@ -278,17 +289,7 @@ async def get_user_info(current_user: AuthenticatedUser = Depends(get_current_us
 @router.get("/usermenu", summary="获取用户菜单")
 async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_user_from_token)) -> Dict[str, Any]:
     """获取当前用户的菜单权限。"""
-    print("=" * 80)
-    print("GET /usermenu called - NEW VERSION")
-    print("=" * 80)
-    import logging
-
-    logger = logging.getLogger(__name__)
-    logger.info("=== get_user_menu called === v3")
-
-    user_metadata = current_user.claims.get("user_metadata") or {}
-    username = (user_metadata.get("username") or "").strip()
-    is_admin = bool(user_metadata.get("is_admin", False)) or username == "admin"
+    is_admin = _is_dashboard_admin_user(current_user)
 
     # 临时硬编码菜单，实际应该从数据库查询
     # 菜单配置：Dashboard (0) → 系统管理 (5) → AI模型管理 (10)
@@ -323,70 +324,76 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
                 },
             ],
         },
-        {
-            "name": "系统管理",
-            "path": "/system",
-            "component": "/system",
-            "icon": "carbon:settings-adjust",
-            "order": 5,
-            "is_hidden": False,
-            "redirect": None,
-            "keepalive": False,
-            "children": [
-                {
-                    "name": "AI 配置",
-                    "path": "ai",
-                    "component": "/system/ai",
-                    "icon": "carbon:ai-status",
-                    "order": 1,
-                    "is_hidden": False,
-                    "keepalive": False,
-                },
-                {
-                    "name": "Prompt 管理",
-                    "path": "ai/prompt",
-                    "component": "/system/ai/prompt",
-                    "icon": "carbon:prompt-template",
-                    "order": 2,
-                    "is_hidden": False,
-                    "keepalive": False,
-                },
-            ],
-        },
-        {
-            "name": "AI模型管理",
-            "path": "/ai",
-            "component": "/ai",
-            "icon": "mdi:robot-outline",
-            "order": 10,
-            "is_hidden": False,
-            "redirect": None,
-            "keepalive": False,
-            "children": [
-                {
-                    "name": "模型映射",
-                    "path": "",
-                    "alias": ["/ai/mapping", "/ai/catalog"],
-                    "component": "/ai/model-suite/mapping",
-                    "icon": "mdi:graph-outline",
-                    "order": 1,
-                    "is_hidden": False,
-                    "keepalive": False,
-                },
-                {
-                    "name": "JWT测试",
-                    "path": "jwt",
-                    "component": "/ai/model-suite/jwt",
-                    "icon": "mdi:chat-processing-outline",
-                    "order": 2,
-                    "is_hidden": False,
-                    "keepalive": False,
-                },
-            ],
-        },
     ]
 
     if is_admin:
+        menus.append(
+            {
+                "name": "系统管理",
+                "path": "/system",
+                "component": "/system",
+                "icon": "carbon:settings-adjust",
+                "order": 5,
+                "is_hidden": False,
+                "redirect": None,
+                "keepalive": False,
+                "children": [
+                    {
+                        "name": "AI 供应商",
+                        "path": "ai",
+                        "component": "/system/ai",
+                        "icon": "carbon:ai-status",
+                        "order": 1,
+                        "is_hidden": False,
+                        "keepalive": False,
+                    },
+                    {
+                        "name": "Prompt 管理",
+                        "path": "ai/prompt",
+                        "component": "/system/ai/prompt",
+                        "icon": "carbon:prompt-template",
+                        "order": 2,
+                        "is_hidden": False,
+                        "keepalive": False,
+                    },
+                ],
+            }
+        )
+
+        menus.append(
+            {
+                "name": "AI模型管理",
+                "path": "/ai",
+                "component": "/ai",
+                "icon": "mdi:robot-outline",
+                "order": 10,
+                "is_hidden": False,
+                "redirect": None,
+                "keepalive": False,
+                "children": [
+                    {
+                        "name": "模型映射",
+                        "path": "",
+                        "alias": ["/ai/mapping", "/ai/catalog"],
+                        "component": "/ai/model-suite/mapping",
+                        "icon": "mdi:graph-outline",
+                        "order": 1,
+                        "is_hidden": False,
+                        "keepalive": False,
+                    },
+                    {
+                        "name": "JWT 测试",
+                        "path": "jwt",
+                        "component": "/ai/model-suite/jwt",
+                        "icon": "mdi:chat-processing-outline",
+                        "order": 2,
+                        "is_hidden": False,
+                        "keepalive": False,
+                    },
+                ],
+            }
+        )
+
         menus.append(
             {
                 "name": "动作库管理",
@@ -410,36 +417,60 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
                 ],
             }
         )
-    logger.info(f"Returning menus: {menus}")
     return create_response(data=menus)
 
 
 @router.get("/userapi", summary="获取用户API权限")
 async def get_user_api(current_user: AuthenticatedUser = Depends(get_current_user_from_token)) -> Dict[str, Any]:
     """获取当前用户的API权限。"""
-    user_metadata = current_user.claims.get("user_metadata") or {}
-    username = (user_metadata.get("username") or "").strip()
-    is_admin = bool(user_metadata.get("is_admin", False)) or username == "admin"
+    is_admin = _is_dashboard_admin_user(current_user)
 
-    # 临时硬编码API权限，实际应该从数据库查询
-    apis = [
+    # KISS：前端仅用该列表做“按钮/入口级”权限判断；服务端仍以 require_llm_admin 为最终裁决。
+    apis: list[str] = [
+        # App/普通用户只需要读取映射后的白名单（view=mapped 为默认且安全）。
         "get/api/v1/llm/models",
-        "post/api/v1/llm/models",
-        "put/api/v1/llm/models",
-        "get/api/v1/llm/prompts",
-        "post/api/v1/llm/prompts",
-        "put/api/v1/llm/prompts",
-        "post/api/v1/llm/prompts/activate",
     ]
 
-    if is_admin:
-        apis.append("post/api/v1/admin/exercise/library/publish")
-        apis.append("post/api/v1/admin/exercise/library/patch")
-        apis.append("get/api/v1/llm/models/blocked")
-        apis.append("put/api/v1/llm/models/blocked")
-        apis.append("post/api/v1/llm/model-groups")
-        apis.append("post/api/v1/llm/model-groups/activate")
-        apis.append("post/api/v1/llm/model-groups/sync-to-supabase")
+    if not is_admin:
+        return create_response(data=apis)
+
+    apis.extend(
+        [
+            # 供应商 endpoints（admin）
+            "post/api/v1/llm/models",
+            "put/api/v1/llm/models",
+            "delete/api/v1/llm/models",
+            "post/api/v1/llm/models/check-all",
+            "post/api/v1/llm/models/check",
+            "post/api/v1/llm/models/sync",
+            "post/api/v1/llm/models/sync-one",
+            "get/api/v1/llm/models/blocked",
+            "put/api/v1/llm/models/blocked",
+            # 映射（admin）
+            "get/api/v1/llm/model-groups",
+            "post/api/v1/llm/model-groups",
+            "post/api/v1/llm/model-groups/activate",
+            "delete/api/v1/llm/model-groups",
+            # Prompt（admin）
+            "get/api/v1/llm/prompts",
+            "post/api/v1/llm/prompts",
+            "put/api/v1/llm/prompts",
+            "delete/api/v1/llm/prompts",
+            "post/api/v1/llm/prompts/activate",
+            "post/api/v1/llm/prompts/test",
+            # JWT 真实测试（admin）
+            "post/api/v1/llm/tests/create-mail-user",
+            "get/api/v1/llm/tests/mail-users",
+            "post/api/v1/llm/tests/mail-users/refresh",
+            "post/api/v1/llm/tests/anon-token",
+            # 动作库发布（admin）
+            "post/api/v1/admin/exercise/library/publish",
+            "post/api/v1/admin/exercise/library/patch",
+        ]
+    )
+
+    # 去重保持顺序
+    apis = list(dict.fromkeys(apis))
     return create_response(data=apis)
 
 

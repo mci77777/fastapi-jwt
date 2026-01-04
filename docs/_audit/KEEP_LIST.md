@@ -1,5 +1,7 @@
 # 保留文件清单
 
+> ⚠️ 说明：该清单为历史审计产物（2025-10）。2026-01 起已移除 `JWTTestService` 与 `tests/test_jwt_test_service.py`；最新以 `docs/features/model_management/testing.md` 与 `tests/` 实际文件为准。
+
 **生成日期**: 2025-10-17  
 **保留原则**: 核心功能、活跃使用、无重复  
 **总计**: 测试 8 个 + 脚本 26 个 + E2E 8 个 = 42 个核心文件
@@ -17,7 +19,6 @@
 | `test_ai_conversation_logs.py` | 对话日志 | 日志记录与查询 | 可观测性验证 |
 | `test_api_contracts.py` | API 契约 | 响应格式、Trace ID | API 稳定性保障 |
 | `test_e2e_integration.py` | E2E 集成 | 消息创建、SSE 流 | 核心功能验证 |
-| `test_jwt_test_service.py` | JWT 测试服务 | 并发压测、摘要统计 | 性能测试 |
 | `test_model_mapping_service.py` | 模型映射 | Prompt/Fallback 映射 | 核心业务逻辑 |
 
 **运行方式**:
@@ -200,4 +201,3 @@ pytest tests/test_ai_config_service_push.py -v
 
 **保留清单维护人**: AI Assistant + 人工复核  
 **复核标准**: "这个文件是解决真实问题的吗？有更简单的替代方案吗？"
-
