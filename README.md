@@ -239,10 +239,23 @@ python scripts/testing/api/test_api.py                 # API 测试
 - `GET /api/v1/readyz` - 就绪探针
 
 **LLM 模型管理**（`/api/v1/llm/*`）：
-- `GET /api/v1/llm/models` - 获取模型白名单（默认 `view=mapped`；`data[].name` 即客户端可发送的 `model`）
-- `POST /api/v1/llm/models` - 创建模型配置
-- `PUT /api/v1/llm/models/{id}` - 更新模型配置
-- `DELETE /api/v1/llm/models/{id}` - 删除模型配置
+- `GET /api/v1/llm/models` - 获取映射后的模型列表（SSOT：`data[].name` 为客户端可发送的 `model`；管理端可用 `view=endpoints` 查看供应商端点）
+- `GET /api/v1/llm/model-groups` - 获取模型映射（管理端配置 scope/default/candidates）
+- `POST /api/v1/llm/model-groups` - 保存模型映射（admin）
+- `POST /api/v1/llm/model-groups/{mapping_id}/activate` - 切换默认模型（admin）
+- `DELETE /api/v1/llm/model-groups/{mapping_id}` - 删除模型映射（admin）
+- `POST /api/v1/llm/models` - 创建供应商 endpoint（admin）
+- `PUT /api/v1/llm/models` - 更新供应商 endpoint（admin）
+- `DELETE /api/v1/llm/models/{endpoint_id}` - 删除供应商 endpoint（admin）
+- `GET /api/v1/llm/models/check-all` - 触发批量探针（202，异步；admin）
+- `GET /api/v1/llm/monitor/status` - 获取探针任务状态（admin）
+
+#### 模型 SSOT 约定（重要）
+
+- **唯一可供客户端发送的 `model`**：`GET /api/v1/llm/models` 返回的 `data[].name`
+- **后端解析**：`POST /api/v1/messages` 接收映射 key，并解析到真实供应商 endpoint + model
+- **Dashboard 入口**：`/ai` 为模型映射页面（`/ai/catalog` 仅为别名，模型目录页面已移除）
+- **JWT 测试入口**：`/ai/jwt`（仅使用映射后的 model key，不暴露供应商直连配置）
 
 **消息与 SSE**（`/api/v1/messages/*`）：
 - `POST /api/v1/messages` - 创建消息会话
@@ -325,7 +338,7 @@ vue-fastapi-admin/
 │
 ├── scripts/                  # 运维脚本（已重组）
 │   ├── testing/              # 测试脚本
-│   │   ├── jwt/              # JWT 测试（5 个）
+│   │   ├── jwt/              # JWT 测试（3 个）
 │   │   ├── api/              # API 测试（2 个）
 │   │   ├── supabase/         # Supabase 测试（1 个）
 │   │   └── frontend/         # 前端测试（5 个）
