@@ -1,13 +1,14 @@
 # api.gymbro.cloud「对话聚合」最小契约（给 App 端 Agent）
 
 生成日期：2025-12-31  
+更新日期：2026-01-04  
 来源：仓库内 `docs/` + 后端实现对齐（commit `2d1f7899bb574abaffa5a4eb59306315c4ca3820`）  
 注意：本文是“最小可用契约”，用于 App 端集成；线上如有灰度差异，以 `https://api.gymbro.cloud/openapi.json` 为准（无需携带 token 也通常可访问）。
 
-### 线上 OpenAPI 复核（2025-12-31）
+### 线上 OpenAPI 复核（2026-01-04）
 
 - `POST /api/v1/messages`：
-  - `MessageCreateRequest.additionalProperties=false`，与“禁止额外字段（如 model）”一致
+  - `MessageCreateRequest.additionalProperties=false`：禁止未定义字段，但已支持 OpenAI 兼容透传字段（如 `model/messages/tools`）
   - `202` 返回 schema 为 `MessageCreateResponse`（包含 `message_id` + `conversation_id`）
 - `GET /api/v1/messages/{message_id}/events`：
   - OpenAPI 未能表达 `text/event-stream`（文档仍按 SSE 实际行为为准）
@@ -32,24 +33,36 @@
 - `Content-Type: application/json`
 
 ### Request Body（最小字段）
-> 重要：请求体 **不允许额外字段**（`additionalProperties=false`）。例如：携带 `model` 会触发 `422`。
+> 重要：请求体 **不允许额外字段**（`additionalProperties=false`）。
+>
+> 运行时约束（SSOT）：`model` 必填且必须来自白名单（见 `GET /api/v1/llm/models` 默认 `view=mapped` 的 `data[].name`）。
 
 ```json
 {
-  "text": "string, required, minLength=1",
+  "text": "string, optional (messages 不为空时可省略)",
   "conversation_id": "string (uuid), optional",
   "metadata": { "any": "object, optional" },
-  "skip_prompt": false
+  "skip_prompt": false,
+  "model": "string, required (use /api/v1/llm/models returned data[].name)",
+  "messages": "array<object>, optional (OpenAI messages)",
+  "system_prompt": "string, optional",
+  "tools": "array<object>|array<string>, optional",
+  "tool_choice": "any, optional",
+  "temperature": "number, optional",
+  "top_p": "number, optional",
+  "max_tokens": "integer, optional"
 }
 ```
 
 语义说明：
-- `text`：用户输入（必填，不能为空字符串）。
+- `model`：**客户端可发送的 model（白名单 SSOT）**。推荐直接使用 `GET /api/v1/llm/models`（默认 `view=mapped`）返回的 `data[].name`。
+- `text/messages`：二选一至少提供一个。
 - `conversation_id`：会话标识（可选）。
   - 若传入且是合法 UUID，则服务端沿用该值；
   - 若传入但不是合法 UUID，服务端会自动生成新的 UUID（不会报错）。
 - `metadata`：客户端附加信息（可选，任意键值对；服务端会透传/落库用于追踪与扩展）。
 - `skip_prompt`：是否跳过 system prompt（可选，默认 `false`）。
+- `system_prompt/tools/tool_choice/...`：按 OpenAI 语义解释并转发；若你没有本地工具执行器，建议显式设置 `tool_choice: "none"`。
 
 ### Response（202 Accepted）
 ```json
@@ -66,6 +79,7 @@
 ### Errors（常见）
 - `401 Unauthorized`：缺少/非法 JWT（统一错误结构，见下）
 - `422 Unprocessable Entity`：请求体校验失败（FastAPI 默认 validation error 结构）
+  - 若 `model` 缺失/冲突/不在白名单，服务端会返回 `422` 且 `detail` 内包含 `request_id`
 - `429 Too Many Requests`：限流
 - `500 Internal Server Error`：内部错误/上游错误
 
@@ -100,9 +114,23 @@
 ### 事件类型集合（最小）
 
 #### `event: status`
-- `data.state`：`"queued"` 或 `"working"`
+- `data.state`：`"queued"` / `"working"` / `"routed"`
 ```json
 { "state": "queued", "message_id": "<message_id>" }
+```
+
+当 `state="routed"` 时，服务端会回传“路由结果”（用于对账，SSOT）：
+
+```json
+{
+  "state": "routed",
+  "message_id": "<message_id>",
+  "request_id": "<request_id>",
+  "provider": "xai|openai|claude|...",
+  "resolved_model": "upstream provider model id",
+  "endpoint_id": 123,
+  "upstream_request_id": null
+}
 ```
 
 #### `event: content_delta`
@@ -114,13 +142,30 @@
 #### `event: completed`
 - 最终完整回复（可用于落地展示与校验）
 ```json
-{ "message_id": "<message_id>", "reply": "full response" }
+{
+  "message_id": "<message_id>",
+  "reply": "full response",
+  "request_id": "<request_id>",
+  "provider": "xai|openai|claude|...",
+  "resolved_model": "upstream provider model id",
+  "endpoint_id": 123,
+  "upstream_request_id": "<redacted>|null"
+}
 ```
+
+> `reply` 的结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。
 
 #### `event: error`
 - 处理失败（可用于兜底 UI）
 ```json
-{ "message_id": "<message_id>", "error": "error message" }
+{
+  "message_id": "<message_id>",
+  "error": "error message",
+  "request_id": "<request_id>",
+  "provider": "xai|openai|claude|...|null",
+  "resolved_model": "upstream provider model id|null",
+  "endpoint_id": 123|null
+}
 ```
 
 #### `event: heartbeat`
@@ -223,12 +268,20 @@ curl https://api.gymbro.cloud/api/v1/base/userinfo \
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["text"],
+  "required": ["model"],
   "properties": {
     "text": { "type": "string", "minLength": 1 },
     "conversation_id": { "type": "string", "format": "uuid" },
     "metadata": { "type": "object", "additionalProperties": true },
-    "skip_prompt": { "type": "boolean", "default": false }
+    "skip_prompt": { "type": "boolean", "default": false },
+    "model": { "type": "string", "minLength": 1 },
+    "messages": { "type": "array" },
+    "system_prompt": { "type": "string" },
+    "tools": { "type": "array" },
+    "tool_choice": {},
+    "temperature": { "type": "number" },
+    "top_p": { "type": "number" },
+    "max_tokens": { "type": "integer" }
   }
 }
 ```

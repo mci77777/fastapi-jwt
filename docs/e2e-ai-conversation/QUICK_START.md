@@ -11,8 +11,15 @@ A complete, production-ready AI conversation API endpoint with:
 ## 🚀 Quick Test (After Implementation)
 
 ### 1. Start Services
+
+Option A（本地开发一键启动）：
 ```bash
 .\start-dev.ps1
+```
+
+Option B（Docker，推荐用于“环境一致性”验证）：
+```bash
+docker compose up -d --build app
 ```
 
 ### 2. Get JWT Token
@@ -25,7 +32,7 @@ curl -X POST http://localhost:9999/api/v1/base/access_token \
 
 ### 3. Get Model Whitelist (SSOT)
 ```bash
-curl -s http://localhost:9999/api/v1/llm/models \
+curl -s "http://localhost:9999/api/v1/llm/models?view=mapped" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -267,13 +274,18 @@ sum by (model) (
 
 在仓库根目录 `.env.local` 配置（不要提交到 git）：
 ```bash
-XAI_BASEURL=https://api.x.ai
+XAI_BASE_URL=https://api.x.ai
 XAI_API_KEY=<redacted>
 ```
 
 运行（会自动把 `grok-4.1-思考` 解析为 xAI 实际可用 model id 并完成 server/passthrough 两种模式）：
 ```bash
 .venv/bin/python scripts/monitoring/xai_mapped_model_passthrough_e2e.py
+```
+
+Docker 下运行（服务已映射到宿主 `9999`）：
+```bash
+E2E_API_BASE=http://127.0.0.1:9999/api/v1 .venv/bin/python scripts/monitoring/xai_mapped_model_passthrough_e2e.py
 ```
 
 ### Issue: Dashboard not updating
@@ -295,9 +307,15 @@ XAI_API_KEY=<redacted>
 **Request Body**:
 ```typescript
 {
-  text: string;              // Required: User message
+  // At least one of: text / messages
+  text?: string;             // User message
+  messages?: any[];          // OpenAI messages
   conversation_id?: string;  // Optional: Conversation ID
-  model?: string;            // Optional: AI model (e.g., "gpt-4o-mini")
+  model: string;             // Required: use `/api/v1/llm/models?view=mapped` returned `data[].name`
+  skip_prompt?: boolean;     // Optional: passthrough mode
+  system_prompt?: string;    // Optional
+  tools?: any[];             // Optional
+  tool_choice?: any;         // Optional
   metadata?: {
     save_history?: boolean;  // Optional: Save to Supabase (default: true)
     [key: string]: any;      // Other metadata
@@ -308,7 +326,8 @@ XAI_API_KEY=<redacted>
 **Response** (202 Accepted):
 ```json
 {
-  "message_id": "abc123def456"
+  "message_id": "abc123def456",
+  "conversation_id": "uuid-string"
 }
 ```
 

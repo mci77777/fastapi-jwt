@@ -239,7 +239,7 @@ python scripts/testing/api/test_api.py                 # API 测试
 - `GET /api/v1/readyz` - 就绪探针
 
 **LLM 模型管理**（`/api/v1/llm/*`）：
-- `GET /api/v1/llm/models` - 获取模型列表
+- `GET /api/v1/llm/models` - 获取模型白名单（默认 `view=mapped`；`data[].name` 即客户端可发送的 `model`）
 - `POST /api/v1/llm/models` - 创建模型配置
 - `PUT /api/v1/llm/models/{id}` - 更新模型配置
 - `DELETE /api/v1/llm/models/{id}` - 删除模型配置
@@ -267,6 +267,12 @@ python scripts/testing/api/test_api.py                 # API 测试
 2. **RequestID** - 请求追踪（Header: `X-Request-Id`）
 3. **PolicyGate** - 策略网关（限制匿名用户访问管理端点）
 4. **RateLimiter** - 限流控制（匿名用户 QPS=5，永久用户 QPS=10）
+
+#### API 契约（建议以此为准）
+
+- App 集成：`docs/api-contracts/api_gymbro_cloud_app_min_contract.md`
+- SSE/对话聚合：`docs/api-contracts/api_gymbro_cloud_conversation_min_contract.md`
+- AI 输出结构（Strict-XML）：`docs/ai预期响应结构.md`
 
 ### 目录说明
 
