@@ -647,19 +647,28 @@ class AIService:
 
         final_messages: list[dict[str, Any]] = []
         explicit_system_prompt = isinstance(system_prompt, str) and bool(system_prompt.strip())
-        if explicit_system_prompt:
-            final_messages.append({"role": "system", "content": system_prompt.strip()})
-            final_messages.extend([item for item in messages if isinstance(item, dict) and item.get("role") != "system"])
+
+        # 语义收敛：
+        # - skip_prompt=true：允许完整透传 messages（含 system），服务端不注入默认 prompt。
+        # - skip_prompt=false：服务端注入 prompt，并忽略客户端 messages 中的 system role（避免被绕过）。
+        if message.skip_prompt:
+            final_messages.extend([item for item in messages if isinstance(item, dict)])
+            if explicit_system_prompt and not any((item or {}).get("role") == "system" for item in final_messages):
+                final_messages.insert(0, {"role": "system", "content": system_prompt.strip()})
         else:
-            final_messages.extend(messages)
-            if not message.skip_prompt and not any((item or {}).get("role") == "system" for item in messages):
+            user_messages = [item for item in messages if isinstance(item, dict) and item.get("role") != "system"]
+            if explicit_system_prompt:
+                final_messages.append({"role": "system", "content": system_prompt.strip()})
+            else:
                 default_prompt = await self._get_active_prompt_text() or "You are GymBro's AI assistant."
                 if default_prompt:
-                    final_messages.insert(0, {"role": "system", "content": default_prompt})
+                    final_messages.append({"role": "system", "content": default_prompt})
+            final_messages.extend(user_messages)
 
         resolved_tools = await self._resolve_tools(tools)
         if resolved_tools is None:
-            resolved_tools = await self._get_active_prompt_tools()
+            # 透传模式：不注入默认 tools；只有客户端显式提供 tools 才下发。
+            resolved_tools = None if message.skip_prompt else await self._get_active_prompt_tools()
 
         payload: dict[str, Any] = {
             "model": model,
@@ -885,6 +894,8 @@ class AIService:
         name = str(endpoint.get("name") or "").lower()
         if "anthropic" in base_url or "claude" in name or "anthropic" in name:
             return "claude"
+        if "x.ai" in base_url or "xai" in name or "grok" in name:
+            return "xai"
         return "openai"
 
     async def _get_endpoint_api_key(self, endpoint: dict[str, Any]) -> Optional[str]:

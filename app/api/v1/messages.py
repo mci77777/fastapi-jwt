@@ -40,12 +40,39 @@ class MessageCreateRequest(BaseModel):
     top_p: Optional[float] = Field(None, description="OpenAI top_p")
     max_tokens: Optional[int] = Field(None, description="OpenAI max_tokens")
 
+    def _extract_metadata_chat_request(self) -> dict[str, Any]:
+        if not isinstance(self.metadata, dict):
+            return {}
+        raw = self.metadata.get("chat_request")
+        if isinstance(raw, dict):
+            return raw
+        raw = self.metadata.get("openai")
+        if isinstance(raw, dict):
+            return raw
+        return {}
+
     @model_validator(mode="after")
     def _validate_text_or_messages(self) -> "MessageCreateRequest":
         has_text = bool((self.text or "").strip())
         has_messages = bool(self.messages)
         if not has_text and not has_messages:
+            meta_chat = self._extract_metadata_chat_request()
+            meta_messages = meta_chat.get("messages") if isinstance(meta_chat, dict) else None
+            has_messages = bool(isinstance(meta_messages, list) and len(meta_messages) > 0)
+        if not has_text and not has_messages:
             raise ValueError("text_or_messages_required")
+
+        # 透传模式：禁止同时提供 messages(system) 与 system_prompt（避免歧义）。
+        if self.skip_prompt:
+            system_prompt = (self.system_prompt or "").strip()
+            if system_prompt:
+                msgs = self.messages
+                if not msgs:
+                    meta_chat = self._extract_metadata_chat_request()
+                    meta_messages = meta_chat.get("messages") if isinstance(meta_chat, dict) else None
+                    msgs = meta_messages if isinstance(meta_messages, list) else None
+                if isinstance(msgs, list) and any(isinstance(item, dict) and item.get("role") == "system" for item in msgs):
+                    raise ValueError("system_prompt_conflict_with_messages_system")
         return self
 
 
@@ -66,11 +93,24 @@ async def create_message(
 
     message_id = AIService.new_message_id()
 
+    # 兼容：允许 App 把 OpenAI 请求体放在 metadata.chat_request / metadata.openai（简化透传链路）
+    meta_chat: dict[str, Any] = {}
+    if isinstance(payload.metadata, dict):
+        raw = payload.metadata.get("chat_request")
+        if isinstance(raw, dict):
+            meta_chat = raw
+        else:
+            raw = payload.metadata.get("openai")
+            if isinstance(raw, dict):
+                meta_chat = raw
+
     # SSOT：model 白名单强校验（顶层 model 优先，metadata.model 兜底）
     explicit_model = payload.model.strip() if isinstance(payload.model, str) else ""
     meta_model = ""
     if isinstance(payload.metadata, dict):
         meta_model = str(payload.metadata.get("model") or "").strip()
+    if not meta_model and isinstance(meta_chat, dict):
+        meta_model = str(meta_chat.get("model") or "").strip()
 
     if explicit_model and meta_model and explicit_model != meta_model:
         raise HTTPException(
@@ -106,19 +146,60 @@ async def create_message(
         conversation_id=conversation_id,
     )
 
+    # 对齐“顶层字段为 SSOT，metadata.chat_request 仅兜底”的取值顺序
+    normalized_messages = payload.messages
+    if normalized_messages is None and isinstance(meta_chat, dict):
+        meta_messages = meta_chat.get("messages")
+        if isinstance(meta_messages, list):
+            normalized_messages = [item for item in meta_messages if isinstance(item, dict)]
+
+    normalized_system_prompt = payload.system_prompt
+    if not (isinstance(normalized_system_prompt, str) and normalized_system_prompt.strip()) and isinstance(meta_chat, dict):
+        meta_system_prompt = meta_chat.get("system_prompt")
+        if isinstance(meta_system_prompt, str) and meta_system_prompt.strip():
+            normalized_system_prompt = meta_system_prompt.strip()
+
+    normalized_tools = payload.tools
+    if normalized_tools is None and isinstance(meta_chat, dict):
+        meta_tools = meta_chat.get("tools")
+        if isinstance(meta_tools, list):
+            normalized_tools = meta_tools
+
+    normalized_tool_choice = payload.tool_choice
+    if normalized_tool_choice is None and isinstance(meta_chat, dict):
+        normalized_tool_choice = meta_chat.get("tool_choice")
+
+    normalized_temperature = payload.temperature
+    if normalized_temperature is None and isinstance(meta_chat, dict):
+        t = meta_chat.get("temperature")
+        if isinstance(t, (int, float)):
+            normalized_temperature = float(t)
+
+    normalized_top_p = payload.top_p
+    if normalized_top_p is None and isinstance(meta_chat, dict):
+        t = meta_chat.get("top_p")
+        if isinstance(t, (int, float)):
+            normalized_top_p = float(t)
+
+    normalized_max_tokens = payload.max_tokens
+    if normalized_max_tokens is None and isinstance(meta_chat, dict):
+        t = meta_chat.get("max_tokens")
+        if isinstance(t, int):
+            normalized_max_tokens = t
+
     message_input = AIMessageInput(
         text=payload.text,
         conversation_id=conversation_id,
         metadata=payload.metadata,
         skip_prompt=payload.skip_prompt,
         model=requested_model,
-        messages=payload.messages,
-        system_prompt=payload.system_prompt,
-        tools=payload.tools,
-        tool_choice=payload.tool_choice,
-        temperature=payload.temperature,
-        top_p=payload.top_p,
-        max_tokens=payload.max_tokens,
+        messages=normalized_messages,
+        system_prompt=normalized_system_prompt,
+        tools=normalized_tools,
+        tool_choice=normalized_tool_choice,
+        temperature=normalized_temperature,
+        top_p=normalized_top_p,
+        max_tokens=normalized_max_tokens,
     )
 
     request_id = getattr(request.state, "request_id", None) or get_current_request_id()
