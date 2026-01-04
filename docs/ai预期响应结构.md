@@ -22,6 +22,9 @@
 **关键约束**：
 - `</thinking>` 后必须立即出现 `<final>`（否则视为格式错误）
 - `<final>` 内允许使用 Markdown 进行排版（标题/列表/代码块等）
+- 禁止在 `<thinking>` 的**内容文本**中出现 `<final>` / `</final>` 字面量（会被解析为嵌套标签）；如需提及必须转义为 `&lt;final&gt;` / `&lt;/final&gt;`
+
+> 兼容性：后端会对 `<thinking>...</thinking>` 区间内的 `<final>` / `</final>` 字面量做最小转义，避免生成非法结构。
 
 ---
 
@@ -99,4 +102,3 @@
 3. 仅出现白名单标签（允许 `<phase id="...">`）
 4. `<thinking>` 内至少 1 个 `<phase id="...">`，且每个 phase 含 `<title>`
 5. `<final>` 末尾包含 `<!-- <serp_queries> ... -->`
-

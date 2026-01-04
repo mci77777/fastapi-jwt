@@ -26,6 +26,43 @@ from app.settings.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+_THINKING_OPEN = "<thinking>"
+_THINKING_CLOSE = "</thinking>"
+_FINAL_OPEN = "<final>"
+_FINAL_CLOSE = "</final>"
+
+
+def _escape_xml_tag_literal(text: str, *, tag: str) -> str:
+    """将文本中的指定 XML 标签字面量转义为纯文本（避免误触发嵌套标签）。"""
+
+    if not text or not tag:
+        return text
+    if tag[0] != "<" or tag[-1] != ">":
+        return text
+    escaped = "&lt;" + tag[1:-1] + "&gt;"
+    return text.replace(tag, escaped)
+
+
+def _sanitize_thinkingml_reply(reply: str) -> str:
+    """最小修复：避免 <thinking> 内出现 <final> / </final> 字面量，导致结构非法。"""
+
+    text = reply or ""
+    if not text.strip():
+        return reply
+
+    thinking_start = text.find(_THINKING_OPEN)
+    thinking_end = text.find(_THINKING_CLOSE)
+    if thinking_start == -1 or thinking_end == -1 or thinking_end <= thinking_start:
+        return reply
+
+    # 仅在 thinking 内部转义 final 标签字面量（不影响真实 <final> 块）
+    inner_start = thinking_start + len(_THINKING_OPEN)
+    inner = text[inner_start:thinking_end]
+    inner = _escape_xml_tag_literal(inner, tag=_FINAL_OPEN)
+    inner = _escape_xml_tag_literal(inner, tag=_FINAL_CLOSE)
+
+    return text[:inner_start] + inner + text[thinking_end:]
+
 
 @dataclass(slots=True)
 class AIMessageInput:
@@ -462,6 +499,8 @@ class AIService:
                         api_key,
                         openai_req,
                     )
+
+            reply_text = _sanitize_thinkingml_reply(reply_text)
 
             async for chunk in self._stream_chunks(reply_text):
                 await broker.publish(
