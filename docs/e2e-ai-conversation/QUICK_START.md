@@ -274,7 +274,8 @@ sum by (model) (
 
 在仓库根目录 `.env.local` 配置（不要提交到 git）：
 ```bash
-XAI_BASE_URL=https://api.x.ai
+XAI_API_BASE_URL=https://api.x.ai
+# 兼容旧命名：XAI_BASEURL=https://api.x.ai
 XAI_API_KEY=<redacted>
 ```
 
