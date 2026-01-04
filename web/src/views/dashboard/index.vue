@@ -111,17 +111,10 @@ const defaultQuickAccessCards = [
     iconColor: '#18a058',
   },
   {
-    icon: 'rectangle-stack',
-    title: '模型目录',
-    description: '查看和管理 AI 模型',
-    path: '/ai',
-    iconColor: '#667eea',
-  },
-  {
     icon: 'map',
     title: '模型映射',
     description: '配置模型映射关系',
-    path: '/ai/mapping',
+    path: '/ai',
     iconColor: '#2080f0',
   },
   {
