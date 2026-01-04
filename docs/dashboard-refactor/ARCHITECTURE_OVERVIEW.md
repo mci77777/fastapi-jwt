@@ -85,7 +85,7 @@ QuickAccessCard 组件触发路由跳转
   ↓
 Vue Router 导航到目标页面
   ↓
-目标页面加载（模型目录/Prompt管理/API配置等）
+目标页面加载（模型映射/Prompt管理/API配置等）
 ```
 
 #### 2. 模型切换控制链路
@@ -166,7 +166,7 @@ ServerLoadCard 显示服务器负载（请求数、错误率、连接数）
 
 **理由**：
 - **YAGNI**：用户需要"快速访问"，不需要在 Dashboard 内嵌完整功能
-- **SSOT**：复用现有页面（模型目录、Prompt 管理等），避免重复实现
+- **SSOT**：复用现有页面（模型映射、Prompt 管理等），避免重复实现
 - **KISS**：简单的路由跳转，无需复杂的状态同步
 
 **实现**：
@@ -201,7 +201,7 @@ function handleNavigate() {
 **理由**：
 - **SSOT**：复用 `/api/v1/llm/models` API 和 `useAiModelSuiteStore`
 - **KISS**：不重复实现模型列表获取逻辑
-- **可复用**：组件可在 Dashboard 和模型目录页面共用
+- **可复用**：组件可在 Dashboard 和模型映射页面共用
 
 **实现**：
 ```vue
@@ -697,8 +697,7 @@ function calculateErrorRate(metrics) {
 - 状态：✅ 已实现（通过后端 `/api/v1/base/usermenu` 动态注入）
 
 **配置页面路由**：
-- `/ai/catalog` - 模型目录 ✅
-- `/ai/mapping` - 模型映射 ✅
+- `/ai` - 模型映射（SSOT）✅（别名：`/ai/mapping`、`/ai/catalog`）
 - `/ai/jwt` - JWT 测试 ✅
 - `/system/ai` - API 配置 ✅
 - `/system/ai/prompt` - Prompt 管理 ✅
@@ -725,8 +724,7 @@ function calculateErrorRate(metrics) {
     "icon": "mdi:robot-outline",
     "order": 5,
     "children": [
-      { "name": "模型目录", "path": "catalog", "component": "/ai/model-suite/catalog" },
-      { "name": "模型映射", "path": "mapping", "component": "/ai/model-suite/mapping" },
+      { "name": "模型映射", "path": "", "alias": ["/ai/mapping", "/ai/catalog"], "component": "/ai/model-suite/mapping" },
       { "name": "JWT测试", "path": "jwt", "component": "/ai/model-suite/jwt" }
     ]
   },
@@ -765,7 +763,7 @@ function calculateErrorRate(metrics) {
 #### 1. 导航枢纽
 **组件**：`QuickAccessCard.vue`
 **验收标准**：
-- ✅ 显示 6 个快速访问卡片（模型目录、模型映射、Prompt 管理、JWT 测试、API 配置、审计日志）
+- ✅ 显示 6 个快速访问卡片（AI 供应商、提示词、模型映射、API 监控、目录管理、JWT 测试）
 - ✅ 点击卡片跳转到对应页面
 - ✅ 卡片显示图标、标题、描述
 
@@ -818,13 +816,13 @@ function calculateErrorRate(metrics) {
 
 #### 导航枢纽链路
 ```
-用户点击"模型目录"卡片
+用户点击"模型映射"卡片
   ↓
-QuickAccessCard 触发 router.push('/ai/catalog')
+QuickAccessCard 触发 router.push('/ai')（别名：`/ai/catalog`）
   ↓
-Vue Router 导航到模型目录页面
+Vue Router 导航到模型映射页面
   ↓
-模型目录页面加载并显示模型列表
+模型映射页面加载并显示映射列表
 ```
 
 #### 模型切换链路
@@ -987,4 +985,3 @@ EndpointMonitor 启动定时任务
 **最后更新**: 2025-01-12
 **变更**: 基于核心功能缺失诊断重写
 **状态**: 待实施
-

@@ -134,10 +134,10 @@ function handleClick() {
 <template>
   <div class="quick-access-section">
     <QuickAccessCard
-      icon="mdi:robot"
-      title="模型目录"
-      description="查看和管理 AI 模型"
-      path="/ai/catalog"
+      icon="mdi:graph-outline"
+      title="模型映射（SSOT）"
+      description="配置模型映射关系"
+      path="/ai"
       :badge="5"
       @click="handleCardClick"
     />
@@ -936,5 +936,4 @@ export function parsePrometheusMetrics(text) {
 **最后更新**: 2025-01-12
 **变更**: 基于核心功能缺失诊断重写
 **状态**: 待实施
-
 

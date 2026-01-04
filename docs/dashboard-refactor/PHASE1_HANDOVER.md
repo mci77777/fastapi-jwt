@@ -41,7 +41,7 @@
 | 模型列表从 API 加载 | ✅ 通过 | 网络请求验证（`GET /api/v1/llm/models`） |
 | 模型切换功能正常 | ✅ 通过 | 下拉选择器可交互，显示加载状态 |
 | 快速访问卡片渲染 | ✅ 通过 | 6 个卡片正确显示 |
-| 卡片点击跳转路由 | ✅ 通过 | 测试"模型目录"卡片，成功跳转到 `/ai/catalog` |
+| 卡片点击跳转路由 | ✅ 通过 | 测试"模型映射"卡片，成功跳转到 `/ai`（别名 `/ai/catalog`） |
 | API 弹窗打开/关闭 | ✅ 通过 | 点击"API 连通性"统计卡片，弹窗正常显示 |
 | API 端点列表显示 | ✅ 通过 | 表格显示 3 个端点及详细信息 |
 | 无编译错误 | ✅ 通过 | `diagnostics` 工具验证 |
@@ -57,7 +57,7 @@
 **文件路径**: `web/src/components/dashboard/ModelSwitcher.vue`
 
 **功能描述（WHY）**:  
-解决 Dashboard 缺少模型快速切换功能的问题。用户需要在 Dashboard 上直接切换 AI 模型，而不是跳转到模型目录页面。
+解决 Dashboard 缺少模型快速切换功能的问题。用户需要在 Dashboard 上直接切换 AI 模型，而不是跳转到模型映射页面。
 
 **Props API**:
 ```typescript
@@ -123,9 +123,9 @@ interface Emits {
 ```vue
 <QuickAccessCard
   icon="rectangle-stack"
-  title="模型目录"
-  description="查看和管理 AI 模型"
-  path="/ai/catalog"
+  title="模型映射"
+  description="配置模型映射关系"
+  path="/ai"
   icon-color="#667eea"
   @click="handleQuickAccessClick"
 />
@@ -278,7 +278,7 @@ function handleStatClick(stat) {
 - ✅ Dashboard 页面正常加载
 - ✅ 6 个快速访问卡片正确渲染
 - ✅ ModelSwitcher 组件显示当前模型（deepseek-r1）
-- ✅ 点击"模型目录"卡片成功跳转到 `/ai/catalog`
+- ✅ 点击"模型映射"卡片成功跳转到 `/ai`（别名 `/ai/catalog`）
 - ✅ 点击"API 连通性"统计卡片成功打开弹窗
 - ✅ API 端点列表表格显示 3 个端点及详细信息
 
@@ -288,8 +288,8 @@ function handleStatClick(stat) {
 |-------|---------|---------|------|
 | 模型选择器显示 | 显示当前模型及详细信息 | deepseek-r1, https://zzzzapi.com, 启用/默认/在线 | ✅ 通过 |
 | 模型列表加载 | API 调用成功，返回模型列表 | GET /api/v1/llm/models - 200 OK | ✅ 通过 |
-| 快速访问卡片渲染 | 6 个卡片正确显示 | 模型目录、模型映射、Prompt 管理、JWT 测试、API 配置、审计日志 | ✅ 通过 |
-| 卡片点击跳转 | 点击后跳转到目标路由 | 点击"模型目录"跳转到 /ai/catalog | ✅ 通过 |
+| 快速访问卡片渲染 | 6 个卡片正确显示 | AI 供应商、提示词、模型映射、API 监控、目录管理、JWT 测试 | ✅ 通过 |
+| 卡片点击跳转 | 点击后跳转到目标路由 | 点击"模型映射"跳转到 /ai（别名 /ai/catalog） | ✅ 通过 |
 | API 弹窗打开 | 点击统计卡片打开弹窗 | 弹窗正常显示，标题"API 连通性详情" | ✅ 通过 |
 | API 端点列表 | 表格显示所有端点 | 3 个端点（DeepSeek R1, nyxar, zzzzapi） | ✅ 通过 |
 | 监控按钮显示 | 启动/停止监控按钮可见 | 按钮正常显示，状态"监控已停止" | ✅ 通过 |
@@ -301,7 +301,7 @@ function handleStatClick(stat) {
 **限制**:
 1. 模型切换功能仅测试了 UI 显示，未测试实际切换操作（需要用户交互）
 2. 监控启动/停止功能未测试（需要点击按钮触发）
-3. 快速访问卡片仅测试了"模型目录"卡片的跳转，其他卡片未逐一测试
+3. 快速访问卡片仅抽样测试了"模型映射"卡片的跳转，其他卡片未逐一测试
 
 ---
 
@@ -407,12 +407,12 @@ src/components/common/HeroIcon.vue
 **快速访问卡片配置**:
 ```javascript
 const quickAccessCards = [
-  { icon: 'rectangle-stack', title: '模型目录', description: '查看和管理 AI 模型', path: '/ai/catalog', iconColor: '#667eea' },
-  { icon: 'map', title: '模型映射', description: '配置模型映射关系', path: '/ai/mapping', iconColor: '#2080f0' },
-  { icon: 'document-text', title: 'Prompt 管理', description: '管理 Prompt 模板', path: '/system/ai/prompt', iconColor: '#18a058' },
-  { icon: 'key', title: 'JWT 测试', description: '测试 JWT 认证', path: '/ai/jwt', iconColor: '#f0a020' },
-  { icon: 'wrench-screwdriver', title: 'API 配置', description: '配置 API 供应商', path: '/system/ai', iconColor: '#d03050' },
-  { icon: 'clipboard-document-list', title: '审计日志', description: '查看系统日志', path: '/dashboard', iconColor: '#8a2be2' }
+  { icon: 'wrench-screwdriver', title: 'AI 供应商', description: '配置 AI 供应商', path: '/system/ai', iconColor: '#d03050' },
+  { icon: 'document-text', title: '提示词', description: '管理 Prompt 模板', path: '/system/ai/prompt', iconColor: '#18a058' },
+  { icon: 'map', title: '模型映射', description: '配置模型映射关系', path: '/ai', iconColor: '#2080f0' },
+  { icon: 'chart-line', title: 'API 监控', description: '监控后端 API 端点健康状态', path: '/dashboard/api-monitor', iconColor: '#f0a020' },
+  { icon: 'folder', title: '目录管理', description: '管理内容分类和标签', path: '/catalog', iconColor: '#da7756' },
+  { icon: 'key', title: 'JWT 测试', description: '测试 JWT 认证', path: '/ai/jwt', iconColor: '#999' }
 ]
 ```
 
@@ -421,4 +421,3 @@ const quickAccessCards = [
 **文档版本**: v1.0  
 **最后更新**: 2025-10-12  
 **状态**: ✅ 已完成并验收
-

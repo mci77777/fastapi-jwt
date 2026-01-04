@@ -45,8 +45,7 @@
 
 **整合范围**：
 - `/system/ai`（AI 配置 - 端点管理）
-- `/ai/catalog`（模型目录）
-- `/ai/mapping`（模型映射）
+- `/ai`（模型映射，别名：`/ai/mapping`、`/ai/catalog`）
 - **注意**：`/system/api`（API 权限）暂不整合，后续追加
 
 **整合后的层级结构**：

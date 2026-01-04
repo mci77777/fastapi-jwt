@@ -187,7 +187,7 @@ async function handleStopMonitor() {
 - ❌ Dashboard 页面**没有任何跳转链接**到配置页面
 - ❌ 缺少"快速访问"卡片或按钮组
 - ❌ 缺少配置总览面板（应显示当前激活的模型、Prompt、API 供应商等）
-- ❌ 缺少导航卡片（跳转到模型目录、模型映射、Prompt 管理、JWT 测试等）
+- ❌ 缺少导航卡片（跳转到模型映射、Prompt 管理、JWT 测试、AI 供应商等）
 
 **需要新增**：
 - `web/src/components/dashboard/QuickAccessCard.vue` - 快速访问卡片组件
@@ -201,7 +201,7 @@ async function handleStopMonitor() {
 
 **现有代码**：
 - 模型列表 API：`app/api/v1/llm_models.py` ✅ 完整 CRUD
-- 模型切换 UI：`web/src/views/ai/model-suite/catalog/index.vue` ✅ 存在
+- 模型映射 UI：`web/src/views/ai/model-suite/mapping/index.vue` ✅ 存在（`/ai/catalog` 为路由别名）
 - 状态管理：`web/src/store/modules/aiModelSuite.js` ✅ 包含 `setDefaultModel()` 方法
 
 **缺失内容**：
@@ -373,12 +373,12 @@ import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
 import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
 
 const quickAccessCards = [
-  { icon: 'mdi:robot', title: '模型目录', description: '查看和管理 AI 模型', path: '/ai/catalog' },
-  { icon: 'mdi:map', title: '模型映射', description: '配置模型映射关系', path: '/ai/mapping' },
-  { icon: 'mdi:text-box', title: 'Prompt 管理', description: '管理 Prompt 模板', path: '/system/ai/prompt' },
-  { icon: 'mdi:key', title: 'JWT 测试', description: '测试 JWT 认证', path: '/ai/jwt' },
-  { icon: 'mdi:cog', title: 'API 配置', description: '配置 API 供应商', path: '/system/ai' },
-  { icon: 'mdi:file-document', title: '审计日志', description: '查看系统日志', path: '/dashboard/logs' }
+  { icon: 'mdi:cog', title: 'AI 供应商', description: '配置 AI 供应商', path: '/system/ai' },
+  { icon: 'mdi:text-box', title: '提示词', description: '管理 Prompt 模板', path: '/system/ai/prompt' },
+  { icon: 'mdi:map', title: '模型映射', description: '配置模型映射关系', path: '/ai' },
+  { icon: 'mdi:chart-line', title: 'API 监控', description: '监控后端 API 端点健康状态', path: '/dashboard/api-monitor' },
+  { icon: 'mdi:folder', title: '目录管理', description: '管理内容分类和标签', path: '/catalog' },
+  { icon: 'mdi:key', title: 'JWT 测试', description: '测试 JWT 认证', path: '/ai/jwt' }
 ]
 
 const showApiModal = ref(false)
@@ -569,4 +569,3 @@ app/api/v1/
 **最后更新**: 2025-01-12
 **变更**: 基于核心功能缺失诊断重写
 **状态**: 待实施
-

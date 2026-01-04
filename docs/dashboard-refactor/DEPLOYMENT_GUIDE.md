@@ -293,8 +293,7 @@ import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
 import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
 
 const quickAccessCards = [
-  { icon: 'mdi:robot', title: '模型目录', description: '查看和管理 AI 模型', path: '/ai/catalog' },
-  { icon: 'mdi:map', title: '模型映射', description: '配置模型映射关系', path: '/ai/mapping' },
+  { icon: 'mdi:map', title: '模型映射', description: '配置模型映射关系', path: '/ai' },
   { icon: 'mdi:text-box', title: 'Prompt 管理', description: '管理 Prompt 模板', path: '/system/ai/prompt' },
   { icon: 'mdi:key', title: 'JWT 测试', description: '测试 JWT 认证', path: '/ai/jwt' },
   { icon: 'mdi:cog', title: 'API 配置', description: '配置 API 供应商', path: '/system/ai' },
@@ -337,8 +336,8 @@ pnpm dev
 **测试步骤**:
 
 1. 访问 Dashboard 页面：`http://localhost:3101/dashboard`
-2. 点击"模型目录"快速访问卡片
-3. 验证跳转到 `/ai/catalog` 页面
+2. 点击"模型映射"快速访问卡片
+3. 验证跳转到 `/ai` 页面（别名：`/ai/catalog`）
 4. 返回 Dashboard
 5. 重复测试其他 5 个快速访问卡片
 
@@ -705,5 +704,4 @@ curl http://localhost:9999/api/v1/metrics
 **最后更新**: 2025-01-12
 **变更**: 基于核心功能缺失诊断重写
 **状态**: 待实施
-
 
