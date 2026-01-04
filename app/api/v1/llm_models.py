@@ -95,8 +95,7 @@ async def list_app_models(
     settings = get_settings()
     allow_debug = bool(debug) and (getattr(settings, "debug", False) or is_dashboard_admin_user(current_user))
 
-    items = await ai_service.list_model_whitelist(
-        user_id=current_user.uid,
+    items = await ai_service.list_app_model_scopes(
         include_inactive=bool(include_inactive),
         include_debug_fields=allow_debug,
     )
@@ -182,32 +181,21 @@ async def list_ai_models(
         allow_debug = bool(debug) and (getattr(settings, "debug", False) or is_dashboard_admin_user(current_user))
         include_inactive = not (True if only_active is None else bool(only_active))
 
-        items = await ai_service.list_model_whitelist(
-            user_id=current_user.uid,
+        items = await ai_service.list_app_model_scopes(
             include_inactive=include_inactive,
             include_debug_fields=allow_debug,
         )
 
-        if scope_type:
-            items = [item for item in items if str(item.get("scope_type") or "") == str(scope_type)]
-        if scope_key:
-            items = [item for item in items if str(item.get("scope_key") or "") == str(scope_key)]
-
+        # 兼容：对 mapped 视图保留 keyword 过滤（按 name / default_model / candidates）
         keyword_text = str(keyword or "").strip().lower()
         if keyword_text:
             filtered: list[dict[str, Any]] = []
             for item in items:
                 if not isinstance(item, dict):
                     continue
-                haystack = " ".join(
-                    [
-                        str(item.get("name") or ""),
-                        str(item.get("label") or ""),
-                        str(item.get("scope_type") or ""),
-                        str(item.get("scope_key") or ""),
-                        str(item.get("resolved_model") or ""),
-                    ]
-                ).lower()
+                candidates_value = item.get("candidates") or []
+                candidates_text = " ".join([str(x) for x in candidates_value]) if isinstance(candidates_value, list) else ""
+                haystack = " ".join([str(item.get("name") or ""), str(item.get("default_model") or ""), candidates_text]).lower()
                 if keyword_text in haystack:
                     filtered.append(item)
             items = filtered

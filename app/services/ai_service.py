@@ -348,16 +348,134 @@ class AIService:
 
         return deduped
 
+    async def list_app_model_scopes(
+        self,
+        *,
+        include_inactive: bool = False,
+        include_debug_fields: bool = False,
+    ) -> list[dict[str, Any]]:
+        """返回 App 可展示/可发送的模型 scope 列表（SSOT：App 业务 key）。"""
+
+        if self._model_mapping_service is None or self._ai_config_service is None:
+            return []
+
+        blocked = set(await self._model_mapping_service.list_blocked_models())
+
+        try:
+            mappings = await self._model_mapping_service.list_mappings()
+        except Exception:
+            mappings = []
+
+        endpoints, _ = await self._ai_config_service.list_endpoints(only_active=True, page=1, page_size=200)
+        candidates = [item for item in endpoints if item.get("is_active") and item.get("has_api_key")]
+        candidates = [item for item in candidates if str(item.get("status") or "").strip().lower() != "offline"]
+        if not getattr(self._settings, "allow_test_ai_endpoints", False):
+            non_test = [item for item in candidates if not looks_like_test_endpoint(item)]
+            if non_test:
+                candidates = non_test
+
+        # App 业务 key：优先 tenant，其次 global（兼容既有映射存量与命名）
+        scope_priority = ("tenant", "global")
+
+        # 保持首次出现顺序，避免 UI 列表漂移
+        seen_keys: set[str] = set()
+        ordered_keys: list[str] = []
+        bucket: dict[str, list[dict[str, Any]]] = {}
+
+        for mapping in mappings:
+            if not isinstance(mapping, dict):
+                continue
+            scope_type = str(mapping.get("scope_type") or "").strip()
+            if scope_type not in scope_priority:
+                continue
+            if not include_inactive and not bool(mapping.get("is_active", True)):
+                continue
+            scope_key = str(mapping.get("scope_key") or "").strip()
+            if not scope_key:
+                continue
+            if scope_key not in seen_keys:
+                seen_keys.add(scope_key)
+                ordered_keys.append(scope_key)
+            bucket.setdefault(scope_key, []).append(mapping)
+
+        def _mapping_sort_key(item: dict[str, Any]) -> tuple[int, str]:
+            scope_type = str(item.get("scope_type") or "").strip()
+            pri = scope_priority.index(scope_type) if scope_type in scope_priority else 99
+            updated = str(item.get("updated_at") or "")
+            return (pri, updated)
+
+        items: list[dict[str, Any]] = []
+        for key in ordered_keys:
+            candidates_mappings = bucket.get(key) or []
+            candidates_mappings = sorted(candidates_mappings, key=_mapping_sort_key)
+
+            selected_mapping: dict[str, Any] | None = None
+            selected_default: str | None = None
+            selected_candidates: list[str] = []
+            selected_blocked: list[str] = []
+
+            # 逐个映射尝试：同一 key 在多个 scope 下可能存在（如 tenant:xai 与 global:xai）
+            for mapping in candidates_mappings:
+                default_model, routable, blocked_candidates = _pick_routable_candidates_from_mapping(
+                    mapping,
+                    endpoints=candidates,
+                    blocked=blocked,
+                )
+                if not routable:
+                    continue
+                selected_mapping = mapping
+                selected_default = default_model or (routable[0] if routable else None)
+                selected_candidates = routable
+                selected_blocked = blocked_candidates
+                break
+
+            if selected_mapping is None or not selected_candidates:
+                continue
+
+            resolved_model = selected_default or selected_candidates[0]
+            resolved_endpoint = next(
+                (endpoint for endpoint in candidates if _endpoint_supports_model(endpoint, resolved_model)),
+                None,
+            )
+
+            item: dict[str, Any] = {
+                "name": key,
+                "default_model": resolved_model,
+                "candidates": selected_candidates,
+            }
+            if include_debug_fields:
+                item.update(
+                    {
+                        "mapping_id": selected_mapping.get("id"),
+                        "scope_type": selected_mapping.get("scope_type"),
+                        "scope_key": selected_mapping.get("scope_key"),
+                        "updated_at": selected_mapping.get("updated_at"),
+                        "blocked_candidates": selected_blocked,
+                        "resolved_model": resolved_model,
+                        "provider": self._infer_provider(resolved_endpoint) if isinstance(resolved_endpoint, dict) else None,
+                        "endpoint_id": resolved_endpoint.get("id") if isinstance(resolved_endpoint, dict) else None,
+                    }
+                )
+            items.append(item)
+
+        return items
+
     async def is_model_allowed(self, model_name: str, *, user_id: str | None = None) -> bool:
         name = str(model_name or "").strip()
         if not name:
             return False
-        whitelist = await self.list_model_whitelist(
-            user_id=user_id,
-            include_inactive=False,
-            include_debug_fields=False,
-        )
-        return any(item.get("name") == name for item in whitelist)
+
+        # 兼容：既允许 legacy mapping_id（如 global:global），也允许 App 业务 key（如 xai）
+        if ":" in name:
+            whitelist = await self.list_model_whitelist(
+                user_id=user_id,
+                include_inactive=False,
+                include_debug_fields=False,
+            )
+            return any(item.get("name") == name for item in whitelist)
+
+        app_scopes = await self.list_app_model_scopes(include_inactive=False, include_debug_fields=False)
+        return any(item.get("name") == name for item in app_scopes)
 
     @staticmethod
     def new_message_id() -> str:
@@ -411,94 +529,36 @@ class AIService:
                 ),
             )
 
-            # 先做“路由决策”，确保即使上游超时/失败也能在 SSE error 中对账 provider/resolved_model。
-            reply_text: str
-            if self._ai_config_service is None:
-                reply_text = await self._call_openai_completion_settings(message)
-                model_used = self._settings.ai_model or "gpt-4o-mini"
+            reply_text, model_used, request_payload, response_payload, upstream_request_id, endpoint_id_used, provider_used = (
+                await self._generate_reply(message, user, user_details)
+            )
+            if provider_used is None and self._ai_config_service is None:
                 provider_used = "openai"
-                request_payload = json.dumps({"model": model_used, "text": message.text}, ensure_ascii=False)
 
-                await broker.publish(
-                    message_id,
-                    MessageEvent(
-                        event="status",
-                        data={
-                            "state": "routed",
-                            "message_id": message_id,
-                            "request_id": request_id,
-                            "provider": provider_used,
-                            "resolved_model": model_used,
-                            "endpoint_id": None,
-                            "upstream_request_id": None,
-                        },
-                    ),
-                )
-            else:
-                openai_req = await self._build_openai_request(message, user_details=user_details)
-                preferred_endpoint_id = _parse_optional_int(
-                    (message.metadata or {}).get("endpoint_id") or (message.metadata or {}).get("endpointId")
-                )
-                selected_endpoint, selected_model, provider_name = await self._select_endpoint_and_model(
-                    openai_req,
-                    preferred_endpoint_id=preferred_endpoint_id,
-                )
+            logger.info(
+                "AI endpoint selected message_id=%s request_id=%s endpoint_id=%s model=%s provider=%s",
+                message_id,
+                request_id,
+                endpoint_id_used,
+                model_used,
+                provider_used,
+            )
 
-                endpoint_id_used = _parse_optional_int(selected_endpoint.get("id"))
-                model_used = selected_model
-                provider_used = provider_name
-
-                logger.info(
-                    "AI endpoint selected message_id=%s request_id=%s endpoint_id=%s model=%s provider=%s",
-                    message_id,
-                    request_id,
-                    endpoint_id_used,
-                    model_used,
-                    provider_used,
-                )
-
-                await broker.publish(
-                    message_id,
-                    MessageEvent(
-                        event="status",
-                        data={
-                            "state": "routed",
-                            "message_id": message_id,
-                            "request_id": request_id,
-                            "provider": provider_used,
-                            "resolved_model": model_used,
-                            "endpoint_id": endpoint_id_used,
-                            "upstream_request_id": None,
-                        },
-                    ),
-                )
-
-                api_key = await self._get_endpoint_api_key(selected_endpoint)
-                if not api_key:
-                    raise ProviderError("endpoint_missing_api_key")
-
-                request_payload = json.dumps(
-                    {
-                        "conversation_id": message.conversation_id,
-                        "text": message.text,
-                        "model": openai_req.get("model"),
-                        "messages": openai_req.get("messages"),
+            await broker.publish(
+                message_id,
+                MessageEvent(
+                    event="status",
+                    data={
+                        "state": "routed",
+                        "message_id": message_id,
+                        "request_id": request_id,
+                        "provider": provider_used,
+                        "resolved_model": model_used,
+                        "endpoint_id": endpoint_id_used,
+                        "upstream_request_id": None,
                     },
-                    ensure_ascii=False,
-                )
-
-                if provider_name == "claude":
-                    reply_text, response_payload, upstream_request_id = await self._call_anthropic_messages(
-                        selected_endpoint,
-                        api_key,
-                        openai_req,
-                    )
-                else:
-                    reply_text, response_payload, upstream_request_id = await self._call_openai_chat_completions(
-                        selected_endpoint,
-                        api_key,
-                        openai_req,
-                    )
+                ),
+            )
 
             reply_text = _sanitize_thinkingml_reply(reply_text)
 
@@ -921,21 +981,6 @@ class AIService:
         if self._ai_config_service is None:
             raise ProviderError("ai_config_service_not_initialized")
 
-        raw_model = openai_req.get("model")
-        resolved_model: Optional[str] = None
-        mapping_hit = False
-        if isinstance(raw_model, str) and raw_model.strip():
-            raw_str = raw_model.strip()
-            resolved_model = raw_str
-            if self._model_mapping_service is not None:
-                resolved = await self._model_mapping_service.resolve_model_key(raw_str)
-                mapping_hit = bool(resolved.get("hit"))
-                candidate = resolved.get("resolved_model")
-                if isinstance(candidate, str) and candidate.strip():
-                    resolved_model = candidate.strip()
-                elif mapping_hit:
-                    resolved_model = None
-
         endpoints, _ = await self._ai_config_service.list_endpoints(only_active=True, page=1, page_size=200)
         candidates = [item for item in endpoints if item.get("is_active") and item.get("has_api_key")]
         candidates = [item for item in candidates if str(item.get("status") or "").strip().lower() != "offline"]
@@ -945,6 +990,66 @@ class AIService:
                 candidates = non_test
         if not candidates:
             raise ProviderError("no_active_ai_endpoint")
+
+        raw_model = openai_req.get("model")
+        resolved_model: Optional[str] = None
+        mapping_hit = False
+        if isinstance(raw_model, str) and raw_model.strip():
+            raw_str = raw_model.strip()
+            resolved_model = raw_str
+            if self._model_mapping_service is not None:
+                # legacy：mapping_id（如 global:global / tenant:xxx）
+                if ":" in raw_str:
+                    resolved = await self._model_mapping_service.resolve_model_key(raw_str)
+                    mapping_hit = bool(resolved.get("hit"))
+                    candidate = resolved.get("resolved_model")
+                    if isinstance(candidate, str) and candidate.strip():
+                        resolved_model = candidate.strip()
+                    elif mapping_hit:
+                        resolved_model = None
+                else:
+                    # App 业务 key（如 xai）：按“可路由候选”解析为真实 vendor model
+                    try:
+                        mappings = await self._model_mapping_service.list_mappings()
+                    except Exception:
+                        mappings = []
+                    blocked = set(await self._model_mapping_service.list_blocked_models())
+
+                    # 优先 tenant，其次 global；若某个映射无可路由候选则继续回退
+                    scope_priority = ("tenant", "global")
+                    candidates_mappings = [
+                        m
+                        for m in mappings
+                        if isinstance(m, dict)
+                        and str(m.get("scope_key") or "").strip() == raw_str
+                        and str(m.get("scope_type") or "").strip() in scope_priority
+                        and bool(m.get("is_active", True))
+                    ]
+                    candidates_mappings.sort(
+                        key=lambda item: (
+                            scope_priority.index(str(item.get("scope_type") or "").strip())
+                            if str(item.get("scope_type") or "").strip() in scope_priority
+                            else 99,
+                            str(item.get("updated_at") or ""),
+                        )
+                    )
+
+                    hit_any_mapping = bool(candidates_mappings)
+                    selected = None
+                    for mapping in candidates_mappings:
+                        default_model, routable, _ = _pick_routable_candidates_from_mapping(
+                            mapping,
+                            endpoints=candidates,
+                            blocked=blocked,
+                        )
+                        if not routable:
+                            continue
+                        selected = default_model or (routable[0] if routable else None)
+                        if selected:
+                            break
+                    if hit_any_mapping:
+                        mapping_hit = True
+                        resolved_model = selected
 
         default_endpoint = next((item for item in candidates if item.get("is_default")), candidates[0])
         selected_endpoint = default_endpoint
@@ -1316,6 +1421,37 @@ def _endpoint_supports_model(endpoint: dict[str, Any], model: str) -> bool:
     if isinstance(default_model, str) and default_model.strip() and default_model.strip() == model:
         return True
     return False
+
+
+def _pick_routable_candidates_from_mapping(
+    mapping: dict[str, Any],
+    *,
+    endpoints: list[dict[str, Any]],
+    blocked: set[str],
+) -> tuple[Optional[str], list[str], list[str]]:
+    raw_candidates = mapping.get("candidates") if isinstance(mapping.get("candidates"), list) else []
+    raw_default = mapping.get("default_model")
+
+    full_candidates: list[str] = []
+    default_model = str(raw_default).strip() if isinstance(raw_default, str) else ""
+    if default_model:
+        full_candidates.append(default_model)
+    for value in raw_candidates:
+        text = str(value or "").strip()
+        if text:
+            full_candidates.append(text)
+    full_candidates = list(dict.fromkeys(full_candidates))
+
+    blocked_candidates = [name for name in full_candidates if name in blocked]
+    allowed_candidates = [name for name in full_candidates if name and name not in blocked]
+
+    routable: list[str] = []
+    for name in allowed_candidates:
+        if any(_endpoint_supports_model(endpoint, name) for endpoint in endpoints):
+            routable.append(name)
+
+    picked_default = default_model if default_model and default_model in routable else None
+    return picked_default, routable, blocked_candidates
 
 
 def _parse_optional_int(value: Any) -> Optional[int]:

@@ -4,6 +4,7 @@ import asyncio
 import os
 import shutil
 from typing import Generator
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -16,6 +17,8 @@ os.environ["SQLITE_DB_PATH"] = "tmp_test/pytest_db.sqlite3"
 os.environ["SUPABASE_KEEPALIVE_ENABLED"] = "false"
 # 硬开关：显式禁用 Supabase Provider（避免读取 .env 与真实网络调用）
 os.environ["SUPABASE_PROVIDER_ENABLED"] = "false"
+# 测试环境：禁用启动期端点探针（避免真实外网调用与用例间串扰）
+os.environ["ENDPOINT_MONITOR_PROBE_ENABLED"] = "false"
 # 测试环境：允许通过 header 验证 LLM 管理端点
 os.environ["LLM_ADMIN_API_KEY"] = "test-llm-admin"
 # 测试环境强制关闭 Supabase Provider（避免真实网络调用/泄露密钥）
@@ -81,3 +84,23 @@ async def async_client() -> AsyncClient:
 @pytest.fixture
 def mock_jwt_token() -> str:
     return "mock.supabase.jwt"
+
+
+@pytest.fixture(autouse=True)
+def _mock_ai_service_httpx(monkeypatch: pytest.MonkeyPatch) -> None:
+    """默认禁用 AIService 的真实外网调用（允许用例自行 patch 覆盖）。"""
+
+    from app.services import ai_service as ai_service_module
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "choices": [{"message": {"content": "test response"}}],
+    }
+    mock_response.raise_for_status = MagicMock()
+    mock_response.headers = {}
+
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+    mock_ctx.__aexit__.return_value = False
+
+    monkeypatch.setattr(ai_service_module.httpx, "AsyncClient", MagicMock(return_value=mock_ctx))

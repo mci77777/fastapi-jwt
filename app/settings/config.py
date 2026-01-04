@@ -50,6 +50,9 @@ class Settings(BaseSettings):
         alias="SUPABASE_KEEPALIVE_INTERVAL_MINUTES",
     )
 
+    # 启动期端点探针（用于 Dashboard 首屏预热；测试环境建议关闭以避免真实外网调用）
+    endpoint_monitor_probe_enabled: bool = Field(default=True, alias="ENDPOINT_MONITOR_PROBE_ENABLED")
+
     jwks_cache_ttl_seconds: int = Field(default=900, alias="JWKS_CACHE_TTL_SECONDS")
     # 这里使用 List[str] 以便更宽松地接受占位符/非完整 URL，由 JWT 验证器在使用时再做规范化
     allowed_issuers: List[str] = Field(default_factory=list, alias="JWT_ALLOWED_ISSUERS")

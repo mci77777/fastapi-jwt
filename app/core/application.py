@@ -54,10 +54,11 @@ async def lifespan(app: FastAPI):
         pass
     app.state.endpoint_monitor = EndpointMonitor(app.state.ai_config_service)
     # 预热一次端点连通性（非阻塞），避免 Dashboard 首屏长期显示 unknown/0。
-    try:
-        app.state.endpoint_monitor.trigger_probe()
-    except Exception:
-        pass
+    if getattr(settings, "endpoint_monitor_probe_enabled", True):
+        try:
+            app.state.endpoint_monitor.trigger_probe()
+        except Exception:
+            pass
     app.state.model_mapping_service = ModelMappingService(app.state.ai_config_service, storage_dir)
     # 启动期兜底：确保存在最小 global 映射（避免首次请求因映射缺失导致 model 白名单为空）
     try:

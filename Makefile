@@ -5,6 +5,9 @@ APP_NAME := `sed -n 's/^ *name.*=.*"\([^"]*\)".*/\1/p' pyproject.toml`
 APP_VERSION := `sed -n 's/^ *version.*=.*"\([^"]*\)".*/\1/p' pyproject.toml`
 GIT_REVISION = `git rev-parse HEAD`
 
+# Prefer repo-local pytest (avoids PATH/env drift).
+PYTEST := $(if $(wildcard .venv/bin/pytest),.venv/bin/pytest,pytest)
+
 # Introspection targets
 # ---------------------
 
@@ -71,7 +74,7 @@ format: ## Run code formatter
 test: ## Run the test suite
 	$(eval include .env)
 	$(eval export $(sh sed 's/=.*//' .env))
-	pytest -vv -s --cache-clear ./
+	PYTHONPATH=. $(PYTEST) -vv -s --cache-clear tests
 
 .PHONY: clean-db
 clean-db: ## 删除migrations文件夹和db.sqlite3

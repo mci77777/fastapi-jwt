@@ -270,7 +270,30 @@ class ModelMappingService:
         except Exception:
             return {"resolved_model": key, "hit": False}
 
-        mapping = next((m for m in mappings if m.get("id") == key and m.get("is_active", True)), None)
+        mapping: dict[str, Any] | None = None
+        if ":" in key:
+            mapping = next((m for m in mappings if m.get("id") == key and m.get("is_active", True)), None)
+        else:
+            # 兼容 App 业务 key（无 scope_type 前缀）：优先 tenant，其次 global
+            scope_priority = ("tenant", "global")
+            best: dict[str, Any] | None = None
+            best_pri = 999
+            best_updated = ""
+            for item in mappings:
+                if not isinstance(item, dict) or not item.get("is_active", True):
+                    continue
+                if str(item.get("scope_key") or "").strip() != key:
+                    continue
+                scope_type = str(item.get("scope_type") or "").strip()
+                if scope_type not in scope_priority:
+                    continue
+                pri = scope_priority.index(scope_type)
+                updated = str(item.get("updated_at") or "")
+                if best is None or pri < best_pri or (pri == best_pri and updated > best_updated):
+                    best = item
+                    best_pri = pri
+                    best_updated = updated
+            mapping = best
         if not isinstance(mapping, dict):
             return {"resolved_model": key, "hit": False}
 

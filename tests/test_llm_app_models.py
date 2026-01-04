@@ -13,11 +13,12 @@ def test_llm_app_models_returns_mapping_keys(client) -> None:
             return user
 
     mappings = [
+        # App 业务 key（当前 SSOT）：tenant/global 的 scope_key（例如 xai / deepseek / gpt-5）
         {
-            "id": "user:user-123",
-            "scope_type": "user",
-            "scope_key": "user-123",
-            "name": "My Model",
+            "id": "tenant:xai",
+            "scope_type": "tenant",
+            "scope_key": "xai",
+            "name": "XAI",
             "default_model": "gpt-4o-mini",
             "candidates": ["gpt-4o-mini"],
             "is_active": True,
@@ -37,12 +38,12 @@ def test_llm_app_models_returns_mapping_keys(client) -> None:
             "source": "fallback",
             "metadata": {},
         },
-        # 不应返回：其他用户
+        # 不应返回：非 tenant/global
         {
-            "id": "user:other",
+            "id": "user:user-123",
             "scope_type": "user",
-            "scope_key": "other",
-            "name": "Other",
+            "scope_key": "user-123",
+            "name": "PerUser",
             "default_model": "gpt-4o-mini",
             "candidates": ["gpt-4o-mini"],
             "is_active": True,
@@ -64,7 +65,6 @@ def test_llm_app_models_returns_mapping_keys(client) -> None:
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["code"] == 200
-    assert payload["recommended_model"] == "user:user-123"
+    assert payload["recommended_model"] == "xai"
     returned = payload["data"]
-    assert [item["model"] for item in returned] == ["user:user-123", "global:global"]
-
+    assert [item["model"] for item in returned] == ["xai", "global"]

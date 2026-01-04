@@ -28,15 +28,15 @@ def test_llm_models_default_view_is_mapped_and_endpoints_view_still_works(mock_g
         "X-LLM-Admin-Key": "test-llm-admin",
     }
 
-    mapping_id = "tenant:test-mapped"
+    app_key = "test-mapped"
 
     upsert = client.post(
         "/api/v1/llm/model-groups",
         headers=headers,
         json={
             "scope_type": "tenant",
-            "scope_key": "test-mapped",
-            "name": "test-mapped",
+            "scope_key": app_key,
+            "name": app_key,
             "default_model": "gpt-4o-mini",
             "candidates": ["gpt-4o-mini"],
             "is_active": True,
@@ -49,20 +49,19 @@ def test_llm_models_default_view_is_mapped_and_endpoints_view_still_works(mock_g
     mapped = client.get("/api/v1/llm/models", headers={"Authorization": "Bearer mock-jwt-token"})
     assert mapped.status_code == 200
     mapped_items = mapped.json().get("data") or []
-    assert any(item.get("name") == mapping_id for item in mapped_items)
+    assert any(item.get("name") == app_key for item in mapped_items)
 
-    picked = next(item for item in mapped_items if item.get("name") == mapping_id)
+    picked = next(item for item in mapped_items if item.get("name") == app_key)
+    assert set(picked.keys()).issuperset({"name", "default_model", "candidates"})
     assert "base_url" not in picked
     assert "model_list" not in picked
-    assert picked.get("scope_type") == "tenant"
-    assert picked.get("scope_key") == "test-mapped"
-    assert int(picked.get("candidates_count") or 0) >= 1
+    assert picked.get("default_model") == "gpt-4o-mini"
 
     # view=endpoints：管理后台仍可拉取供应商 endpoint 列表
-    endpoints = client.get("/api/v1/llm/models?view=endpoints", headers={"Authorization": "Bearer mock-jwt-token"})
+    endpoints = client.get("/api/v1/llm/models?view=endpoints", headers=headers)
     assert endpoints.status_code == 200
     endpoint_items = endpoints.json().get("data") or []
     assert endpoint_items, "expected at least one endpoint (seeded from env or created by tests)"
     assert "id" in endpoint_items[0]
 
-    client.delete(f"/api/v1/llm/model-groups/{mapping_id}", headers=headers)
+    client.delete(f"/api/v1/llm/model-groups/tenant:{app_key}", headers=headers)
