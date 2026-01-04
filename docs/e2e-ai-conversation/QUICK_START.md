@@ -4,8 +4,8 @@
 
 A complete, production-ready AI conversation API endpoint with:
 1. **JWT Authentication** - Secure user verification
-2. **Model Selection** - Client chooses AI model per request
-3. **Conditional Persistence** - User controls data sharing
+2. **Mapped Model SSOT + Whitelist** - Client must use `/api/v1/llm/models` returned `name` as `model`
+3. **Conditional Persistence** - `metadata.save_history` controls Supabase persistence (local admin token may skip)
 4. **E2E Monitoring** - Real-time metrics on dashboard
 
 ## 🚀 Quick Test (After Implementation)
@@ -17,13 +17,21 @@ A complete, production-ready AI conversation API endpoint with:
 
 ### 2. Get JWT Token
 ```bash
-# Login to get token
+# Local dashboard admin login (default admin/123456)
 curl -X POST http://localhost:9999/api/v1/base/access_token \
   -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com", "password": "password"}'
+  -d '{"username": "admin", "password": "123456"}'
 ```
 
-### 3. Send AI Conversation Request
+### 3. Get Model Whitelist (SSOT)
+```bash
+curl -s http://localhost:9999/api/v1/llm/models \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+Pick `data[].name` (example: `global:xai`) and use it as the `model` field.
+
+### 4. Send AI Conversation Request
 
 **With Model Selection + Save History**:
 ```bash
@@ -32,8 +40,7 @@ curl -X POST http://localhost:9999/api/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "text": "What is the best workout for beginners?",
-    "conversation_id": "conv-001",
-    "model": "gpt-4o-mini",
+    "model": "global:xai",
     "metadata": {
       "save_history": true
     }
@@ -43,13 +50,14 @@ curl -X POST http://localhost:9999/api/v1/messages \
 **Response**:
 ```json
 {
-  "message_id": "abc123def456"
+  "message_id": "abc123def456",
+  "conversation_id": "uuid-string"
 }
 ```
 
-### 4. Stream AI Response (SSE)
+### 5. Stream AI Response (SSE)
 ```bash
-curl -N http://localhost:9999/api/v1/messages/abc123def456/events?conversation_id=conv-001 \
+curl -N http://localhost:9999/api/v1/messages/abc123def456/events?conversation_id=uuid-string \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -61,14 +69,17 @@ data: {"state": "queued", "message_id": "abc123def456"}
 event: status
 data: {"state": "working", "message_id": "abc123def456"}
 
+event: status
+data: {"state":"routed","message_id":"abc123def456","request_id":"...","provider":"xai","resolved_model":"grok-4-1-fast-reasoning","endpoint_id":28,"upstream_request_id":"..."}
+
 event: content_delta
 data: {"message_id": "abc123def456", "delta": "For beginners, I recommend..."}
 
 event: completed
-data: {"message_id": "abc123def456", "reply": "For beginners, I recommend starting with..."}
+data: {"message_id":"abc123def456","reply":"...","request_id":"...","provider":"xai","resolved_model":"...","endpoint_id":28,"upstream_request_id":"..."}
 ```
 
-### 5. Check Metrics
+### 6. Check Metrics
 ```bash
 curl http://localhost:9999/api/v1/metrics | grep ai_conversation
 ```
@@ -84,7 +95,7 @@ ai_conversation_latency_seconds_count{model="gpt-4o-mini",status="success",user_
 ai_conversation_latency_seconds_sum{model="gpt-4o-mini",status="success",user_type="permanent"} 18.5
 ```
 
-### 6. View Dashboard
+### 7. View Dashboard
 Open http://localhost:3101/dashboard
 
 **Expected**:
@@ -100,21 +111,13 @@ Open http://localhost:3101/dashboard
 
 ## 📋 Implementation Checklist
 
-### Phase 1: Model Selection ✅
-- [ ] Update `MessageCreateRequest` schema
-- [ ] Update `AIMessageInput` dataclass
-- [ ] Modify `_call_openai_completion()` to use request model
-- [ ] Update endpoint handler
-- [ ] Test: Request with `model` field
-- [ ] Test: Request without `model` field (fallback)
+### Phase 1: Mapped Model SSOT + Whitelist ✅
+- [x] `/api/v1/llm/models` 返回映射白名单（`name` 即客户端可发送 `model`）
+- [x] `POST /api/v1/messages` 强校验 `model` 必须在白名单（422 含 request_id）
 
 ### Phase 2: Conditional Persistence ✅
-- [ ] Add `save_history` to metadata documentation
-- [ ] Check flag before `sync_chat_record()`
-- [ ] Add logging for save/skip decision
-- [ ] Test: `save_history: true` → saves to Supabase
-- [ ] Test: `save_history: false` → does NOT save
-- [ ] Test: No flag → defaults to saving
+- [x] `metadata.save_history=false` 跳过 Supabase 落库
+- [x] local admin/test token（非 UUID sub）自动跳过 Supabase 落库（避免噪声）
 
 ### Phase 3: Prometheus Metrics ✅
 - [ ] Add `ai_conversation_latency` histogram to `metrics.py`
@@ -137,28 +140,16 @@ Open http://localhost:3101/dashboard
 
 ### Scenario 1: Model Selection
 ```bash
-# Test GPT-4o-mini (default)
+# Get whitelist (SSOT)
+GET /api/v1/llm/models
+
+# Use returned data[].name as model
 POST /api/v1/messages
 {
   "text": "Hello",
-  "model": "gpt-4o-mini"
+  "model": "global:xai"
 }
-# Expected: Uses gpt-4o-mini
-
-# Test GPT-4o
-POST /api/v1/messages
-{
-  "text": "Hello",
-  "model": "gpt-4o"
-}
-# Expected: Uses gpt-4o
-
-# Test fallback (no model specified)
-POST /api/v1/messages
-{
-  "text": "Hello"
-}
-# Expected: Uses AI_MODEL from env
+# Expected: routes to provider+endpoint and emits status:routed for audit
 ```
 
 ### Scenario 2: Conditional Persistence
@@ -193,13 +184,13 @@ POST /api/v1/messages
 POST /api/v1/messages (no Authorization header)
 # Expected: 401 Unauthorized
 
-# Test invalid model (if validation added)
+# Test invalid model (whitelist enforced)
 POST /api/v1/messages
 {
   "text": "Hello",
   "model": "invalid-model-xyz"
 }
-# Expected: 400 Bad Request or fallback to default
+# Expected: 422 model_not_allowed (+ request_id)
 
 # Test empty text
 POST /api/v1/messages
@@ -261,9 +252,29 @@ sum by (model) (
 
 ### Issue: Model not being used
 **Solution**:
-1. Verify `model` field in request payload
-2. Check `AI_API_KEY` is set for OpenAI
-3. Check logs for model selection
+1. Verify `model` uses `/api/v1/llm/models` returned `data[].name`
+2. Verify endpoint has api_key and is not offline
+3. Check SSE `status:routed` for `provider/resolved_model/endpoint_id`
+
+### Issue: tool_calls_not_supported / upstream_empty_content
+**Solution**:
+1. 当前后端不执行工具：server 模式默认 `tool_choice=none`
+2. 透传模式若提供 tools，建议 `tool_choice=none`，或实现工具执行器后再开启 `auto`
+
+---
+
+## ✅ Real xAI E2E (Recommended)
+
+在仓库根目录 `.env.local` 配置（不要提交到 git）：
+```bash
+XAI_BASEURL=https://api.x.ai
+XAI_API_KEY=<redacted>
+```
+
+运行（会自动把 `grok-4.1-思考` 解析为 xAI 实际可用 model id 并完成 server/passthrough 两种模式）：
+```bash
+.venv/bin/python scripts/monitoring/xai_mapped_model_passthrough_e2e.py
+```
 
 ### Issue: Dashboard not updating
 **Solution**:
