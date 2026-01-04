@@ -57,26 +57,30 @@ from scripts.monitoring.e2e_trace import TraceLogger, TraceReport, _safe_sse_eve
 
 
 def _load_dotenv(repo_root: Path) -> dict[str, str]:
-    """最小 .env 读取器（仅供 E2E 脚本使用，避免依赖额外包）。"""
+    """最小 dotenv 读取器（仅供 E2E 脚本使用，避免依赖额外包）。"""
 
-    path = repo_root / ".env"
-    if not path.exists():
-        return {}
-    env: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
+    candidates = [".env", ".env.local", ".env.docker.local"]
+    merged: dict[str, str] = {}
+    for filename in candidates:
+        path = repo_root / filename
+        if not path.exists():
             continue
-        if line.startswith("export "):
-            line = line[len("export ") :].strip()
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip("'").strip('"')
-        if key and value and key not in env:
-            env[key] = value
-    return env
+        env: dict[str, str] = {}
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export ") :].strip()
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip("'").strip('"')
+            if key and value:
+                env[key] = value
+        merged.update(env)
+    return merged
 
 
 def _get_env_value(name: str, *fallback_names: str, default: str = "", dotenv: dict[str, str] | None = None) -> str:
