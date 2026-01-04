@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -213,6 +213,12 @@ async def upsert_blocked_models(
 @router.get("/models")
 async def list_ai_models(
     request: Request,
+    view: Literal["mapped", "endpoints"] = Query(  # noqa: B008
+        default="mapped",
+        description="视图：mapped=返回映射后的标准模型；endpoints=返回供应商 endpoint 列表（管理后台用）",
+    ),
+    scope_type: str = Query(default="tenant", description="映射 scope_type（view=mapped 生效）"),  # noqa: B008
+    scope_key: Optional[str] = Query(default=None, description="映射 scope_key（view=mapped 可选过滤）"),  # noqa: B008
     keyword: Optional[str] = Query(default=None, description="关键词"),  # noqa: B008
     only_active: Optional[bool] = Query(default=None, description="是否仅活跃"),  # noqa: B008
     refresh_missing_models: bool = Query(default=False, description="是否刷新缺失的 model_list（会触发 /v1/models 探测）"),  # noqa: B008
@@ -220,6 +226,84 @@ async def list_ai_models(
     page_size: int = Query(default=20, ge=1, le=100),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
+    if view == "mapped":
+        mapping_service = get_mapping_service(request)
+        blocked_models = set(await mapping_service.list_blocked_models())
+
+        # 契约默认：只返回启用映射
+        active_only = True if only_active is None else bool(only_active)
+
+        try:
+            mappings = await mapping_service.list_mappings(scope_type=scope_type, scope_key=scope_key)
+        except Exception:
+            mappings = []
+
+        keyword_text = str(keyword or "").strip().lower()
+
+        items: list[dict[str, Any]] = []
+        for mapping in mappings:
+            if not isinstance(mapping, dict):
+                continue
+
+            is_active = bool(mapping.get("is_active", True))
+            if active_only and not is_active:
+                continue
+
+            mapping_scope_type = str(mapping.get("scope_type") or "").strip()
+            mapping_scope_key = str(mapping.get("scope_key") or "").strip()
+            if not mapping_scope_type or not mapping_scope_key:
+                continue
+
+            name = mapping.get("name")
+            display_name = str(name).strip() if isinstance(name, str) and name.strip() else mapping_scope_key
+
+            raw_candidates = mapping.get("candidates") if isinstance(mapping.get("candidates"), list) else []
+            candidates: list[str] = []
+            for value in raw_candidates:
+                text = str(value or "").strip()
+                if not text or text in blocked_models or text in candidates:
+                    continue
+                candidates.append(text)
+
+            raw_default = mapping.get("default_model")
+            default_model = str(raw_default).strip() if isinstance(raw_default, str) else ""
+            if default_model and default_model not in blocked_models and default_model not in candidates:
+                candidates.insert(0, default_model)
+
+            # 若 default 被屏蔽/为空，则用首个可用 candidates 作为“有效 default”
+            effective_default = candidates[0] if candidates else None
+            if effective_default is None:
+                continue
+
+            if keyword_text:
+                haystack = " ".join(
+                    [
+                        display_name,
+                        mapping_scope_type,
+                        mapping_scope_key,
+                        effective_default,
+                    ]
+                ).lower()
+                if keyword_text not in haystack:
+                    continue
+
+            items.append(
+                {
+                    "name": display_name,
+                    "scope_type": mapping_scope_type,
+                    "scope_key": mapping_scope_key,
+                    "default_model": effective_default,
+                    "candidates": candidates,
+                    "candidates_count": len(candidates),
+                    "updated_at": mapping.get("updated_at"),
+                }
+            )
+
+        return create_response(
+            data=items,
+            total=len(items),
+        )
+
     service = get_service(request)
     items, total = await service.list_endpoints(
         keyword=keyword,

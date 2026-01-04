@@ -41,7 +41,7 @@ def test_llm_prompts_test_accepts_skip_prompt_and_resolves_mapping_key(mock_get_
     assert prompt_resp.status_code == 200
     prompt_id = int(prompt_resp.json()["data"]["id"])
 
-    models_resp = client.get("/api/v1/llm/models", headers=headers)
+    models_resp = client.get("/api/v1/llm/models?view=endpoints", headers=headers)
     assert models_resp.status_code == 200
     endpoints = models_resp.json().get("data") or []
     assert endpoints, "expected at least one endpoint (seeded from env or created by tests)"
@@ -72,4 +72,3 @@ def test_llm_prompts_test_accepts_skip_prompt_and_resolves_mapping_key(mock_get_
         assert kwargs["skip_prompt"] is True
 
     client.delete(f"/api/v1/llm/prompts/{prompt_id}", headers=headers)
-

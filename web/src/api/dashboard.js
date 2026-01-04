@@ -17,7 +17,7 @@ import { request } from '@/utils'
  * @returns {Promise} 模型列表
  */
 export function getModels(params = {}) {
-  return request.get('/llm/models', { params })
+  return request.get('/llm/models', { params: { view: 'endpoints', ...params } })
 }
 
 /**

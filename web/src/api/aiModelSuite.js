@@ -1,6 +1,7 @@
 import { request } from '@/utils'
 
-export const fetchModels = (params = {}) => request.get('/llm/models', { params })
+export const fetchModels = (params = {}) =>
+  request.get('/llm/models', { params: { view: 'endpoints', ...params } })
 export const updateModel = (data = {}) => request.put('/llm/models', data)
 export const diagnoseModels = () => request.post('/llm/models/check-all')
 export const syncModel = (endpointId, options = {}) =>

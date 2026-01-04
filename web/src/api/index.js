@@ -85,7 +85,7 @@ export default {
   deleteApi: (params = {}) => request.delete('/api/delete', { params }),
   refreshApi: (data = {}) => request.post('/api/refresh', data),
   // llm models
-  getAIModels: (params = {}) => request.get('/llm/models', { params }),
+  getAIModels: (params = {}) => request.get('/llm/models', { params: { view: 'endpoints', ...params } }),
   createAIModel: (data = {}) => request.post('/llm/models', data),
   updateAIModel: (data = {}) => request.put('/llm/models', data),
   deleteAIModel: (endpointId) => request.delete(`/llm/models/${endpointId}`),
