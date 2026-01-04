@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any, AsyncIterator, Dict, Optional
+from uuid import UUID
 from uuid import uuid4
 
 import httpx
@@ -472,6 +473,16 @@ class AIService:
                 )
 
             save_history = bool((message.metadata or {}).get("save_history", True))
+            # 兼容：Supabase Provider 强依赖 UUID（user_id/conversation_id），而本地 admin/test token 可能是非 UUID。
+            # 非 UUID 时跳过 Supabase 持久化，避免产生“写入失败”的噪声并影响对话主链路。
+            if save_history and not _is_uuid_like(user.uid):
+                try:
+                    from app.auth.supabase_provider import SupabaseProvider
+
+                    if isinstance(self._provider, SupabaseProvider):
+                        save_history = False
+                except Exception:
+                    pass
             if save_history:
                 metadata = dict(message.metadata or {})
                 if upstream_request_id:
@@ -739,6 +750,9 @@ class AIService:
         }
         if resolved_tools is not None:
             payload["tools"] = resolved_tools
+        # KISS：当前后端不执行 tool_calls，server 模式默认禁用（除非客户端显式指定 tool_choice）。
+        if tool_choice is None and not message.skip_prompt and isinstance(resolved_tools, list) and resolved_tools:
+            tool_choice = "none"
         if tool_choice is not None:
             payload["tool_choice"] = tool_choice
         if temperature is not None:
@@ -1036,8 +1050,28 @@ class AIService:
         if not choices:
             raise ProviderError("upstream_empty_choices")
 
-        content = choices[0].get("message", {}).get("content", "")
+        choice0 = choices[0] if isinstance(choices[0], dict) else {}
+        message_obj = choice0.get("message") if isinstance(choice0, dict) else None
+        message_obj = message_obj if isinstance(message_obj, dict) else {}
+        content = message_obj.get("content", "")
         if not content:
+            tool_calls = message_obj.get("tool_calls")
+            if isinstance(tool_calls, list) and tool_calls:
+                names: list[str] = []
+                for item in tool_calls:
+                    fn = item.get("function") if isinstance(item, dict) else None
+                    if isinstance(fn, dict):
+                        name = fn.get("name")
+                        if isinstance(name, str) and name.strip():
+                            names.append(name.strip())
+                names = list(dict.fromkeys(names))
+                suffix = f" tools={','.join(names[:5])}" if names else ""
+                raise ProviderError(f"tool_calls_not_supported{suffix}")
+
+            function_call = message_obj.get("function_call")
+            if isinstance(function_call, dict) and function_call.get("name"):
+                raise ProviderError("function_call_not_supported")
+
             raise ProviderError("upstream_empty_content")
 
         upstream_request_id = response.headers.get("x-request-id") or response.headers.get("request-id")
@@ -1264,3 +1298,11 @@ def _parse_optional_int(value: Any) -> Optional[int]:
         return int(value)
     except Exception:
         return None
+
+
+def _is_uuid_like(value: Any) -> bool:
+    try:
+        UUID(str(value))
+        return True
+    except Exception:
+        return False

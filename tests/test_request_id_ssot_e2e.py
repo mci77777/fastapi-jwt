@@ -180,6 +180,84 @@ class TestRequestIdSSOT:
                 )
 
     @pytest.mark.asyncio
+    async def test_openai_tool_calls_without_executor_returns_clear_error(self, async_client: AsyncClient, mock_jwt_token: str):
+        request_id = "rid-openai-tool-calls"
+
+        with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+            mock_verifier = MagicMock()
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
+            mock_get_verifier.return_value = mock_verifier
+
+            with patch("app.services.ai_service.httpx.AsyncClient") as mock_httpx:
+                await fastapi_app.state.ai_config_service.create_endpoint(
+                    {
+                        "name": "openai-default",
+                        "base_url": "https://api.openai.com",
+                        "api_key": "test-api-key",
+                        "is_active": True,
+                        "is_default": True,
+                        "model_list": ["gpt-4o-mini"],
+                    }
+                )
+
+                # 为本用例创建一个“映射模型”，并让其解析到 gpt-4o-mini
+                mapping_id = "tenant:toolcalls-test"
+                await fastapi_app.state.model_mapping_service.upsert_mapping(
+                    {
+                        "scope_type": "tenant",
+                        "scope_key": "toolcalls-test",
+                        "name": "toolcalls-test",
+                        "default_model": "gpt-4o-mini",
+                        "candidates": ["gpt-4o-mini"],
+                        "is_active": True,
+                        "metadata": {},
+                    }
+                )
+
+                mock_response = MagicMock()
+                mock_response.json.return_value = {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "",
+                                "tool_calls": [
+                                    {"id": "call_1", "type": "function", "function": {"name": "noop", "arguments": "{}"}}
+                                ],
+                            }
+                        }
+                    ],
+                }
+                mock_response.raise_for_status = MagicMock()
+                mock_response.headers = {"x-request-id": "upstream-rid"}
+                mock_httpx.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+
+                create = await async_client.post(
+                    "/api/v1/messages",
+                    headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": request_id},
+                    json={"text": "Hello", "model": mapping_id, "tools": [{"type": "function", "function": {"name": "noop"}}], "tool_choice": "auto"},
+                )
+                assert create.status_code == status.HTTP_202_ACCEPTED
+                message_id = create.json()["message_id"]
+
+                events = await _collect_sse_events(
+                    async_client,
+                    f"/api/v1/messages/{message_id}/events",
+                    headers={
+                        "Authorization": f"Bearer {mock_jwt_token}",
+                        "Accept": "text/event-stream",
+                        "X-Request-Id": request_id,
+                    },
+                )
+
+                assert any(item["event"] == "error" for item in events)
+                last_error = next(item for item in reversed(events) if item["event"] == "error")
+                assert isinstance(last_error["data"], dict)
+                assert last_error["data"].get("request_id") == request_id
+                assert "tool_calls_not_supported" in str(last_error["data"].get("error") or "")
+
+                await fastapi_app.state.model_mapping_service.delete_mapping(mapping_id)
+
+    @pytest.mark.asyncio
     async def test_claude_headers_compliance(self, async_client: AsyncClient, mock_jwt_token: str):
         request_id = "rid-claude-success"
 
