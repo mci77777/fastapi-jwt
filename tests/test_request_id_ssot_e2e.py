@@ -80,6 +80,33 @@ class TestRequestIdSSOT:
         assert response.headers.get("x-request-id") == request_id
 
     @pytest.mark.asyncio
+    async def test_422_model_not_allowed_contains_request_id(self, async_client: AsyncClient, mock_jwt_token: str):
+        request_id = "rid-model-not-allowed"
+
+        with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+            mock_verifier = MagicMock()
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
+            mock_get_verifier.return_value = mock_verifier
+
+            response = await async_client.post(
+                "/api/v1/messages",
+                headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": request_id},
+                json={"text": "hi", "model": "invalid:does-not-exist"},
+            )
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        body = response.json()
+        if isinstance(body, dict) and isinstance(body.get("detail"), dict):
+            detail = body["detail"]
+            assert detail.get("code") == "model_not_allowed"
+            assert detail.get("request_id") == request_id
+        else:
+            assert isinstance(body, dict)
+            assert body.get("code") == "model_not_allowed"
+            assert body.get("request_id") == request_id
+        assert response.headers.get("x-request-id") == request_id
+
+    @pytest.mark.asyncio
     async def test_openai_forwarding_and_sse_success(self, async_client: AsyncClient, mock_jwt_token: str):
         request_id = "rid-openai-sse"
 

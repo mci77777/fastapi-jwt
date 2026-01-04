@@ -93,6 +93,8 @@ async def create_message(
 
     message_id = AIService.new_message_id()
 
+    request_id = getattr(request.state, "request_id", None) or get_current_request_id()
+
     # 兼容：允许 App 把 OpenAI 请求体放在 metadata.chat_request / metadata.openai（简化透传链路）
     meta_chat: dict[str, Any] = {}
     if isinstance(payload.metadata, dict):
@@ -115,20 +117,28 @@ async def create_message(
     if explicit_model and meta_model and explicit_model != meta_model:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "model_conflict", "message": "model 与 metadata.model 不一致"},
+            detail={"code": "model_conflict", "message": "model 与 metadata.model 不一致", "request_id": request_id or ""},
         )
 
     requested_model = explicit_model or meta_model
     if not requested_model:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "model_required", "message": "model 不能为空，请从 /api/v1/llm/models 获取白名单并选择"},
+            detail={
+                "code": "model_required",
+                "message": "model 不能为空，请从 /api/v1/llm/models 获取白名单并选择",
+                "request_id": request_id or "",
+            },
         )
 
     if not await ai_service.is_model_allowed(requested_model, user_id=current_user.uid):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "model_not_allowed", "message": "model 不在白名单内（请以 /api/v1/llm/models 返回的 name 为准）"},
+            detail={
+                "code": "model_not_allowed",
+                "message": "model 不在白名单内（请以 /api/v1/llm/models 返回的 name 为准）",
+                "request_id": request_id or "",
+            },
         )
 
     conversation_id = None
@@ -201,8 +211,6 @@ async def create_message(
         top_p=normalized_top_p,
         max_tokens=normalized_max_tokens,
     )
-
-    request_id = getattr(request.state, "request_id", None) or get_current_request_id()
 
     async def runner() -> None:
         token = None

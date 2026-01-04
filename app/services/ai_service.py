@@ -19,6 +19,7 @@ from app.auth.provider import AuthProvider
 from app.core.middleware import REQUEST_ID_HEADER_NAME, get_current_request_id
 from app.services.ai_endpoint_rules import looks_like_test_endpoint
 from app.services.ai_config_service import AIConfigService
+from app.services.ai_url import normalize_ai_base_url
 from app.services.model_mapping_service import ModelMappingService
 from app.settings.config import get_settings
 
@@ -187,8 +188,8 @@ class AIService:
                     if not user_id or scope_key != user_id:
                         continue
                 elif scope_type == "global":
-                    if scope_key != "global":
-                        continue
+                    # 允许存在多个 global 映射（如 global:xai / global:gpt），客户端用 id 作为稳定 key
+                    pass
                 else:
                     # 其他 scope（tenant/module/...）默认同样纳入白名单（user scope 仍需 user_id 精确匹配）
                     pass
@@ -917,8 +918,13 @@ class AIService:
     ) -> tuple[str, str, Optional[str]]:
         resolved = endpoint.get("resolved_endpoints") or {}
         chat_url = resolved.get("chat_completions")
-        if not isinstance(chat_url, str) or not chat_url.strip() or "/v1/v1/" in chat_url:
-            base = _normalize_ai_base_url(str(endpoint.get("base_url") or ""))
+        if (
+            not isinstance(chat_url, str)
+            or not chat_url.strip()
+            or "/v1/v1/" in chat_url
+            or "/chat/completions/v1/chat/completions" in chat_url
+        ):
+            base = normalize_ai_base_url(str(endpoint.get("base_url") or ""))
             chat_url = f"{base}/v1/chat/completions" if base else "/v1/chat/completions"
 
         headers = {
@@ -980,7 +986,7 @@ class AIService:
         api_key: str,
         openai_req: dict[str, Any],
     ) -> tuple[str, str, Optional[str]]:
-        base_url = _normalize_ai_base_url(str(endpoint.get("base_url") or ""))
+        base_url = normalize_ai_base_url(str(endpoint.get("base_url") or ""))
         messages_url = f"{base_url}/v1/messages"
 
         anthropic_payload = self._convert_openai_to_anthropic(openai_req)
@@ -1194,13 +1200,3 @@ def _parse_optional_int(value: Any) -> Optional[int]:
         return int(value)
     except Exception:
         return None
-
-
-def _normalize_ai_base_url(base_url: str) -> str:
-    """兼容用户把 base_url 误填为 .../v1 的情况，避免拼接出 /v1/v1/*。"""
-
-    base = str(base_url or "").strip().rstrip("/")
-    lowered = base.lower()
-    if lowered.endswith("/v1"):
-        base = base[:-3].rstrip("/")
-    return base

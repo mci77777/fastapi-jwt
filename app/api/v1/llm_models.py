@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth import AuthenticatedUser, get_current_user
@@ -159,8 +159,17 @@ async def list_ai_models(
     page: int = Query(default=1, ge=1),  # noqa: B008
     page_size: int = Query(default=20, ge=1, le=100),  # noqa: B008
     debug: bool = Query(default=False, description="是否返回调试字段（仅 DEBUG=true 或管理员生效）"),  # noqa: B008
+    x_llm_admin_key: str | None = Header(default=None, alias="X-LLM-Admin-Key"),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
+    # endpoints 视图仅供管理后台使用，避免 App 误用导致“看到全部供应商模型列表”。
+    # 若非管理员请求 endpoints，则降级为 mapped（安全且兼容）。
+    if view == "endpoints":
+        try:
+            await require_llm_admin(current_user=current_user, x_llm_admin_key=x_llm_admin_key)
+        except HTTPException:
+            view = "mapped"
+
     if view == "mapped":
         ai_service = getattr(request.app.state, "ai_service", None)
         if not isinstance(ai_service, AIService):

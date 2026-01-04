@@ -14,6 +14,7 @@ import httpx
 
 from app.db import SQLiteManager
 from app.settings.config import Settings
+from app.services.ai_url import normalize_ai_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -59,16 +60,6 @@ def _is_disallowed_test_endpoint_name(name: str | None) -> bool:
     if not text:
         return False
     return text.startswith(DISALLOWED_TEST_ENDPOINT_PREFIXES)
-
-
-def _normalize_ai_base_url(base_url: str) -> str:
-    """兼容用户把 base_url 误填为 .../v1 的情况，避免拼接出 /v1/v1/*。"""
-
-    base = str(base_url or "").strip().rstrip("/")
-    lowered = base.lower()
-    if lowered.endswith("/v1"):
-        base = base[:-3].rstrip("/")
-    return base
 
 
 class AIConfigService:
@@ -171,7 +162,7 @@ class AIConfigService:
         return await self._write_backup("supabase_endpoints", models)
 
     def _build_resolved_endpoints(self, base_url: str) -> dict[str, str]:
-        base = _normalize_ai_base_url(base_url)
+        base = normalize_ai_base_url(base_url)
         return {name: f"{base}{path}" for name, path in DEFAULT_ENDPOINT_PATHS.items()}
 
     def _format_endpoint_row(self, row: dict[str, Any]) -> dict[str, Any]:
@@ -254,7 +245,8 @@ class AIConfigService:
         if payload.get("is_default"):
             await self._db.execute("UPDATE ai_endpoints SET is_default = 0 WHERE is_default = 1")
 
-        resolved = self._build_resolved_endpoints(payload["base_url"])
+        normalized_base_url = normalize_ai_base_url(payload["base_url"])
+        resolved = self._build_resolved_endpoints(normalized_base_url)
         await self._db.execute(
             """
             INSERT INTO ai_endpoints (
@@ -267,7 +259,7 @@ class AIConfigService:
             """,
             [
                 payload["name"],
-                payload["base_url"],
+                normalized_base_url,
                 payload.get("model"),
                 payload.get("description"),
                 payload.get("api_key"),
@@ -399,9 +391,14 @@ class AIConfigService:
             if _is_disallowed_test_endpoint_name(payload["name"]):
                 raise ValueError("test_endpoint_name_not_allowed")
             add("name", payload["name"])
-        if "base_url" in payload and payload["base_url"] != existing["base_url"]:
-            add("base_url", payload["base_url"])
-            add("resolved_endpoints", _safe_json_dumps(self._build_resolved_endpoints(payload["base_url"])))
+        if "base_url" in payload:
+            normalized_base_url = normalize_ai_base_url(payload["base_url"])
+            if normalized_base_url != existing["base_url"]:
+                add("base_url", normalized_base_url)
+                add(
+                    "resolved_endpoints",
+                    _safe_json_dumps(self._build_resolved_endpoints(normalized_base_url)),
+                )
         if "model" in payload:
             add("model", payload["model"])
         if "description" in payload:
@@ -514,7 +511,7 @@ class AIConfigService:
             base_url = str(endpoint.get("base_url") or "").lower()
             is_claude = "anthropic" in base_url or "claude" in name or "anthropic" in name
             if is_claude:
-                probe_url = f"{_normalize_ai_base_url(str(endpoint.get('base_url') or ''))}/v1/messages"
+                probe_url = f"{normalize_ai_base_url(str(endpoint.get('base_url') or ''))}/v1/messages"
                 not_found_reason = "anthropic_messages_not_found"
             else:
                 probe_url = self._build_resolved_endpoints(endpoint["base_url"])["chat_completions"]
