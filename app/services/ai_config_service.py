@@ -555,7 +555,15 @@ class AIConfigService:
 
             try:
                 async with httpx.AsyncClient(timeout=min(timeout, 5)) as client:
-                    probe_resp = await client.get(probe_url, headers={"Content-Type": "application/json"})
+                    probe_headers = {"Content-Type": "application/json"}
+                    # KISS：优先 OPTIONS 探测路由是否存在。
+                    # 说明：部分本地代理只实现 POST（GET/HEAD 返回 404 而不是 405），
+                    # 若用 GET 探针会误判 offline，导致端点无法进入白名单。
+                    probe_resp = await client.options(probe_url, headers=probe_headers)
+                    if probe_resp.status_code == 404:
+                        # 兼容回退：少数上游不支持 OPTIONS，此时再用 GET 探测一次。
+                        probe_resp = await client.get(probe_url, headers=probe_headers)
+
                 if probe_resp.status_code == 404:
                     status_value = "offline"
                     error_text = f"{not_found_reason}: {probe_url}"
