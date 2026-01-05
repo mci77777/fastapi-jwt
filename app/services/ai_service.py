@@ -21,7 +21,7 @@ from app.core.middleware import REQUEST_ID_HEADER_NAME, get_current_request_id
 from app.services.ai_endpoint_rules import looks_like_test_endpoint
 from app.services.ai_config_service import AIConfigService
 from app.services.ai_url import normalize_ai_base_url
-from app.services.upstream_auth import should_send_x_api_key
+from app.services.upstream_auth import is_retryable_auth_error, iter_auth_headers, should_send_x_api_key
 from app.services.model_mapping_service import ModelMappingService
 from app.settings.config import get_settings
 
@@ -1166,15 +1166,10 @@ class AIService:
             base = normalize_ai_base_url(str(endpoint.get("base_url") or ""))
             chat_url = f"{base}/v1/chat/completions" if base else "/v1/chat/completions"
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        if should_send_x_api_key(chat_url or ""):
-            headers["X-API-Key"] = api_key
+        base_headers = {"Content-Type": "application/json"}
         request_id = get_current_request_id()
         if request_id:
-            headers[REQUEST_ID_HEADER_NAME] = request_id
+            base_headers[REQUEST_ID_HEADER_NAME] = request_id
 
         # OpenAI 兼容 SSOT：仅转发 OpenAI 语义字段
         payload: dict[str, Any] = {}
@@ -1183,32 +1178,51 @@ class AIService:
                 payload[key] = openai_req[key]
 
         timeout = endpoint.get("timeout") or self._settings.http_timeout_seconds
+        auth_candidates = iter_auth_headers(api_key, chat_url or "") or [{"Authorization": f"Bearer {api_key}"}]
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(chat_url, json=payload, headers=headers)
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                # 端到端兜底：若 chat_completions 路由不存在（404），将该 endpoint 标记为 offline，
-                # 避免继续被选中进入白名单/路由。
-                if (
-                    exc.response is not None
-                    and exc.response.status_code == 404
-                    and self._ai_config_service is not None
-                ):
-                    endpoint_id = _parse_optional_int(endpoint.get("id"))
-                    if endpoint_id is not None:
+            response: httpx.Response | None = None
+            for index, auth_headers in enumerate(auth_candidates):
+                headers = dict(base_headers)
+                headers.update(auth_headers)
+                response = await client.post(chat_url, json=payload, headers=headers)
+                try:
+                    response.raise_for_status()
+                    break
+                except httpx.HTTPStatusError as exc:
+                    # 端到端兜底：若 chat_completions 路由不存在（404），将该 endpoint 标记为 offline，
+                    # 避免继续被选中进入白名单/路由。
+                    if (
+                        exc.response is not None
+                        and exc.response.status_code == 404
+                        and self._ai_config_service is not None
+                    ):
+                        endpoint_id = _parse_optional_int(endpoint.get("id"))
+                        if endpoint_id is not None:
+                            try:
+                                await self._ai_config_service.update_endpoint(
+                                    endpoint_id,
+                                    {
+                                        "status": "offline",
+                                        "last_checked_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                                        "last_error": f"chat_completions_not_found: {chat_url}",
+                                    },
+                                )
+                            except Exception:  # pragma: no cover
+                                pass
+
+                    if exc.response is not None and exc.response.status_code == 401 and index < len(auth_candidates) - 1:
+                        retry_payload: object | None = None
                         try:
-                            await self._ai_config_service.update_endpoint(
-                                endpoint_id,
-                                {
-                                    "status": "offline",
-                                    "last_checked_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-                                    "last_error": f"chat_completions_not_found: {chat_url}",
-                                },
-                            )
-                        except Exception:  # pragma: no cover
-                            pass
-                raise
+                            retry_payload = exc.response.json()
+                        except Exception:
+                            retry_payload = None
+                        if is_retryable_auth_error(exc.response.status_code, retry_payload):
+                            continue
+
+                    raise
+
+            if response is None:
+                raise RuntimeError("upstream_no_response")
 
         data = response.json()
         choices = data.get("choices") or []

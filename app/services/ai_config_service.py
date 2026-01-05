@@ -15,7 +15,7 @@ import httpx
 from app.db import SQLiteManager
 from app.settings.config import Settings
 from app.services.ai_url import normalize_ai_base_url
-from app.services.upstream_auth import should_send_x_api_key
+from app.services.upstream_auth import is_retryable_auth_error, iter_auth_headers
 
 logger = logging.getLogger(__name__)
 
@@ -466,12 +466,9 @@ class AIConfigService:
 
     async def refresh_endpoint_status(self, endpoint_id: int) -> dict[str, Any]:
         endpoint = await self.get_endpoint(endpoint_id)
-        headers = {"Content-Type": "application/json"}
         api_key = await self._get_api_key(endpoint_id)
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-            if should_send_x_api_key(endpoint.get("base_url") or ""):
-                headers["X-API-Key"] = api_key
+        base_headers = {"Content-Type": "application/json"}
+        auth_candidates = iter_auth_headers(api_key, endpoint.get("base_url") or "") if api_key else [{}]
 
         models_url = self._build_resolved_endpoints(endpoint["base_url"])["models"]
         timeout = endpoint["timeout"] or self._settings.http_timeout_seconds
@@ -482,9 +479,28 @@ class AIConfigService:
         error_text: Optional[str] = None
 
         try:
+            response: httpx.Response | None = None
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.get(models_url, headers=headers)
-                latency_ms = (perf_counter() - start) * 1000
+                for index, auth_headers in enumerate(auth_candidates):
+                    headers = dict(base_headers)
+                    headers.update(auth_headers)
+                    response = await client.get(models_url, headers=headers)
+                    latency_ms = (perf_counter() - start) * 1000
+
+                    if response.status_code != 401 or index >= len(auth_candidates) - 1:
+                        break
+
+                    payload: object | None = None
+                    try:
+                        payload = response.json()
+                    except Exception:
+                        payload = None
+
+                    if not is_retryable_auth_error(response.status_code, payload):
+                        break
+
+                if response is None:
+                    raise RuntimeError("upstream_no_response")
                 # 兼容性：401/403/405/429 多数表示“可达但需要鉴权/限流”，不应判定为 offline。
                 if response.status_code == 200:
                     payload = response.json()
