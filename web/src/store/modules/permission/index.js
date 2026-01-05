@@ -25,19 +25,29 @@ function buildRoutes(routes = []) {
 
     if (e.children && e.children.length > 0) {
       // 有子菜单
-      route.children = e.children.map((e_child) => ({
-        name: e_child.name,
-        path: e_child.path,
-        alias: e_child.alias,
-        component: vueModules[`/src/views${e_child.component}/index.vue`],
-        isHidden: e_child.is_hidden,
-        meta: {
-          title: e_child.name,
-          icon: e_child.icon,
-          order: e_child.order,
-          keepAlive: e_child.keepalive,
-        },
-      }))
+      route.children = e.children.map((e_child) => {
+        const childRoute = {
+          name: e_child.name,
+          path: e_child.path,
+          component: vueModules[`/src/views${e_child.component}/index.vue`],
+          isHidden: e_child.is_hidden,
+          meta: {
+            title: e_child.name,
+            icon: e_child.icon,
+            order: e_child.order,
+            keepAlive: e_child.keepalive,
+          },
+        }
+
+        // Vue Router 4: 只在 alias 有效时才设置该字段，避免 alias=undefined 导致 addRoute 迭代失败
+        if (typeof e_child.alias === 'string' && e_child.alias.trim()) {
+          childRoute.alias = e_child.alias.trim()
+        } else if (Array.isArray(e_child.alias) && e_child.alias.length) {
+          childRoute.alias = e_child.alias.filter((v) => typeof v === 'string' && v.trim()).map((v) => v.trim())
+        }
+
+        return childRoute
+      })
     } else {
       // 没有子菜单，创建一个默认的子路由
       route.children.push({
