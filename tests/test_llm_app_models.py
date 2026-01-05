@@ -68,3 +68,46 @@ def test_llm_app_models_returns_mapping_keys(client) -> None:
     assert payload["recommended_model"] == "xai"
     returned = payload["data"]
     assert [item["model"] for item in returned] == ["xai", "global"]
+
+
+def test_llm_app_models_filters_embedding_candidates(client) -> None:
+    user = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
+
+    class FakeVerifier:
+        def verify_token(self, _token: str) -> AuthenticatedUser:
+            return user
+
+    mappings = [
+        {
+            "id": "tenant:xai",
+            "scope_type": "tenant",
+            "scope_key": "xai",
+            "name": "XAI",
+            # embeddings-only 默认值不应落到 App scopes
+            "default_model": "text-embedding-3-large",
+            "candidates": ["text-embedding-3-large", "gpt-4o-mini"],
+            "is_active": True,
+            "updated_at": "2026-01-03T00:00:00+00:00",
+            "source": "fallback",
+            "metadata": {},
+        }
+    ]
+
+    from app import app as fastapi_app
+
+    with patch("app.auth.dependencies.get_jwt_verifier", return_value=FakeVerifier()):
+        with patch.object(fastapi_app.state.model_mapping_service, "list_mappings", new=AsyncMock(return_value=mappings)):
+            resp = client.get(
+                "/api/v1/llm/app/models",
+                headers={"Authorization": "Bearer test.jwt"},
+            )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["code"] == 200
+    assert payload["recommended_model"] == "xai"
+
+    returned = payload["data"]
+    assert returned and returned[0]["name"] == "xai"
+    assert returned[0]["default_model"] == "gpt-4o-mini"
+    assert "text-embedding-3-large" not in (returned[0].get("candidates") or [])

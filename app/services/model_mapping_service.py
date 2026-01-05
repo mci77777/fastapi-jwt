@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from app.services.ai_config_service import AIConfigService
+from app.services.ai_model_rules import looks_like_embedding_model
 
 MAPPING_KEY = "__model_mapping"
 BLOCKED_MODELS_KEY = "__blocked_models"
@@ -170,21 +171,36 @@ class ModelMappingService:
 
         candidates: list[str] = []
         preferred = default_endpoint.get("model")
-        if isinstance(preferred, str) and preferred.strip() and preferred.strip() not in blocked:
+        if (
+            isinstance(preferred, str)
+            and preferred.strip()
+            and preferred.strip() not in blocked
+            and not looks_like_embedding_model(preferred.strip())
+        ):
             candidates.append(preferred.strip())
 
         model_list = default_endpoint.get("model_list") or []
         if isinstance(model_list, list):
             for value in model_list:
                 text = str(value or "").strip()
-                if text and text not in blocked and text not in candidates:
+                if (
+                    text
+                    and text not in blocked
+                    and text not in candidates
+                    and not looks_like_embedding_model(text)
+                ):
                     candidates.append(text)
 
         # 兜底：从其他端点补齐少量候选，确保首屏至少可选 1 个
         if not candidates:
             for ep in active:
                 text = str(ep.get("model") or "").strip()
-                if text and text not in blocked and text not in candidates:
+                if (
+                    text
+                    and text not in blocked
+                    and text not in candidates
+                    and not looks_like_embedding_model(text)
+                ):
                     candidates.append(text)
                 if len(candidates) >= 10:
                     break

@@ -20,6 +20,7 @@ from app.auth.provider import AuthProvider
 from app.core.middleware import REQUEST_ID_HEADER_NAME, get_current_request_id
 from app.services.ai_endpoint_rules import looks_like_test_endpoint
 from app.services.ai_config_service import AIConfigService
+from app.services.ai_model_rules import looks_like_embedding_model
 from app.services.ai_url import build_resolved_endpoints, normalize_ai_base_url
 from app.services.upstream_auth import is_retryable_auth_error, iter_auth_headers, should_send_x_api_key
 from app.services.model_mapping_service import ModelMappingService
@@ -268,8 +269,10 @@ class AIService:
                 # 去重保持顺序（同时避免前端“候选重复”）
                 full_candidates = list(dict.fromkeys(full_candidates))
 
-                blocked_candidates = [name for name in full_candidates if name in blocked]
-                allowed_candidates = [name for name in full_candidates if name and name not in blocked]
+                blocked_candidates = [name for name in full_candidates if name in blocked or looks_like_embedding_model(name)]
+                allowed_candidates = [
+                    name for name in full_candidates if name and name not in blocked and not looks_like_embedding_model(name)
+                ]
 
                 resolved_model: Optional[str] = None
                 endpoint: Optional[dict[str, Any]] = None
@@ -296,7 +299,7 @@ class AIService:
                     "scope_type": scope_type,
                     "scope_key": scope_key,
                     "updated_at": mapping.get("updated_at"),
-                    "candidates_count": len(full_candidates),
+                    "candidates_count": len(allowed_candidates),
                 }
 
                 if include_debug_fields:
@@ -320,13 +323,18 @@ class AIService:
             default_endpoint = next((item for item in candidates if item.get("is_default")), candidates[0])
             seed_candidates: list[str] = []
             preferred = str(default_endpoint.get("model") or "").strip()
-            if preferred and preferred not in blocked:
+            if preferred and preferred not in blocked and not looks_like_embedding_model(preferred):
                 seed_candidates.append(preferred)
             model_list = default_endpoint.get("model_list") or []
             if isinstance(model_list, list):
                 for value in model_list:
                     text = str(value or "").strip()
-                    if text and text not in blocked and text not in seed_candidates:
+                    if (
+                        text
+                        and text not in blocked
+                        and text not in seed_candidates
+                        and not looks_like_embedding_model(text)
+                    ):
                         seed_candidates.append(text)
                     if len(seed_candidates) >= 10:
                         break
@@ -1109,9 +1117,19 @@ class AIService:
             openai_req["model"] = resolved_model
         else:
             fallback_model = selected_endpoint.get("model")
+            if isinstance(fallback_model, str) and looks_like_embedding_model(fallback_model.strip()):
+                fallback_model = None
             if not fallback_model:
                 model_list = selected_endpoint.get("model_list") or []
-                fallback_model = model_list[0] if model_list else None
+                if isinstance(model_list, list):
+                    fallback_model = next(
+                        (
+                            str(value).strip()
+                            for value in model_list
+                            if isinstance(value, str) and str(value).strip() and not looks_like_embedding_model(str(value).strip())
+                        ),
+                        None,
+                    )
             if isinstance(fallback_model, str) and fallback_model.strip():
                 openai_req["model"] = await self._resolve_mapped_model_name(fallback_model.strip())
 
@@ -1488,8 +1506,11 @@ def _pick_routable_candidates_from_mapping(
             full_candidates.append(text)
     full_candidates = list(dict.fromkeys(full_candidates))
 
-    blocked_candidates = [name for name in full_candidates if name in blocked]
-    allowed_candidates = [name for name in full_candidates if name and name not in blocked]
+    blocked_candidates = [name for name in full_candidates if name in blocked or looks_like_embedding_model(name)]
+    blocked_candidates = list(dict.fromkeys(blocked_candidates))
+    allowed_candidates = [
+        name for name in full_candidates if name and name not in blocked and not looks_like_embedding_model(name)
+    ]
 
     routable: list[str] = []
     for name in allowed_candidates:
