@@ -20,7 +20,7 @@ from app.auth.provider import AuthProvider
 from app.core.middleware import REQUEST_ID_HEADER_NAME, get_current_request_id
 from app.services.ai_endpoint_rules import looks_like_test_endpoint
 from app.services.ai_config_service import AIConfigService
-from app.services.ai_url import normalize_ai_base_url
+from app.services.ai_url import build_resolved_endpoints, normalize_ai_base_url
 from app.services.upstream_auth import is_retryable_auth_error, iter_auth_headers, should_send_x_api_key
 from app.services.model_mapping_service import ModelMappingService
 from app.settings.config import get_settings
@@ -773,8 +773,8 @@ class AIService:
             raise ProviderError("endpoint_missing_api_key")
 
         raw_base_url = self._settings.ai_api_base_url or "https://api.openai.com"
-        base_url = str(raw_base_url).rstrip("/")
-        endpoint = f"{base_url}/v1/chat/completions"
+        resolved = build_resolved_endpoints(str(raw_base_url))
+        endpoint = resolved.get("chat_completions") or "https://api.openai.com/v1/chat/completions"
 
         payload = {
             "model": self._settings.ai_model or "gpt-4o-mini",
@@ -1157,7 +1157,18 @@ class AIService:
     ) -> tuple[str, str, Optional[str]]:
         resolved = endpoint.get("resolved_endpoints") or {}
         chat_url = resolved.get("chat_completions")
-        if (
+        computed_chat_url = build_resolved_endpoints(str(endpoint.get("base_url") or "")).get("chat_completions")
+        if isinstance(computed_chat_url, str) and computed_chat_url.strip():
+            computed_chat_url = computed_chat_url.strip()
+            if (
+                not isinstance(chat_url, str)
+                or not chat_url.strip()
+                or chat_url.strip() != computed_chat_url
+                or "/v1/v1/" in chat_url
+                or "/chat/completions/v1/chat/completions" in chat_url
+            ):
+                chat_url = computed_chat_url
+        elif (
             not isinstance(chat_url, str)
             or not chat_url.strip()
             or "/v1/v1/" in chat_url

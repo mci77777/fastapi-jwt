@@ -38,6 +38,11 @@ class DummyAsyncClient:
     async def options(self, url: str, *args, **kwargs) -> DummyResponse:
         if str(url).endswith("/v1/chat/completions"):
             return DummyResponse(204, None)
+        if str(url).endswith("/chat/completions"):
+            return DummyResponse(204, None)
+        if str(url).endswith("/v1/embeddings"):
+            # VoyageAI：POST-only，OPTIONS 返回 405（视为“路由存在”）。
+            return DummyResponse(405, {"error": "method not allowed"})
         return DummyResponse(404, {"error": "not found"})
 
 
@@ -74,3 +79,52 @@ async def test_refresh_endpoint_status_probe_prefers_options(tmp_path, monkeypat
     finally:
         await service._db.close()
 
+
+@pytest.mark.anyio("asyncio")
+async def test_refresh_endpoint_status_perplexity_uses_non_v1_chat_probe(tmp_path, monkeypatch):
+    db_path = tmp_path / "db.sqlite"
+    storage_dir = tmp_path / "runtime"
+    manager = SQLiteManager(db_path)
+    await manager.init()
+    service = AIConfigService(manager, _make_settings(), storage_dir=storage_dir)
+    try:
+        endpoint = await service.create_endpoint(
+            {
+                "name": "perplexity",
+                "base_url": "https://api.perplexity.ai",
+                "api_key": "key123",
+            }
+        )
+
+        monkeypatch.setattr("app.services.ai_config_service.httpx.AsyncClient", DummyAsyncClient)
+
+        refreshed = await service.refresh_endpoint_status(int(endpoint["id"]))
+        assert refreshed["status"] == "online"
+        # Perplexity 不提供 models 列表：不强制覆盖为“空探测结果”。
+        assert refreshed["model_list"] == []
+    finally:
+        await service._db.close()
+
+
+@pytest.mark.anyio("asyncio")
+async def test_refresh_endpoint_status_voyageai_uses_embeddings_probe(tmp_path, monkeypatch):
+    db_path = tmp_path / "db.sqlite"
+    storage_dir = tmp_path / "runtime"
+    manager = SQLiteManager(db_path)
+    await manager.init()
+    service = AIConfigService(manager, _make_settings(), storage_dir=storage_dir)
+    try:
+        endpoint = await service.create_endpoint(
+            {
+                "name": "voyageai",
+                "base_url": "https://api.voyageai.com",
+                "api_key": "key123",
+            }
+        )
+
+        monkeypatch.setattr("app.services.ai_config_service.httpx.AsyncClient", DummyAsyncClient)
+
+        refreshed = await service.refresh_endpoint_status(int(endpoint["id"]))
+        assert refreshed["status"] == "online"
+    finally:
+        await service._db.close()

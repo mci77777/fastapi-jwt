@@ -9,22 +9,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 import httpx
 
 from app.db import SQLiteManager
 from app.settings.config import Settings
-from app.services.ai_url import normalize_ai_base_url
+from app.services.ai_url import build_resolved_endpoints, normalize_ai_base_url
 from app.services.upstream_auth import is_retryable_auth_error, iter_auth_headers
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_ENDPOINT_PATHS = {
-    "chat_completions": "/v1/chat/completions",
-    "completions": "/v1/completions",
-    "models": "/v1/models",
-    "embeddings": "/v1/embeddings",
-}
 
 DISALLOWED_TEST_ENDPOINT_PREFIXES = ("test-", "test_")
 
@@ -163,8 +157,7 @@ class AIConfigService:
         return await self._write_backup("supabase_endpoints", models)
 
     def _build_resolved_endpoints(self, base_url: str) -> dict[str, str]:
-        base = normalize_ai_base_url(base_url)
-        return {name: f"{base}{path}" for name, path in DEFAULT_ENDPOINT_PATHS.items()}
+        return build_resolved_endpoints(base_url)
 
     def _format_endpoint_row(self, row: dict[str, Any]) -> dict[str, Any]:
         model_list = _safe_json_loads(row.get("model_list")) or []
@@ -399,12 +392,12 @@ class AIConfigService:
             add("name", payload["name"])
         if "base_url" in payload:
             normalized_base_url = normalize_ai_base_url(payload["base_url"])
+            computed_resolved = self._build_resolved_endpoints(normalized_base_url)
             if normalized_base_url != existing["base_url"]:
                 add("base_url", normalized_base_url)
-                add(
-                    "resolved_endpoints",
-                    _safe_json_dumps(self._build_resolved_endpoints(normalized_base_url)),
-                )
+            # 允许在“规则升级/供应商适配”后，仅重算 resolved_endpoints（base_url 不变）。
+            if computed_resolved != (existing.get("resolved_endpoints") or {}):
+                add("resolved_endpoints", _safe_json_dumps(computed_resolved))
         if "model" in payload:
             add("model", payload["model"])
         if "description" in payload:
@@ -470,71 +463,122 @@ class AIConfigService:
         base_headers = {"Content-Type": "application/json"}
         auth_candidates = iter_auth_headers(api_key, endpoint.get("base_url") or "") if api_key else [{}]
 
-        models_url = self._build_resolved_endpoints(endpoint["base_url"])["models"]
+        resolved_endpoints = self._build_resolved_endpoints(endpoint["base_url"])
+        models_url = resolved_endpoints["models"]
+        chat_url = resolved_endpoints["chat_completions"]
+        embeddings_url = resolved_endpoints["embeddings"]
         timeout = endpoint["timeout"] or self._settings.http_timeout_seconds
         start = perf_counter()
         latency_ms: Optional[float] = None
         status_value = "checking"
-        model_ids: list[str] = []
+        existing_model_list = endpoint.get("model_list") if isinstance(endpoint, dict) else None
+        model_ids: list[str] = (
+            [str(x) for x in existing_model_list if str(x).strip()]
+            if isinstance(existing_model_list, list)
+            else []
+        )
         error_text: Optional[str] = None
+
+        base_url_text = str(endpoint.get("base_url") or "").strip()
+        endpoint_name = str(endpoint.get("name") or "").strip().lower()
+        base_host = ""
+        try:
+            base_host = (urlsplit(base_url_text).hostname or "").strip().lower()
+        except Exception:
+            base_host = ""
+        is_perplexity = base_host == "api.perplexity.ai" or "perplexity" in endpoint_name
+        is_voyage = base_host == "api.voyageai.com" or "voyage" in endpoint_name
 
         try:
             response: httpx.Response | None = None
             async with httpx.AsyncClient(timeout=timeout) as client:
-                for index, auth_headers in enumerate(auth_candidates):
-                    headers = dict(base_headers)
-                    headers.update(auth_headers)
-                    response = await client.get(models_url, headers=headers)
+                # 特例：Perplexity 不提供 models 列表，且 endpoints 不带 /v1 前缀。
+                if is_perplexity:
+                    response = await client.options(chat_url, headers=base_headers)
                     latency_ms = (perf_counter() - start) * 1000
-
-                    if response.status_code != 401 or index >= len(auth_candidates) - 1:
-                        break
-
-                    payload: object | None = None
-                    try:
-                        payload = response.json()
-                    except Exception:
-                        payload = None
-
-                    if not is_retryable_auth_error(response.status_code, payload):
-                        break
-
-                if response is None:
-                    raise RuntimeError("upstream_no_response")
-                # 兼容性：401/403/405/429 多数表示“可达但需要鉴权/限流”，不应判定为 offline。
-                if response.status_code == 200:
-                    payload = response.json()
-                    items: list[Any]
-                    if isinstance(payload, dict):
-                        items = payload.get("data") or payload.get("models") or payload.get("items") or []
-                    elif isinstance(payload, list):
-                        items = payload
+                    if response.status_code == 404:
+                        status_value = "offline"
+                        error_text = f"chat_completions_not_found: {chat_url}"
+                    elif response.status_code in (200, 204, 401, 403, 405, 429):
+                        status_value = "online"
+                        if response.status_code not in (200, 204):
+                            error_text = f"chat_probe_status={response.status_code} url={chat_url}"
                     else:
-                        items = []
-                    for item in items:
-                        if isinstance(item, dict) and "id" in item:
-                            model_ids.append(str(item["id"]))
-                        elif isinstance(item, str):
-                            model_ids.append(item)
-                    status_value = "online"
-                elif response.status_code in (401, 403, 405, 429):
-                    status_value = "online"
-                    detail = None
-                    try:
-                        payload = response.json()
-                        if isinstance(payload, dict):
-                            detail = payload.get("error") or payload.get("message")
-                    except Exception:
-                        detail = None
-
-                    suffix = ""
-                    if isinstance(detail, str) and detail.strip():
-                        safe_detail = detail.strip().replace("\n", " ")[:120]
-                        suffix = f" detail={safe_detail}"
-                    error_text = f"models_unavailable_status={response.status_code} url={models_url}{suffix}"
+                        status_value = "offline"
+                        error_text = f"chat_probe_unexpected_status={response.status_code} url={chat_url}"
+                # 特例：VoyageAI 为 embeddings 供应商（chat/models 不适用）
+                elif is_voyage:
+                    response = await client.options(embeddings_url, headers=base_headers)
+                    latency_ms = (perf_counter() - start) * 1000
+                    if response.status_code == 404:
+                        status_value = "offline"
+                        error_text = f"embeddings_not_found: {embeddings_url}"
+                    elif response.status_code in (200, 204, 405):
+                        status_value = "online"
+                    elif response.status_code in (401, 403, 429):
+                        status_value = "online"
+                        error_text = f"embeddings_probe_status={response.status_code} url={embeddings_url}"
+                    else:
+                        status_value = "offline"
+                        error_text = f"embeddings_probe_unexpected_status={response.status_code} url={embeddings_url}"
                 else:
-                    status_value = "offline"
-                    error_text = f"models_unexpected_status={response.status_code} url={models_url}"
+                    for index, auth_headers in enumerate(auth_candidates):
+                        headers = dict(base_headers)
+                        headers.update(auth_headers)
+                        response = await client.get(models_url, headers=headers)
+                        latency_ms = (perf_counter() - start) * 1000
+
+                        if response.status_code != 401 or index >= len(auth_candidates) - 1:
+                            break
+
+                        payload: object | None = None
+                        try:
+                            payload = response.json()
+                        except Exception:
+                            payload = None
+
+                        if not is_retryable_auth_error(response.status_code, payload):
+                            break
+
+                    if response is None:
+                        raise RuntimeError("upstream_no_response")
+                    # 兼容性：401/403/405/429 多数表示“可达但需要鉴权/限流”，不应判定为 offline。
+                    if response.status_code == 200:
+                        payload = response.json()
+                        items: list[Any]
+                        if isinstance(payload, dict):
+                            items = payload.get("data") or payload.get("models") or payload.get("items") or []
+                        elif isinstance(payload, list):
+                            items = payload
+                        else:
+                            items = []
+                        fetched: list[str] = []
+                        for item in items:
+                            if isinstance(item, dict) and "id" in item:
+                                fetched.append(str(item["id"]))
+                            elif isinstance(item, str):
+                                fetched.append(item)
+                        if fetched:
+                            model_ids = fetched
+                        status_value = "online"
+                    elif response.status_code in (401, 403, 405, 429):
+                        status_value = "online"
+                        detail = None
+                        try:
+                            payload = response.json()
+                            if isinstance(payload, dict):
+                                detail = payload.get("error") or payload.get("message")
+                        except Exception:
+                            detail = None
+
+                        suffix = ""
+                        if isinstance(detail, str) and detail.strip():
+                            safe_detail = detail.strip().replace("\n", " ")[:120]
+                            suffix = f" detail={safe_detail}"
+                        error_text = f"models_unavailable_status={response.status_code} url={models_url}{suffix}"
+                    else:
+                        status_value = "offline"
+                        error_text = f"models_unexpected_status={response.status_code} url={models_url}"
         except httpx.HTTPError as exc:
             latency_ms = (perf_counter() - start) * 1000
             status_value = "offline"
@@ -542,7 +586,7 @@ class AIConfigService:
 
         # 兼容性探针：/v1/models 可用不代表 /v1/chat/completions 可用（常见误配置：供应商不支持 chat 端点导致 404）。
         # 这里用 GET 探测“路由是否存在”即可：405/401/403 视为存在；仅 404 视为不存在并标记 offline。
-        if status_value == "online":
+        if status_value == "online" and not is_voyage:
             name = str(endpoint.get("name") or "").lower()
             base_url = str(endpoint.get("base_url") or "").lower()
             is_claude = "anthropic" in base_url or "claude" in name or "anthropic" in name
@@ -550,7 +594,7 @@ class AIConfigService:
                 probe_url = f"{normalize_ai_base_url(str(endpoint.get('base_url') or ''))}/v1/messages"
                 not_found_reason = "anthropic_messages_not_found"
             else:
-                probe_url = self._build_resolved_endpoints(endpoint["base_url"])["chat_completions"]
+                probe_url = chat_url
                 not_found_reason = "chat_completions_not_found"
 
             try:
@@ -574,6 +618,8 @@ class AIConfigService:
         await self.update_endpoint(
             endpoint_id,
             {
+                # SSOT 修复：让 refresh 同时触发 resolved_endpoints 的重算（适配 Perplexity 等无 /v1 前缀上游）。
+                "base_url": endpoint.get("base_url") or "",
                 "status": status_value,
                 "latency_ms": latency_ms,
                 "model_list": model_ids,
