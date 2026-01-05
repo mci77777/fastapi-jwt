@@ -36,15 +36,6 @@ async def get_current_user_ws(token: str) -> AuthenticatedUser:
     Raises:
         HTTPException: 验证失败
     """
-    import sys
-
-    print(
-        f"[WS_DEBUG_AUTH] get_current_user_ws called, token length: {len(token) if token else 0}",
-        file=sys.stderr,
-        flush=True,
-    )
-    logger.info("[WS_DEBUG_AUTH] get_current_user_ws called, token length: %d", len(token) if token else 0)
-
     if not token:
         logger.warning("WebSocket JWT verification failed: token is empty")
         raise HTTPException(
@@ -52,25 +43,19 @@ async def get_current_user_ws(token: str) -> AuthenticatedUser:
             detail={"code": "unauthorized", "message": "Token is required"},
         )
 
-    # 添加调试日志：记录 token 前 50 字符
-    logger.debug("WebSocket JWT verification: token=%s...", token[:50] if len(token) > 50 else token)
-
     verifier = get_jwt_verifier()
     try:
         user = verifier.verify_token(token)
-        logger.info("[WS_DEBUG_AUTH] WebSocket JWT verification success: uid=%s user_type=%s", user.uid, user.user_type)
         return user
     except HTTPException as exc:
-        logger.warning(
-            "WebSocket JWT verification failed: HTTPException status=%s detail=%s", exc.status_code, exc.detail
-        )
+        logger.warning("WebSocket JWT verification failed: status=%s", exc.status_code)
         raise
     except Exception as exc:
-        logger.error("WebSocket JWT verification failed: unexpected error=%s", exc, exc_info=True)
+        logger.exception("WebSocket JWT verification failed: unexpected error=%s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "unauthorized", "message": "Invalid token"},
-        )
+        ) from exc
 
 
 @router.websocket("/ws/dashboard")
@@ -92,56 +77,27 @@ async def dashboard_websocket(
         5. 每 10 秒推送一次统计数据
         6. 断线时清理连接
     """
-    # 在接受连接之前就记录日志（绕过所有日志系统，直接写入文件）
-    import sys
-    from datetime import datetime
-
-    with open("ws_debug.log", "a", encoding="utf-8") as f:
-        f.write(
-            f"[{datetime.now().isoformat()}] [WS_DEBUG_ENTRY] WebSocket endpoint called, token length: {len(token) if token else 0}\n"
-        )
-
-    print(
-        f"[WS_DEBUG_ENTRY] WebSocket endpoint called, token length: {len(token) if token else 0}",
-        file=sys.stderr,
-        flush=True,
-    )
-    logger.info("[WS_DEBUG_ENTRY] WebSocket endpoint called, token length: %d", len(token) if token else 0)
-
     # 先接受连接（必须在任何操作之前）
     await websocket.accept()
-    print(
-        f"[WS_DEBUG] WebSocket connection accepted, token length: {len(token) if token else 0}",
-        file=sys.stderr,
-        flush=True,
-    )
-    logger.info("[WS_DEBUG] WebSocket connection accepted, token length: %d", len(token) if token else 0)
 
     # JWT 验证
     try:
         user = await get_current_user_ws(token)
-        logger.info("[WS_DEBUG] JWT verification success: uid=%s, user_type=%s", user.uid, user.user_type)
     except HTTPException as exc:
-        logger.warning(
-            "[WS_DEBUG] JWT verification failed (HTTPException): status=%s, detail=%s", exc.status_code, exc.detail
-        )
         await websocket.close(code=1008, reason="Unauthorized")
         logger.warning("WebSocket connection rejected: unauthorized")
         return
     except Exception as exc:
-        logger.error("[WS_DEBUG] JWT verification failed (Exception): %s", exc, exc_info=True)
         logger.exception("WebSocket JWT verification error: %s", exc)
         await websocket.close(code=1011, reason="Internal server error")
         return
 
     # 检查用户类型（匿名用户禁止访问）
     if user.user_type == "anonymous":
-        logger.warning("[WS_DEBUG] WebSocket connection rejected: anonymous user uid=%s", user.uid)
         await websocket.close(code=1008, reason="Anonymous users not allowed")
         logger.warning("WebSocket connection rejected: anonymous user uid=%s", user.uid)
         return
 
-    logger.info("[WS_DEBUG] WebSocket connection fully accepted: uid=%s, user_type=%s", user.uid, user.user_type)
     logger.info("WebSocket connection accepted uid=%s user_type=%s", user.uid, user.user_type)
 
     # 获取服务（从 websocket.app.state）

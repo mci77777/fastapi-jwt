@@ -140,6 +140,11 @@ services:
 networks:
   app-network:
     driver: bridge
+    # 避免与 WSL/Windows host 网段（常见 172.19.x.x）冲突，导致容器访问宿主/Windows 服务超时
+    ipam:
+      driver: default
+      config:
+        - subnet: ${APP_NETWORK_SUBNET:-172.30.0.0/16}
 
 volumes:
   prometheus-data:

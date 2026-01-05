@@ -413,6 +413,24 @@ async def check_all_endpoints_get(
     )
 
 
+@router.get("/models/{endpoint_id}")
+async def get_ai_model(
+    endpoint_id: int,
+    request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    service = get_service(request)
+    try:
+        endpoint = await service.get_endpoint(endpoint_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=create_response(code=404, msg="接口不存在"),
+        )
+    return create_response(data=endpoint)
+
+
 @router.post("/models/{endpoint_id}/sync")
 async def sync_single_endpoint(
     endpoint_id: int,
