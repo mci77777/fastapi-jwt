@@ -189,6 +189,11 @@ export function resResolve(response) {
   }
 
   // 如果有 code 字段，检查是否为 200
+  // 兼容：部分异步接口返回 202（HTTP 202 + code=202），前端应视为成功（例如批量检测触发）。
+  if (data?.code === 202 && status === 202) {
+    return Promise.resolve(data)
+  }
+
   if (data?.code !== 200) {
     const code = data?.code ?? status
     /** 根据code处理对应的操作，并返回处理后的message */

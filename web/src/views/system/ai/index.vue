@@ -103,6 +103,45 @@ const monitorIntervalOptions = [
 ]
 let monitorStatusTimer = null
 
+const checkLogs = ref([])
+const checkLogText = computed(() => checkLogs.value.join('\n'))
+
+function nowText() {
+  try {
+    const d = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  } catch {
+    return String(Date.now())
+  }
+}
+
+function appendCheckLog(line) {
+  const text = String(line || '').trim()
+  if (!text) return
+  checkLogs.value.unshift(text)
+  if (checkLogs.value.length > 200) {
+    checkLogs.value.length = 200
+  }
+}
+
+function clearCheckLogs() {
+  checkLogs.value = []
+}
+
+function formatEndpointCheckLog(endpoint) {
+  const name = endpoint?.name || `#${endpoint?.id || '?'}`
+  const status = endpoint?.status || 'unknown'
+  const ok = status === 'online'
+  const models = Array.isArray(endpoint?.model_list) ? endpoint.model_list.length : 0
+  const latency = endpoint?.latency_ms !== null && endpoint?.latency_ms !== undefined
+    ? `${Number(endpoint.latency_ms).toFixed(0)}ms`
+    : '--'
+  const error = String(endpoint?.last_error || '').trim().replace(/\s+/g, ' ')
+  const base = `[${nowText()}] ${ok ? 'SUCCESS' : 'FAIL'} endpoint=${name} status=${status} models=${models} latency=${latency}`
+  return error ? `${base} error=${error.slice(0, 220)}` : base
+}
+
 function handleGoMapping() {
   router.push('/ai')
 }
@@ -351,8 +390,9 @@ async function handleStopMonitor() {
 async function handleCheckAll() {
   try {
     bulkChecking.value = true
-    await api.checkAllAIModels()
-    window.$message?.success('已触发批量检测')
+    const result = await api.checkAllAIModels()
+    appendCheckLog(`[${nowText()}] INFO batch_check_triggered msg=${String(result?.msg || '已触发批量检测')}`)
+    window.$message?.success(result?.msg || '已触发批量检测')
     $table.value?.handleSearch()
   } catch (error) {
     window.$message?.error(error.message || '批量检测失败')
@@ -382,8 +422,14 @@ async function handleSyncAll(direction) {
 async function handleCheckRow(row) {
   try {
     checkingRowId.value = row.id
-    await api.checkAIModel(row.id)
-    window.$message?.success(`已检测端点「${row.name}」`)
+    const result = await api.checkAIModel(row.id)
+    const refreshed = result?.data || row
+    appendCheckLog(formatEndpointCheckLog(refreshed))
+    if (refreshed?.status === 'online') {
+      window.$message?.success('检测成功')
+    } else {
+      window.$message?.error('检测失败')
+    }
     $table.value?.handleSearch()
   } catch (error) {
     window.$message?.error(error.message || '检测失败')
@@ -721,6 +767,21 @@ onBeforeUnmount(() => {
           </QueryBarItem>
         </template>
       </CrudTable>
+
+      <NCard size="small" title="检测日志">
+        <template #header-extra>
+          <NButton text size="small" @click="clearCheckLogs">
+            <TheIcon icon="mdi:delete-sweep" :size="16" class="mr-4" />清空
+          </NButton>
+        </template>
+        <NInput
+          :value="checkLogText"
+          type="textarea"
+          :rows="8"
+          readonly
+          placeholder="点击『检测』或『检测所有端点』后，这里会显示 success/fail、模型数量、耗时、错误信息等。"
+        />
+      </NCard>
     </NSpace>
 
     <CrudModal

@@ -22,6 +22,28 @@ logger = logging.getLogger(__name__)
 
 DISALLOWED_TEST_ENDPOINT_PREFIXES = ("test-", "test_")
 
+_VOYAGE_STATIC_MODEL_LIST: tuple[str, ...] = (
+    # Text embeddings (from VoyageAI docs)
+    "voyage-3.5",
+    "voyage-3.5-lite",
+    "voyage-3-large",
+    "voyage-3",
+    "voyage-3-lite",
+    "voyage-code-3",
+    "voyage-finance-2",
+    "voyage-law-2",
+    "voyage-code-2",
+    "voyage-multilingual-2",
+    "voyage-large-2-instruct",
+    "voyage-large-2",
+    "voyage-2",
+    "voyage-lite-02-instruct",
+    "voyage-02",
+    "voyage-01",
+    "voyage-lite-01",
+    "voyage-lite-01-instruct",
+)
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -486,28 +508,13 @@ class AIConfigService:
             base_host = (urlsplit(base_url_text).hostname or "").strip().lower()
         except Exception:
             base_host = ""
-        is_perplexity = base_host == "api.perplexity.ai" or "perplexity" in endpoint_name
         is_voyage = base_host == "api.voyageai.com" or "voyage" in endpoint_name
 
         try:
             response: httpx.Response | None = None
             async with httpx.AsyncClient(timeout=timeout) as client:
-                # 特例：Perplexity 不提供 models 列表，且 endpoints 不带 /v1 前缀。
-                if is_perplexity:
-                    response = await client.options(chat_url, headers=base_headers)
-                    latency_ms = (perf_counter() - start) * 1000
-                    if response.status_code == 404:
-                        status_value = "offline"
-                        error_text = f"chat_completions_not_found: {chat_url}"
-                    elif response.status_code in (200, 204, 401, 403, 405, 429):
-                        status_value = "online"
-                        if response.status_code not in (200, 204):
-                            error_text = f"chat_probe_status={response.status_code} url={chat_url}"
-                    else:
-                        status_value = "offline"
-                        error_text = f"chat_probe_unexpected_status={response.status_code} url={chat_url}"
                 # 特例：VoyageAI 为 embeddings 供应商（chat/models 不适用）
-                elif is_voyage:
+                if is_voyage:
                     response = await client.options(embeddings_url, headers=base_headers)
                     latency_ms = (perf_counter() - start) * 1000
                     if response.status_code == 404:
@@ -521,6 +528,16 @@ class AIConfigService:
                     else:
                         status_value = "offline"
                         error_text = f"embeddings_probe_unexpected_status={response.status_code} url={embeddings_url}"
+
+                    # VoyageAI 不提供 /models：用文档内置模型列表作为“可选项”展示（不影响 App chat 白名单）。
+                    configured_model = str(endpoint.get("model") or "").strip()
+                    merged: list[str] = []
+                    if configured_model:
+                        merged.append(configured_model)
+                    merged.extend(model_ids)
+                    merged.extend(list(_VOYAGE_STATIC_MODEL_LIST))
+                    seen: set[str] = set()
+                    model_ids = [item for item in merged if item and not (item in seen or seen.add(item))]
                 else:
                     for index, auth_headers in enumerate(auth_candidates):
                         headers = dict(base_headers)

@@ -28,7 +28,7 @@ class DummyAsyncClient:
         return False
 
     async def get(self, url: str, *args, **kwargs) -> DummyResponse:
-        if str(url).endswith("/v1/models"):
+        if str(url).endswith("/v1/models") or str(url).endswith("/models"):
             return DummyResponse(200, {"data": [{"id": "m1"}]})
         if str(url).endswith("/v1/chat/completions"):
             # 某些本地代理对 GET 返回 404（只实现 POST），不能据此判定 offline。
@@ -100,8 +100,7 @@ async def test_refresh_endpoint_status_perplexity_uses_non_v1_chat_probe(tmp_pat
 
         refreshed = await service.refresh_endpoint_status(int(endpoint["id"]))
         assert refreshed["status"] == "online"
-        # Perplexity 不提供 models 列表：不强制覆盖为“空探测结果”。
-        assert refreshed["model_list"] == []
+        assert refreshed["model_list"] == ["m1"]
     finally:
         await service._db.close()
 
