@@ -15,6 +15,7 @@ import httpx
 from app.db import SQLiteManager
 from app.settings.config import Settings
 from app.services.ai_url import normalize_ai_base_url
+from app.services.upstream_auth import should_send_x_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -469,6 +470,8 @@ class AIConfigService:
         api_key = await self._get_api_key(endpoint_id)
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+            if should_send_x_api_key(endpoint.get("base_url") or ""):
+                headers["X-API-Key"] = api_key
 
         models_url = self._build_resolved_endpoints(endpoint["base_url"])["models"]
         timeout = endpoint["timeout"] or self._settings.http_timeout_seconds
@@ -500,7 +503,19 @@ class AIConfigService:
                     status_value = "online"
                 elif response.status_code in (401, 403, 405, 429):
                     status_value = "online"
-                    error_text = f"models_unavailable_status={response.status_code} url={models_url}"
+                    detail = None
+                    try:
+                        payload = response.json()
+                        if isinstance(payload, dict):
+                            detail = payload.get("error") or payload.get("message")
+                    except Exception:
+                        detail = None
+
+                    suffix = ""
+                    if isinstance(detail, str) and detail.strip():
+                        safe_detail = detail.strip().replace("\n", " ")[:120]
+                        suffix = f" detail={safe_detail}"
+                    error_text = f"models_unavailable_status={response.status_code} url={models_url}{suffix}"
                 else:
                     status_value = "offline"
                     error_text = f"models_unexpected_status={response.status_code} url={models_url}"

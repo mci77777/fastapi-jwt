@@ -21,6 +21,7 @@ from app.core.middleware import REQUEST_ID_HEADER_NAME, get_current_request_id
 from app.services.ai_endpoint_rules import looks_like_test_endpoint
 from app.services.ai_config_service import AIConfigService
 from app.services.ai_url import normalize_ai_base_url
+from app.services.upstream_auth import should_send_x_api_key
 from app.services.model_mapping_service import ModelMappingService
 from app.settings.config import get_settings
 
@@ -786,6 +787,8 @@ class AIService:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+        if should_send_x_api_key(endpoint):
+            headers["X-API-Key"] = api_key
         request_id = get_current_request_id()
         if request_id:
             headers[REQUEST_ID_HEADER_NAME] = request_id
@@ -1167,6 +1170,8 @@ class AIService:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+        if should_send_x_api_key(chat_url or ""):
+            headers["X-API-Key"] = api_key
         request_id = get_current_request_id()
         if request_id:
             headers[REQUEST_ID_HEADER_NAME] = request_id
