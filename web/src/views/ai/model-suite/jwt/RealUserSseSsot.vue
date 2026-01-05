@@ -23,6 +23,7 @@ import {
   createMessage,
 } from '@/api/aiModelSuite'
 import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
+import { requestLogAppendEvent } from '@/utils/http/requestLog'
 
 defineOptions({ name: 'RealUserSseSsot' })
 
@@ -322,6 +323,7 @@ async function streamSse(msgId, convId, requestId) {
       if (!line) {
         const ev = flushEvent()
         if (ev) {
+          requestLogAppendEvent({ kind: 'sse', url, requestId, event: ev })
           if (ev.event === 'content_delta' && ev.data?.delta) {
             aiResponse.value += String(ev.data.delta)
           }

@@ -1,6 +1,7 @@
 import { getRefreshToken, getToken, removeToken, setRefreshToken, setToken } from '@/utils'
 import { resolveResError } from './helpers'
 import { supabaseRefreshSession } from '@/utils/supabase/auth'
+import { requestLogBegin, requestLogFinish } from './requestLog'
 
 // Token 刷新状态管理
 let isRefreshing = false
@@ -29,6 +30,15 @@ function getOrCreateRequestId(headers) {
     globalThis.crypto?.randomUUID?.() ||
     `web-${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`
   )
+}
+
+function resolveAxiosUrl(config) {
+  const baseURL = String(config?.baseURL || '')
+  const rawUrl = String(config?.url || '')
+  if (!rawUrl) return baseURL || ''
+  if (/^https?:\/\//i.test(rawUrl)) return rawUrl
+  if (!baseURL) return rawUrl
+  return `${baseURL.replace(/\/+$/, '')}/${rawUrl.replace(/^\/+/, '')}`
 }
 
 /**
@@ -105,11 +115,22 @@ async function refreshToken() {
 }
 
 export async function reqResolve(config) {
+  const startAt = Date.now()
   // 处理不需要token的请求
   if (config.noNeedToken) {
     // SSOT：统一透传请求追踪 Header（X-Request-Id）。
     config.headers = config.headers || {}
-    writeHeader(config.headers, 'X-Request-Id', getOrCreateRequestId(config.headers))
+    const requestId = getOrCreateRequestId(config.headers)
+    writeHeader(config.headers, 'X-Request-Id', requestId)
+
+    const logId = requestLogBegin({
+      kind: 'axios',
+      method: config.method,
+      url: resolveAxiosUrl(config),
+      requestId,
+      request: { headers: config.headers, params: config.params, body: config.data },
+    })
+    config.__gymbro_request_log = { id: logId, startAt, requestId }
     return config
   }
 
@@ -117,7 +138,17 @@ export async function reqResolve(config) {
   const refresh = getRefreshToken()
 
   config.headers = config.headers || {}
-  writeHeader(config.headers, 'X-Request-Id', getOrCreateRequestId(config.headers))
+  const requestId = getOrCreateRequestId(config.headers)
+  writeHeader(config.headers, 'X-Request-Id', requestId)
+
+  const logId = requestLogBegin({
+    kind: 'axios',
+    method: config.method,
+    url: resolveAxiosUrl(config),
+    requestId,
+    request: { headers: config.headers, params: config.params, body: config.data },
+  })
+  config.__gymbro_request_log = { id: logId, startAt, requestId }
 
   // 允许调用方显式覆盖 Authorization（用于 JWT 测试等场景，避免污染全局登录态）
   const explicitAuth = readHeader(config.headers, 'Authorization') || readHeader(config.headers, 'authorization')
@@ -175,6 +206,22 @@ export function resResolve(response) {
   const { data, status, statusText } = response
   const requestId = response?.headers?.['x-request-id'] || data?.request_id
 
+  const meta = response?.config?.__gymbro_request_log
+  if (meta?.id) {
+    const durationMs = Number.isFinite(meta?.startAt) ? Date.now() - meta.startAt : null
+    const httpOk = status >= 200 && status < 300
+    let logStatus = httpOk ? 'success' : 'error'
+    if (data && typeof data === 'object' && 'code' in data) {
+      logStatus = data?.code === 200 || (data?.code === 202 && status === 202) ? 'success' : 'app_error'
+    }
+    requestLogFinish(meta.id, {
+      status: logStatus,
+      durationMs,
+      response: { status, statusText, headers: response?.headers, body: data },
+      error: null,
+    })
+  }
+
   if (data === null || data === undefined) {
     return Promise.resolve(data)
   }
@@ -207,6 +254,16 @@ export function resResolve(response) {
 
 export async function resReject(error) {
   if (!error || !error.response) {
+    const meta = error?.config?.__gymbro_request_log
+    if (meta?.id) {
+      const durationMs = Number.isFinite(meta?.startAt) ? Date.now() - meta.startAt : null
+      requestLogFinish(meta.id, {
+        status: 'error',
+        durationMs,
+        response: null,
+        error: { message: error?.message || 'Request failed', code: error?.code || null },
+      })
+    }
     const code = error?.code
     /** 根据code处理对应的操作，并返回处理后的message */
     const message = resolveResError(code, error.message)
@@ -215,6 +272,22 @@ export async function resReject(error) {
   }
   const { data, status } = error.response
   const requestId = error?.response?.headers?.['x-request-id'] || data?.request_id
+
+  const meta = error?.config?.__gymbro_request_log
+  if (meta?.id) {
+    const durationMs = Number.isFinite(meta?.startAt) ? Date.now() - meta.startAt : null
+    requestLogFinish(meta.id, {
+      status: 'error',
+      durationMs,
+      response: {
+        status,
+        statusText: error?.response?.statusText,
+        headers: error?.response?.headers,
+        body: data,
+      },
+      error: { message: error?.message || 'Request failed', code: status },
+    })
+  }
 
   // 修复：检查 HTTP 状态码 401（Token 过期）
   if (status === 401 || data?.code === 401) {

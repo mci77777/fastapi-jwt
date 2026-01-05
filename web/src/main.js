@@ -10,11 +10,13 @@ import App from './App.vue'
 import { setupDirectives } from './directives'
 import { useResize, initializeAuth } from '@/utils'
 import i18n from '~/i18n'
+import { setupRequestLogHooks } from '@/utils/http/requestLogHooks'
 
 async function setupApp() {
   const app = createApp(App)
 
   setupStore(app)
+  setupRequestLogHooks()
 
   // 初始化认证状态（恢复登录信息）
   await initializeAuth()

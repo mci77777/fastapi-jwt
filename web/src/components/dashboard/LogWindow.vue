@@ -1,48 +1,126 @@
 <template>
-  <NCard title="系统日志" :bordered="true" class="log-window">
+  <NCard title="日志" :bordered="true" class="log-window">
     <template #header-extra>
-      <NSelect
-        v-model:value="currentLevel"
-        :options="levelOptions"
-        size="small"
-        style="width: 120px"
-        @update:value="handleLevelChange"
-      />
-    </template>
-
-    <div class="log-content" :class="{ 'log-loading': loading }">
-      <div v-if="filteredLogs.length === 0" class="log-empty">
-        <span>暂无日志</span>
+      <div v-if="activeTab === 'system'" class="header-actions">
+        <NSelect
+          v-model:value="currentLevel"
+          :options="levelOptions"
+          size="small"
+          style="width: 120px"
+          @update:value="handleLevelChange"
+        />
       </div>
-
-      <div v-else class="log-list">
-        <div
-          v-for="log in filteredLogs"
-          :key="log.id || log.timestamp"
-          class="log-item"
-          @click="handleLogClick(log)"
-        >
-          <div class="log-header">
-            <NTag :type="getLevelTagType(log.level)" size="small" :bordered="false">
-              {{ log.level }}
-            </NTag>
-            <span class="log-time">{{ formatTime(log.timestamp) }}</span>
-          </div>
-          <div class="log-message">{{ log.message }}</div>
-          <div v-if="log.user_id" class="log-user">用户: {{ log.user_id }}</div>
+      <div v-else class="header-actions">
+        <div class="request-actions">
+          <span class="request-actions-label">请求日志</span>
+          <NSwitch v-model:value="requestLogEnabledModel" size="small" />
+          <span class="request-actions-label">保留</span>
+          <NInputNumber
+            v-model:value="requestLogRetentionSizeModel"
+            size="small"
+            style="width: 110px"
+            :min="10"
+            :max="1000"
+            :step="10"
+          />
+          <NButton text size="small" @click="handleRequestLogClear">清空</NButton>
         </div>
       </div>
-    </div>
+    </template>
+
+    <NTabs v-model:value="activeTab" type="line" animated class="log-tabs">
+      <NTabPane name="system" tab="系统日志" display-directive="show">
+        <div class="log-content" :class="{ 'log-loading': loading }">
+          <div v-if="filteredLogs.length === 0" class="log-empty">
+            <span>暂无日志</span>
+          </div>
+
+          <div v-else class="log-list">
+            <div
+              v-for="log in filteredLogs"
+              :key="log.id || log.timestamp"
+              class="log-item"
+              @click="handleLogClick(log)"
+            >
+              <div class="log-header">
+                <NTag :type="getLevelTagType(log.level)" size="small" :bordered="false">
+                  {{ log.level }}
+                </NTag>
+                <span class="log-time">{{ formatTime(log.timestamp) }}</span>
+              </div>
+              <div class="log-message">{{ log.message }}</div>
+              <div v-if="log.user_id" class="log-user">用户: {{ log.user_id }}</div>
+            </div>
+          </div>
+        </div>
+      </NTabPane>
+
+      <NTabPane name="request" tab="请求日志" display-directive="show">
+        <div class="log-content">
+          <div v-if="requestLogItems.length === 0" class="log-empty">
+            <span>暂无请求日志（打开开关后开始记录）</span>
+          </div>
+
+          <div v-else class="log-list">
+            <div
+              v-for="item in requestLogItems"
+              :key="item.id"
+              class="log-item request-log-item"
+              @click="toggleRequestLogExpand(item.id)"
+            >
+              <div class="log-header">
+                <div class="request-tags">
+                  <NTag size="small" :bordered="false" type="info">{{ item.method || 'REQ' }}</NTag>
+                  <NTag size="small" :bordered="false" :type="getRequestStatusTagType(item.status)">
+                    {{ formatRequestStatus(item.status) }}
+                  </NTag>
+                  <NTag v-if="item.kind" size="small" :bordered="false" type="default">{{ item.kind }}</NTag>
+                </div>
+                <div class="request-meta">
+                  <span class="log-time">{{ formatTime(item.created_at) }}</span>
+                  <span v-if="item.duration_ms !== null && item.duration_ms !== undefined" class="request-duration">
+                    {{ item.duration_ms }}ms
+                  </span>
+                  <NButton text size="small" @click.stop="handleRequestLogCopy(item)">复制</NButton>
+                </div>
+              </div>
+
+              <div class="request-url">{{ item.url }}</div>
+              <div v-if="item.request_id" class="log-user">request_id: {{ item.request_id }}</div>
+
+              <div v-if="isRequestLogExpanded(item.id)" class="request-raw">
+                <div v-if="item.request_raw" class="raw-section">
+                  <div class="raw-title">Request</div>
+                  <pre class="raw-block">{{ item.request_raw }}</pre>
+                </div>
+                <div v-if="item.response_raw" class="raw-section">
+                  <div class="raw-title">Response</div>
+                  <pre class="raw-block">{{ item.response_raw }}</pre>
+                </div>
+                <div v-if="item.error" class="raw-section">
+                  <div class="raw-title">Error</div>
+                  <pre class="raw-block">{{ item.error }}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </NTabPane>
+    </NTabs>
 
     <template #footer>
       <div class="log-footer">
-        <span class="log-count">共 {{ filteredLogs.length }} 条日志</span>
-        <NButton text size="small" @click="handleRefresh">
-          <template #icon>
-            <span>🔄</span>
-          </template>
-          刷新
-        </NButton>
+        <span v-if="activeTab === 'system'" class="log-count">共 {{ filteredLogs.length }} 条日志</span>
+        <span v-else class="log-count">共 {{ requestLogItems.length }} 条请求日志</span>
+
+        <div v-if="activeTab === 'system'">
+          <NButton text size="small" @click="handleRefresh">
+            <template #icon>
+              <span>🔄</span>
+            </template>
+            刷新
+          </NButton>
+        </div>
       </div>
     </template>
   </NCard>
@@ -50,7 +128,8 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { NCard, NTag, NSelect, NButton, useMessage } from 'naive-ui'
+import { NCard, NTag, NSelect, NButton, NInputNumber, NSwitch, NTabs, NTabPane, useMessage } from 'naive-ui'
+import { useRequestLogStore } from '@/store'
 
 defineOptions({ name: 'LogWindow' })
 
@@ -68,6 +147,8 @@ const props = defineProps({
 const emit = defineEmits(['log-click', 'filter-change', 'refresh'])
 
 const message = useMessage()
+
+const activeTab = ref('system')
 
 // 当前选中的日志级别
 const currentLevel = ref('WARNING')
@@ -99,6 +180,85 @@ const filteredLogs = computed(() => {
     return logLevel >= minLevel
   })
 })
+
+const requestLogStore = useRequestLogStore()
+const requestLogEnabledModel = computed({
+  get() {
+    return requestLogStore.enabled
+  },
+  set(val) {
+    requestLogStore.setEnabled(val)
+  },
+})
+
+const requestLogRetentionSizeModel = computed({
+  get() {
+    return requestLogStore.retentionSize
+  },
+  set(val) {
+    requestLogStore.setRetentionSize(val)
+  },
+})
+
+const requestLogItems = computed(() => requestLogStore.items || [])
+const expandedRequestLogIds = ref([])
+
+function toggleRequestLogExpand(id) {
+  if (!id) return
+  const list = expandedRequestLogIds.value || []
+  if (list.includes(id)) {
+    expandedRequestLogIds.value = list.filter((x) => x !== id)
+    return
+  }
+  expandedRequestLogIds.value = [id, ...list].slice(0, 20)
+}
+
+function isRequestLogExpanded(id) {
+  return (expandedRequestLogIds.value || []).includes(id)
+}
+
+function formatRequestStatus(status) {
+  const s = String(status || '')
+  if (s === 'pending') return 'PENDING'
+  if (s === 'success') return 'OK'
+  if (s === 'app_error') return 'APP_ERR'
+  if (s === 'error') return 'ERROR'
+  if (s === 'event') return 'EVENT'
+  return s.toUpperCase() || 'UNKNOWN'
+}
+
+function getRequestStatusTagType(status) {
+  const s = String(status || '')
+  if (s === 'error') return 'error'
+  if (s === 'app_error') return 'warning'
+  if (s === 'pending') return 'default'
+  if (s === 'event') return 'info'
+  return 'success'
+}
+
+function handleRequestLogClear() {
+  requestLogStore.clear()
+  expandedRequestLogIds.value = []
+  message.success('请求日志已清空')
+}
+
+function handleRequestLogCopy(item) {
+  const text = [
+    `[${formatRequestStatus(item?.status)}] ${String(item?.method || '').toUpperCase()} ${item?.url || ''}`,
+    item?.request_id ? `request_id=${item.request_id}` : '',
+    item?.duration_ms !== null && item?.duration_ms !== undefined ? `duration_ms=${item.duration_ms}` : '',
+    item?.request_raw ? `\n--- REQUEST ---\n${item.request_raw}` : '',
+    item?.response_raw ? `\n--- RESPONSE ---\n${item.response_raw}` : '',
+    item?.error ? `\n--- ERROR ---\n${item.error}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  navigator.clipboard
+    .writeText(text)
+    .then(() => message.success('已复制'))
+    .catch(() => message.error('复制失败'))
+}
 
 /**
  * 获取日志级别对应的 Tag 类型
@@ -200,6 +360,41 @@ function handleRefresh() {
   padding: 0;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+}
+
+.request-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.request-actions-label {
+  font-size: var(--font-size-xs);
+  color: var(--claude-text-gray);
+}
+
+.log-tabs {
+  height: 100%;
+}
+
+.log-window :deep(.n-tabs) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-window :deep(.n-tabs-nav) {
+  padding: 0 var(--spacing-md);
+}
+
+.log-window :deep(.n-tabs-pane-wrapper) {
+  flex: 1;
+  overflow: hidden;
+}
+
 .log-content {
   height: 100%;
   overflow-y: auto;
@@ -256,6 +451,64 @@ function handleRefresh() {
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--duration-normal) var(--ease-smooth);
+}
+
+.request-log-item {
+  cursor: pointer;
+}
+
+.request-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.request-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.request-duration {
+  font-size: var(--font-size-xs);
+  color: var(--claude-text-gray);
+}
+
+.request-url {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace);
+  font-size: var(--font-size-xs);
+  color: var(--claude-text-gray);
+  word-break: break-all;
+  margin-bottom: var(--spacing-xs);
+}
+
+.request-raw {
+  margin-top: var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.raw-section {
+  padding: var(--spacing-sm);
+  border: 1px dashed var(--claude-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.raw-title {
+  font-size: var(--font-size-xs);
+  color: var(--claude-text-gray);
+  margin-bottom: var(--spacing-xs);
+}
+
+.raw-block {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--claude-black);
 }
 
 .log-item:hover {
