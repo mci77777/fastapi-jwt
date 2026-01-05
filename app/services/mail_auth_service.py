@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict, Optional
 import httpx
 from app.settings.config import get_settings
+from app.services.url_rewrite import rewrite_localhost_for_docker
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class MailAuthService:
         if base_from_settings:
             resolved_base = str(base_from_settings)
 
-        self.api_base = str(resolved_base).rstrip("/")
+        self.api_base = rewrite_localhost_for_docker(str(resolved_base)).rstrip("/")
         self.api_key = api_key
         if not self.api_key:
             # 尝试从 settings 获取，或者抛出警告

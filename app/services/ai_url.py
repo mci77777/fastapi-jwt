@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.url_rewrite import rewrite_localhost_for_docker
+
 
 _STRIP_SUFFIXES = (
     "/v1/chat/completions",
@@ -30,5 +32,4 @@ def normalize_ai_base_url(base_url: str) -> str:
             base = base[: -len(suffix)].rstrip("/")
             lowered = base.lower()
             break
-    return base
-
+    return rewrite_localhost_for_docker(base)

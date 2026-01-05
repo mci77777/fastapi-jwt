@@ -82,6 +82,10 @@ services:
       - ./data:/opt/vue-fastapi-admin/data
       # 持久化日志文件
       - ./logs:/opt/vue-fastapi-admin/logs
+
+    extra_hosts:
+      # Linux 环境下让 host.docker.internal 指向宿主机网关（Docker 内访问宿主机服务）
+      - "host.docker.internal:host-gateway"
     
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/api/v1/healthz"]
