@@ -518,6 +518,14 @@ ALTER TABLE ai_prompts ADD COLUMN is_active INTEGER DEFAULT 0;
 | `/api/v1/logs/recent` | GET | 最近日志 | ✅ 已实现 | `app/api/v1/dashboard.py` |
 | `/ws/dashboard` | WebSocket | 实时数据推送 | ✅ 已实现 | `app/api/v1/dashboard.py` |
 
+### 移动端 API（/v1/*，无 /api 前缀）
+
+| 端点 | 方法 | 功能 | 状态 | 文件位置 |
+|------|------|------|------|---------|
+| `/v1/me` | GET | 用户快照聚合（profile/settings/entitlements） | ✅ 已实现 | `app/api/v1/me.py` |
+
+> 说明：移动端 API 通过 `app/api/mobile.py` 注册到应用，不带 `/api` 前缀；用于 App 侧“读取快照 + 门控”。
+
 ### 新增 API 需求（仅前端封装）
 
 **无需新增后端 API**，只需在前端 `web/src/api/dashboard.js` 中封装现有端点：
