@@ -17,7 +17,7 @@ BE-010,FastAPI：新增 SupabaseAdminClient 与 UserRepository（服务端读取
 - UserRepository：get_profile/get_settings/get_entitlement
 - 本地缓存：/v1/me 结果 TTL 30~60s（避免每请求打 Supabase）","1) 可用环境变量配置 Supabase URL/ServiceRole（不得打印到日志）
 2) get_profile/get_settings/get_entitlement 有明确返回类型与错误处理
-3) 单测可通过依赖注入 mock 掉 Supabase 客户端",make test + 手动：调用 /v1/me 返回 profile/settings/entitlement,feedback:codebase-retrieval,TODO,TODO,TODO,D:/GymBro/vue-fastapi-admin/app/services/supabase_admin.py; D:/GymBro/vue-fastapi-admin/app/repositories/user_repo.py,BE-001;BE-002,遵循后端既有约定：从 request.app.state 获取服务实例，不做全局导入（按你现有架构）。,,,
+3) 单测可通过依赖注入 mock 掉 Supabase 客户端",make test + 手动：调用 /v1/me 返回 profile/settings/entitlement,feedback:codebase-retrieval,DONE,TODO,TODO,D:/GymBro/vue-fastapi-admin/app/services/supabase_admin.py; D:/GymBro/vue-fastapi-admin/app/repositories/user_repo.py,BE-001;BE-002,遵循后端既有约定：从 request.app.state 获取服务实例，不做全局导入（按你现有架构）。 | started_at=2026-01-06T18:01:21+08:00 | 新增 SupabaseAdminClient + UserRepository（/v1/me 预留 TTL bundle cache=60s）；按 app.state 注入,,commit=BE-010: add Supabase user repository done_at=2026-01-06T18:03:23+08:00,BE-010: add Supabase user repository
 BE-020,FastAPI：实现 GET /v1/me（Supabase JWT 认证 + entitlement 聚合）,"实现移动端核心端点 /v1/me：
 - 使用现有 get_current_user()（Supabase JWT）
 - 返回：uid/user_type(anonymous/permanent)、profile(最小)、entitlements(tier/expires_at/flags)、server_time
