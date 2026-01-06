@@ -1,5 +1,5 @@
 <template>
-  <n-card title="服务器负载 & API 监控" :bordered="false" style="background: transparent;">
+  <n-card title="服务器负载 & 供应商监控" :bordered="false" style="background: transparent;">
     <n-space vertical :size="16">
       <!-- 服务器负载指标 -->
       <div>
@@ -25,7 +25,7 @@
       <!-- API 端点监控指标 -->
       <div>
         <n-text depth="3" style="font-size: 12px; margin-bottom: 8px; display: block">
-          API 端点健康
+          AI 供应商端点健康
         </n-text>
         <n-grid :cols="2" :x-gap="12" :y-gap="12">
           <n-grid-item>
@@ -52,15 +52,20 @@
             </n-statistic>
           </n-grid-item>
           <n-grid-item>
-            <n-statistic label="平均响应" :value="apiMetrics.avgLatency" suffix="ms" />
+            <n-statistic label="连通率" :value="apiMetrics.connectivityRate" suffix="%" />
           </n-grid-item>
           <n-grid-item>
-            <n-button text type="primary" @click="navigateToApiMonitor">
-              <template #icon>
-                <HeroIcon name="chart-bar" :size="16" />
+            <n-statistic label="监控状态" :value="apiMetrics.isRunning ? '运行中' : '已停止'">
+              <template #suffix>
+                <n-text
+                  v-if="apiMetrics.lastCheck"
+                  depth="3"
+                  style="font-size: 12px; margin-left: 8px"
+                >
+                  最近检测: {{ formatTime(apiMetrics.lastCheck) }}
+                </n-text>
               </template>
-              查看详情
-            </n-button>
+            </n-statistic>
           </n-grid-item>
         </n-grid>
       </div>
@@ -78,13 +83,8 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { getSystemMetrics, parsePrometheusMetrics } from '@/api/dashboard'
-import { getCheckableEndpoints } from '@/config/apiEndpoints'
-import { request } from '@/utils/http'
+import { getApiConnectivity, getSystemMetrics, parsePrometheusMetrics } from '@/api/dashboard'
 import HeroIcon from '@/components/common/HeroIcon.vue'
-
-const router = useRouter()
 
 const props = defineProps({
   autoRefresh: { type: Boolean, default: true },
@@ -105,7 +105,9 @@ const apiMetrics = ref({
   totalEndpoints: 0,
   onlineEndpoints: 0,
   offlineEndpoints: 0,
-  avgLatency: 0,
+  connectivityRate: 0,
+  isRunning: false,
+  lastCheck: null,
 })
 
 let refreshTimer = null
@@ -139,37 +141,22 @@ async function loadMetrics() {
 
 async function loadApiMetrics() {
   try {
-    const endpoints = getCheckableEndpoints()
-    apiMetrics.value.totalEndpoints = endpoints.length
+    const res = await getApiConnectivity()
+    const data = res?.data && typeof res.data === 'object' ? res.data : res
 
-    let onlineCount = 0
-    let offlineCount = 0
-    let totalLatency = 0
-    let latencyCount = 0
+    const total = Number(data?.total_endpoints || 0)
+    const online = Number(data?.healthy_endpoints || 0)
+    const connectivityRate = Number(data?.connectivity_rate || 0)
 
-    // 快速检测前 5 个端点（避免阻塞）
-    const checkPromises = endpoints.slice(0, 5).map(async (endpoint) => {
-      const startTime = Date.now()
-      try {
-        await request({
-          url: endpoint.path,
-          method: endpoint.method,
-          timeout: 3000,
-        })
-        const latency = Date.now() - startTime
-        onlineCount++
-        totalLatency += latency
-        latencyCount++
-      } catch {
-        offlineCount++
-      }
-    })
-
-    await Promise.all(checkPromises)
-
-    apiMetrics.value.onlineEndpoints = onlineCount
-    apiMetrics.value.offlineEndpoints = offlineCount
-    apiMetrics.value.avgLatency = latencyCount > 0 ? Math.round(totalLatency / latencyCount) : 0
+    apiMetrics.value = {
+      totalEndpoints: Number.isFinite(total) ? total : 0,
+      onlineEndpoints: Number.isFinite(online) ? online : 0,
+      offlineEndpoints:
+        Number.isFinite(total) && Number.isFinite(online) ? Math.max(0, total - online) : 0,
+      connectivityRate: Number.isFinite(connectivityRate) ? connectivityRate : 0,
+      isRunning: Boolean(data?.is_running),
+      lastCheck: data?.last_check || null,
+    }
   } catch (error) {
     console.error('加载 API 指标失败:', error)
   }
@@ -190,8 +177,19 @@ function calculateErrorRate(parsed) {
   return total > 0 ? parseFloat(((errors / total) * 100).toFixed(2)) : 0
 }
 
-function navigateToApiMonitor() {
-  router.push('/dashboard/api-monitor')
+function formatTime(value) {
+  try {
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) return String(value || '')
+    return d.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return String(value || '')
+  }
 }
 
 onMounted(() => {

@@ -1,12 +1,9 @@
 <script setup>
-import { NCard, NSpace, NButton, NText, NDivider, NList, NListItem } from 'naive-ui'
-import HeroIcon from '@/components/common/HeroIcon.vue'
-import ModelSwitcher from '@/components/dashboard/ModelSwitcher.vue'
-import PromptSelector from '@/components/dashboard/PromptSelector.vue'
+import { computed } from 'vue'
+import { NButton, NDivider } from 'naive-ui'
 import draggable from 'vuedraggable'
-import { ref, onMounted } from 'vue'
-import { useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
+import HeroIcon from '@/components/common/HeroIcon.vue'
 
 const props = defineProps({
   quickAccessCards: {
@@ -17,7 +14,6 @@ const props = defineProps({
 
 const emit = defineEmits(['update:quickAccessCards', 'reset-layout', 'show-supabase-modal'])
 
-const message = useMessage()
 const router = useRouter()
 
 // Local state for draggable to avoid mutating prop directly (though v-model on component works if set up right, 
@@ -28,23 +24,12 @@ const internalCards = computed({
   set: (value) => emit('update:quickAccessCards', value)
 })
 
-import { computed } from 'vue'
-
 const handleQuickAccessClick = (path) => {
   router.push(path)
 }
 
 const handleReset = () => {
   emit('reset-layout')
-}
-
-const handleModelChange = (modelId) => {
-    // Handled in parent or global store usually, but we log for now
-    console.log('Model changed:', modelId)
-}
-
-const handlePromptChange = (promptId) => {
-    console.log('Prompt changed:', promptId)
 }
 
 </script>
@@ -86,17 +71,6 @@ const handlePromptChange = (promptId) => {
              </div>
           </template>
         </draggable>
-      </div>
-    </div>
-
-    <NDivider />
-
-    <!-- AI Configuration Section -->
-    <div class="section mb-6">
-      <h3 class="text-sm font-semibold opacity-70 uppercase tracking-wider mb-3">AI 配置</h3>
-      <div class="space-y-4">
-        <ModelSwitcher :compact="false" @change="handleModelChange" />
-        <PromptSelector :compact="false" @change="handlePromptChange" />
       </div>
     </div>
 

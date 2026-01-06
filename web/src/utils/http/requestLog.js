@@ -115,6 +115,19 @@ export function requestLogIsEnabled() {
   return Boolean(store?.enabled)
 }
 
+export function requestLogPersistIsEnabled() {
+  const store = getRequestLogStoreSafe()
+  return Boolean(store?.persistEnabled)
+}
+
+export function requestLogGet(id) {
+  if (!id) return null
+  const store = getRequestLogStoreSafe()
+  if (!store) return null
+  const list = Array.isArray(store.items) ? store.items : []
+  return list.find((it) => it?.id === id) || null
+}
+
 export function requestLogBegin({ kind, method, url, requestId, request }) {
   const store = getRequestLogStoreSafe()
   if (!store || !store.enabled) return null

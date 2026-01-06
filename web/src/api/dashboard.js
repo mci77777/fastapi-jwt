@@ -203,24 +203,41 @@ export function getSystemMetrics() {
  * @returns {Object} 解析后的指标对象
  */
 export function parsePrometheusMetrics(text) {
-  const lines = text.split('\n')
+  const lines = String(text || '').split('\n')
   const metrics = {}
 
-  lines.forEach((line) => {
-    // 跳过注释和空行
-    if (line.startsWith('#') || !line.trim()) return
+  const parseValue = (raw) => {
+    const v = String(raw || '').trim()
+    if (!v) return null
+    const lower = v.toLowerCase()
+    if (lower === '+inf' || lower === 'inf') return Number.POSITIVE_INFINITY
+    if (lower === '-inf') return Number.NEGATIVE_INFINITY
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
 
-    // 匹配指标行：metric_name{labels} value
-    // 或：metric_name value
-    const match = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)\s+([0-9.eE+-]+)/)
-    if (match) {
-      const [, key, value] = match
-      // 累加同名指标（处理带标签的多行指标）
-      if (metrics[key]) {
-        metrics[key] += parseFloat(value)
-      } else {
-        metrics[key] = parseFloat(value)
-      }
+  lines.forEach((line) => {
+    const trimmed = String(line || '').trim()
+    if (!trimmed || trimmed.startsWith('#')) return
+
+    // 匹配指标行：
+    // - metric_name value
+    // - metric_name{labels} value
+    const match = trimmed.match(
+      /^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{([^}]*)\})?\s+([0-9.eE+-]+|[+-]?Inf)\s*$/
+    )
+    if (!match) return
+
+    const [, name, labelBody, valueRaw] = match
+    const value = parseValue(valueRaw)
+    if (value === null) return
+
+    // 1) 聚合：按指标名累加（兼容带标签的多行指标）
+    metrics[name] = (metrics[name] || 0) + value
+
+    // 2) 明细：保留带 labels 的原始 series key，供直方图/分组解析使用
+    if (typeof labelBody === 'string' && labelBody.trim()) {
+      metrics[`${name}{${labelBody}}`] = value
     }
   })
 

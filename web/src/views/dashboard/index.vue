@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { useMessage, NModal, NCard, NSpace, NText } from 'naive-ui'
+import { useMessage, NModal } from 'naive-ui'
 import { getToken } from '@/utils'
 
 // Dashboard Components
@@ -13,6 +13,8 @@ import StatDetailModal from '@/components/dashboard/StatDetailModal.vue'
 import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
 import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
 import ModelObservabilityCard from '@/components/dashboard/ModelObservabilityCard.vue'
+import ModelSwitcher from '@/components/dashboard/ModelSwitcher.vue'
+import PromptSelector from '@/components/dashboard/PromptSelector.vue'
 
 // Dashboard API
 import {
@@ -265,22 +267,10 @@ async function loadRecentLogs() {
 async function loadChartData() {
   try {
     const response = await getDailyActiveUsers({ time_window: chartTimeRange.value })
-    // Check if response has data property (standard response format) or is direct array
-    let data = response
-    if (response.data && Array.isArray(response.data)) {
-        data = response.data
-    } else if (response.data && typeof response.data === 'object' && response.data.data) {
-        // Handle cases where might be nested like { code: 200, data: [...] }
-        data = response.data
-    }
-    
-    // Ensure data is array of numbers as expected by chart
-    if (Array.isArray(data)) {
-         chartData.value = data
-    } else {
-         chartData.value = []
-    }
-    
+
+    const payload = response?.data && typeof response.data === 'object' ? response.data : response
+    const series = Array.isArray(payload?.series) ? payload.series : []
+    chartData.value = series
   } catch (error) {
     console.error('Failed to load chart data:', error)
     chartData.value = []
@@ -479,6 +469,16 @@ onBeforeUnmount(() => {
     <div class="main-grid">
        <!-- Left: Monitoring Panel (75%) -->
        <div class="monitor-area">
+          <div class="glass-panel main-controls">
+            <div class="controls-header">
+              <div class="controls-title">核心配置</div>
+              <div class="controls-subtitle">AI 供应商 / 映射模型 / Prompt</div>
+            </div>
+            <div class="controls-grid">
+              <ModelSwitcher :compact="false" />
+              <PromptSelector :compact="false" />
+            </div>
+          </div>
           <MonitorPanel 
             :chart-data="chartData"
             :chart-time-range="chartTimeRange"
@@ -544,6 +544,44 @@ onBeforeUnmount(() => {
       radial-gradient(at 100% 0%, rgba(255, 220, 200, 0.3) 0px, transparent 50%);
 }
 
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.main-controls {
+  padding: 16px;
+}
+
+.controls-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.controls-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--claude-black);
+}
+
+.controls-subtitle {
+  font-size: 12px;
+  color: var(--claude-text-gray);
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
 .main-grid {
   display: grid;
   grid-template-columns: 3fr 1fr;
@@ -554,6 +592,9 @@ onBeforeUnmount(() => {
 /* Response Layout */
 @media (max-width: 1200px) {
   .main-grid {
+    grid-template-columns: 1fr;
+  }
+  .controls-grid {
     grid-template-columns: 1fr;
   }
 }

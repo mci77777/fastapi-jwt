@@ -294,7 +294,7 @@ class AIConfigService:
                 latency_ms, last_checked_at, last_error,
                 sync_status, last_synced_at, resolved_endpoints,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 payload["name"],
@@ -585,14 +585,39 @@ class AIConfigService:
                         status_value = "offline"
                         error_text = f"chat_probe_unexpected_status={response.status_code} url={chat_url}"
 
+                    fetched: list[str] = []
+                    try:
+                        models_resp = await client.get(models_url, headers=base_headers)
+                        if models_resp.status_code == 200:
+                            payload = models_resp.json()
+                            items: list[Any]
+                            if isinstance(payload, dict):
+                                items = payload.get("data") or payload.get("models") or payload.get("items") or []
+                            elif isinstance(payload, list):
+                                items = payload
+                            else:
+                                items = []
+                            for item in items:
+                                if isinstance(item, dict) and "id" in item:
+                                    fetched.append(str(item["id"]))
+                                elif isinstance(item, str):
+                                    fetched.append(item)
+                    except Exception:
+                        fetched = []
+
                     configured_model = str(endpoint.get("model") or "").strip()
-                    merged = []
-                    if configured_model:
-                        merged.append(configured_model)
-                    merged.extend(model_ids)
-                    merged.extend(list(_PERPLEXITY_STATIC_MODEL_LIST))
-                    seen: set[str] = set()
-                    model_ids = [item for item in merged if item and not (item in seen or seen.add(item))]
+                    if fetched:
+                        model_ids = fetched
+                        if configured_model and configured_model not in model_ids:
+                            model_ids = [configured_model] + model_ids
+                    else:
+                        merged = []
+                        if configured_model:
+                            merged.append(configured_model)
+                        merged.extend(model_ids)
+                        merged.extend(list(_PERPLEXITY_STATIC_MODEL_LIST))
+                        seen: set[str] = set()
+                        model_ids = [item for item in merged if item and not (item in seen or seen.add(item))]
                 else:
                     configured_protocol = str(endpoint.get("provider_protocol") or "").strip().lower()
                     if configured_protocol not in _SUPPORTED_PROVIDER_PROTOCOLS:

@@ -10,12 +10,16 @@
       />
     </template>
 
-    <div ref="chartRef" class="chart-container" :class="{ 'chart-loading': loading }"></div>
+    <div ref="chartRef" class="chart-container" :class="{ 'chart-loading': loading }">
+      <div v-if="showEmpty" class="chart-empty">
+        {{ emptyText }}
+      </div>
+    </div>
   </NCard>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { NCard, NSelect } from 'naive-ui'
 import * as echarts from 'echarts'
 
@@ -42,6 +46,16 @@ const emit = defineEmits(['time-range-change'])
 // 响应式引用
 const chartRef = ref(null)
 const currentTimeRange = ref(props.timeRange)
+
+const showEmpty = computed(() => {
+  return !props.loading && (!Array.isArray(props.data) || props.data.length === 0)
+})
+
+const emptyText = computed(() => {
+  if (props.loading) return ''
+  if (currentTimeRange.value !== '7d') return '当前仅支持按天统计（7d）'
+  return '暂无活跃数据'
+})
 
 // ECharts 实例
 let chartInstance = null
@@ -256,12 +270,26 @@ onBeforeUnmount(() => {
 }
 
 .chart-container {
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 300px;
   border-radius: var(--radius-md);
   /* 淡淡的边框 - remove or make subtle */
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--claude-text-gray);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: 12px;
+  pointer-events: none;
 }
 
 .chart-loading {

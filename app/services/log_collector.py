@@ -30,6 +30,7 @@ class LogHandler(logging.Handler):
                     "level": record.levelname,
                     "level_num": record.levelno,
                     "user_id": getattr(record, "user_id", None),
+                    "request_id": getattr(record, "request_id", None),
                     "message": record.getMessage(),
                     "module": record.module,
                     "function": record.funcName,
@@ -52,7 +53,19 @@ class LogCollector:
         """
         self.logs: deque = deque(maxlen=max_size)
         self.handler = LogHandler(self.logs)
-        self.handler.setLevel(logging.WARNING)  # 只收集 WARNING 及以上级别
+        self.handler.setLevel(logging.INFO)  # 收集 INFO+，由查询接口再做过滤
+
+        class _RequestIdFilter(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:  # type: ignore[override]
+                try:
+                    from app.core.middleware import get_current_request_id
+
+                    record.request_id = get_current_request_id()
+                except Exception:
+                    record.request_id = None
+                return True
+
+        self.handler.addFilter(_RequestIdFilter())
 
         # 注册到根 logger
         root_logger = logging.getLogger()

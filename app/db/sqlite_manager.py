@@ -133,6 +133,25 @@ CREATE INDEX IF NOT EXISTS idx_conversation_logs_created ON conversation_logs(cr
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_user ON conversation_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_status ON conversation_logs(status);
 
+-- Web Dashboard 请求日志（前端脱敏后的 request/response raw 记录，默认不写入；由开关控制）
+CREATE TABLE IF NOT EXISTS request_raw_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT,
+    request_id TEXT,
+    kind TEXT,
+    method TEXT,
+    url TEXT,
+    status TEXT,
+    duration_ms REAL,
+    request_raw TEXT,
+    response_raw TEXT,
+    error TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_request_raw_logs_created ON request_raw_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_request_raw_logs_request_id ON request_raw_logs(request_id);
+
 -- 本地 Dashboard 账号（仅用于本地 admin 登录与改密；不与 Supabase 用户混用）
 CREATE TABLE IF NOT EXISTS local_users (
     username TEXT PRIMARY KEY,
@@ -459,6 +478,100 @@ class SQLiteManager:
                 (json.dumps(merged, ensure_ascii=False), record_id),
             )
             await self._conn.commit()
+
+    async def log_request_raw(
+        self,
+        *,
+        user_id: str | None,
+        request_id: str | None,
+        kind: str | None,
+        method: str | None,
+        url: str | None,
+        status: str | None,
+        duration_ms: float | int | None,
+        request_raw: str | None,
+        response_raw: str | None,
+        error: str | None,
+        retention_limit: int = 2000,
+    ) -> None:
+        """记录 Web Dashboard 请求日志（循环缓冲区）。"""
+        if self._conn is None:
+            raise RuntimeError("SQLiteManager has not been initialised.")
+
+        limit = int(retention_limit or 0)
+        limit = max(10, min(20000, limit))
+
+        async with self._lock:
+            await self._conn.execute(
+                """
+                INSERT INTO request_raw_logs
+                (user_id, request_id, kind, method, url, status, duration_ms, request_raw, response_raw, error)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    request_id,
+                    kind,
+                    method,
+                    url,
+                    status,
+                    float(duration_ms) if duration_ms is not None else None,
+                    request_raw,
+                    response_raw,
+                    error,
+                ),
+            )
+
+            await self._conn.execute(
+                """
+                DELETE FROM request_raw_logs
+                WHERE id NOT IN (
+                    SELECT id FROM request_raw_logs
+                    ORDER BY id DESC
+                    LIMIT ?
+                )
+                """,
+                (limit,),
+            )
+
+            await self._conn.commit()
+
+    async def get_request_raw_logs(self, limit: int = 200) -> list[dict[str, Any]]:
+        """获取最近的请求日志。"""
+        if self._conn is None:
+            raise RuntimeError("SQLiteManager has not been initialised.")
+
+        safe_limit = int(limit or 0)
+        safe_limit = max(1, min(2000, safe_limit))
+
+        async with self._lock:
+            cursor = await self._conn.execute(
+                """
+                SELECT id, user_id, request_id, kind, method, url, status, duration_ms,
+                       request_raw, response_raw, error, created_at
+                FROM request_raw_logs
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+        return [dict(row) for row in rows]
+
+    async def clear_request_raw_logs(self) -> int:
+        """清空请求日志（返回删除条数）。"""
+        if self._conn is None:
+            raise RuntimeError("SQLiteManager has not been initialised.")
+
+        async with self._lock:
+            cursor = await self._conn.execute("SELECT COUNT(1) as total FROM request_raw_logs")
+            row = await cursor.fetchone()
+            await cursor.close()
+            total = int(row["total"] or 0) if row else 0
+            await self._conn.execute("DELETE FROM request_raw_logs")
+            await self._conn.commit()
+        return total
 
     async def _ensure_columns(self, table: str, ddl_map: dict[str, str]) -> None:
         if not ddl_map:

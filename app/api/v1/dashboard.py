@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
 from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
+from app.db import get_sqlite_manager
 from app.auth.jwt_verifier import get_jwt_verifier
 from app.log import logger
 from app.services.dashboard_broker import DashboardBroker
@@ -162,6 +163,22 @@ class LogEntry(BaseModel):
     module: str = Field(..., description="模块名")
     function: str = Field(..., description="函数名")
     line: int = Field(..., description="行号")
+    request_id: Optional[str] = Field(None, description="请求链路 ID（X-Request-Id）")
+
+
+class RequestRawLogIn(BaseModel):
+    """前端请求 raw 日志（脱敏后）。"""
+
+    request_id: Optional[str] = Field(None, max_length=128)
+    kind: Optional[str] = Field(None, max_length=32)
+    method: Optional[str] = Field(None, max_length=16)
+    url: Optional[str] = Field(None, max_length=2048)
+    status: Optional[str] = Field(None, max_length=32)
+    duration_ms: Optional[int] = Field(None, ge=0, le=60_000)
+    request_raw: Optional[str] = Field(None, max_length=50_000)
+    response_raw: Optional[str] = Field(None, max_length=50_000)
+    error: Optional[str] = Field(None, max_length=50_000)
+    created_at: Optional[str] = Field(None, max_length=64)
 
 
 @router.get("/stats/dashboard")
@@ -203,7 +220,18 @@ async def get_daily_active_users(
     """
     collector: MetricsCollector = request.app.state.metrics_collector
     count = await collector._get_daily_active_users(time_window)
-    return {"time_window": time_window, "count": count}
+
+    series: list[int] = []
+    if time_window == "7d":
+        # 当前仅支持按天粒度序列，避免在 1h/24h 下渲染伪造曲线。
+        series = await collector.get_daily_active_users_series(days=7)
+
+    return {
+        "time_window": time_window,
+        "count": count,
+        "granularity": "day" if series else None,
+        "series": series,
+    }
 
 
 @router.get("/stats/ai-requests")
@@ -291,6 +319,71 @@ async def get_recent_logs(
     log_collector: LogCollector = request.app.state.log_collector
     logs = log_collector.get_recent_logs(level=level, limit=limit)
     return {"code": 200, "data": {"level": level, "limit": limit, "count": len(logs), "logs": logs}, "msg": "success"}
+
+
+@router.post("/logs/request")
+async def create_request_raw_log(
+    request: Request,
+    payload: RequestRawLogIn,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """写入前端请求 raw 日志到 SQLite（由前端开关控制是否上报）。"""
+    if current_user.user_type == "anonymous":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "forbidden", "message": "Anonymous users cannot write request logs"},
+        )
+
+    db = get_sqlite_manager(request.app)
+    await db.log_request_raw(
+        user_id=current_user.uid,
+        request_id=payload.request_id,
+        kind=payload.kind,
+        method=payload.method,
+        url=payload.url,
+        status=payload.status,
+        duration_ms=payload.duration_ms,
+        request_raw=payload.request_raw,
+        response_raw=payload.response_raw,
+        error=payload.error,
+    )
+
+    return {"code": 200, "data": {"written": True}, "msg": "success"}
+
+
+@router.get("/logs/request")
+async def list_request_raw_logs(
+    request: Request,
+    limit: int = Query(200, ge=1, le=2000, description="最大返回条数"),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """读取 SQLite 中的前端请求 raw 日志。"""
+    if current_user.user_type == "anonymous":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "forbidden", "message": "Anonymous users cannot access request logs"},
+        )
+
+    db = get_sqlite_manager(request.app)
+    items = await db.get_request_raw_logs(limit=limit)
+    return {"code": 200, "data": {"count": len(items), "items": items}, "msg": "success"}
+
+
+@router.delete("/logs/request")
+async def clear_request_raw_logs(
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """清空 SQLite 中的前端请求 raw 日志。"""
+    if current_user.user_type == "anonymous":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "forbidden", "message": "Anonymous users cannot clear request logs"},
+        )
+
+    db = get_sqlite_manager(request.app)
+    deleted = await db.clear_request_raw_logs()
+    return {"code": 200, "data": {"deleted": deleted}, "msg": "success"}
 
 
 # ============================================================================

@@ -1,7 +1,7 @@
 import { getRefreshToken, getToken, removeToken, setRefreshToken, setToken } from '@/utils'
 import { resolveResError } from './helpers'
 import { supabaseRefreshSession } from '@/utils/supabase/auth'
-import { requestLogBegin, requestLogFinish } from './requestLog'
+import { requestLogBegin, requestLogFinish, requestLogGet, requestLogPersistIsEnabled } from './requestLog'
 
 // Token 刷新状态管理
 let isRefreshing = false
@@ -39,6 +39,51 @@ function resolveAxiosUrl(config) {
   if (/^https?:\/\//i.test(rawUrl)) return rawUrl
   if (!baseURL) return rawUrl
   return `${baseURL.replace(/\/+$/, '')}/${rawUrl.replace(/^\/+/, '')}`
+}
+
+function resolveBaseApiUrl(path) {
+  const rawBaseApi = import.meta.env.VITE_BASE_API || '/api/v1'
+  const baseApi = String(rawBaseApi || '').trim().replace(/\/+$/, '')
+  const cleanPath = String(path || '').trim().replace(/^\/+/, '')
+  if (!baseApi) return `/${cleanPath}`
+  if (/^https?:\/\//i.test(baseApi)) return `${baseApi}/${cleanPath}`
+  return `${baseApi}/${cleanPath}`
+}
+
+async function persistRequestLogToSqlite(entry) {
+  try {
+    if (!entry) return
+    if (!requestLogPersistIsEnabled()) return
+
+    const token = getToken()
+    if (!token) return
+
+    const url = resolveBaseApiUrl('logs/request')
+    const payload = {
+      request_id: entry.request_id || null,
+      kind: entry.kind || null,
+      method: entry.method || null,
+      url: entry.url || null,
+      status: entry.status || null,
+      duration_ms: entry.duration_ms ?? null,
+      request_raw: entry.request_raw || null,
+      response_raw: entry.response_raw || null,
+      error: entry.error || null,
+      created_at: entry.created_at || null,
+    }
+
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...(entry.request_id ? { 'X-Request-Id': String(entry.request_id) } : {}),
+      },
+      body: JSON.stringify(payload),
+    })
+  } catch {
+    // 不阻塞主流程
+  }
 }
 
 /**
@@ -116,6 +161,7 @@ async function refreshToken() {
 
 export async function reqResolve(config) {
   const startAt = Date.now()
+  const skipRequestLog = Boolean(config?.skipRequestLog)
   // 处理不需要token的请求
   if (config.noNeedToken) {
     // SSOT：统一透传请求追踪 Header（X-Request-Id）。
@@ -123,14 +169,16 @@ export async function reqResolve(config) {
     const requestId = getOrCreateRequestId(config.headers)
     writeHeader(config.headers, 'X-Request-Id', requestId)
 
-    const logId = requestLogBegin({
-      kind: 'axios',
-      method: config.method,
-      url: resolveAxiosUrl(config),
-      requestId,
-      request: { headers: config.headers, params: config.params, body: config.data },
-    })
-    config.__gymbro_request_log = { id: logId, startAt, requestId }
+    if (!skipRequestLog) {
+      const logId = requestLogBegin({
+        kind: 'axios',
+        method: config.method,
+        url: resolveAxiosUrl(config),
+        requestId,
+        request: { headers: config.headers, params: config.params, body: config.data },
+      })
+      config.__gymbro_request_log = { id: logId, startAt, requestId }
+    }
     return config
   }
 
@@ -141,14 +189,16 @@ export async function reqResolve(config) {
   const requestId = getOrCreateRequestId(config.headers)
   writeHeader(config.headers, 'X-Request-Id', requestId)
 
-  const logId = requestLogBegin({
-    kind: 'axios',
-    method: config.method,
-    url: resolveAxiosUrl(config),
-    requestId,
-    request: { headers: config.headers, params: config.params, body: config.data },
-  })
-  config.__gymbro_request_log = { id: logId, startAt, requestId }
+  if (!skipRequestLog) {
+    const logId = requestLogBegin({
+      kind: 'axios',
+      method: config.method,
+      url: resolveAxiosUrl(config),
+      requestId,
+      request: { headers: config.headers, params: config.params, body: config.data },
+    })
+    config.__gymbro_request_log = { id: logId, startAt, requestId }
+  }
 
   // 允许调用方显式覆盖 Authorization（用于 JWT 测试等场景，避免污染全局登录态）
   const explicitAuth = readHeader(config.headers, 'Authorization') || readHeader(config.headers, 'authorization')
@@ -220,6 +270,8 @@ export function resResolve(response) {
       response: { status, statusText, headers: response?.headers, body: data },
       error: null,
     })
+    const entry = requestLogGet(meta.id)
+    if (entry) void persistRequestLogToSqlite(entry)
   }
 
   if (data === null || data === undefined) {
@@ -263,6 +315,8 @@ export async function resReject(error) {
         response: null,
         error: { message: error?.message || 'Request failed', code: error?.code || null },
       })
+      const entry = requestLogGet(meta.id)
+      if (entry) void persistRequestLogToSqlite(entry)
     }
     const code = error?.code
     /** 根据code处理对应的操作，并返回处理后的message */
@@ -287,6 +341,8 @@ export async function resReject(error) {
       },
       error: { message: error?.message || 'Request failed', code: status },
     })
+    const entry = requestLogGet(meta.id)
+    if (entry) void persistRequestLogToSqlite(entry)
   }
 
   // 修复：检查 HTTP 状态码 401（Token 过期）

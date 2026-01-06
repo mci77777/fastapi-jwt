@@ -4,6 +4,7 @@ import { lStorage } from '@/utils'
 const STORAGE_KEYS = {
   enabled: 'request_log_enabled',
   retentionSize: 'request_log_retention_size',
+  persistEnabled: 'request_log_persist_enabled',
 }
 
 function readBool(key, fallback) {
@@ -28,6 +29,7 @@ export const useRequestLogStore = defineStore('requestLog', {
     return {
       enabled: readBool(STORAGE_KEYS.enabled, false),
       retentionSize: readNumber(STORAGE_KEYS.retentionSize, 200),
+      persistEnabled: readBool(STORAGE_KEYS.persistEnabled, false),
       items: [],
     }
   },
@@ -35,6 +37,10 @@ export const useRequestLogStore = defineStore('requestLog', {
     setEnabled(enabled) {
       this.enabled = Boolean(enabled)
       lStorage.set(STORAGE_KEYS.enabled, this.enabled)
+    },
+    setPersistEnabled(enabled) {
+      this.persistEnabled = Boolean(enabled)
+      lStorage.set(STORAGE_KEYS.persistEnabled, this.persistEnabled)
     },
     setRetentionSize(size) {
       const next = Math.max(10, Math.min(1000, Number(size) || 200))
@@ -71,4 +77,3 @@ export const useRequestLogStore = defineStore('requestLog', {
     },
   },
 })
-

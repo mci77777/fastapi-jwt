@@ -61,6 +61,50 @@ class MetricsCollector:
         )
         return result["total"] if result else 0
 
+    async def get_daily_active_users_series(self, days: int = 7) -> list[int]:
+        """获取最近 N 天的日活用户数序列（按天粒度）。
+
+        说明：当前仅在 Dashboard 图表使用，避免伪造 1h/24h 小时级曲线。
+        返回长度为 days+1（包含今天）。
+        """
+        try:
+            days_int = int(days or 0)
+        except Exception:
+            days_int = 0
+
+        if days_int <= 0:
+            return []
+
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=days_int)
+
+        rows = await self._db.fetchall(
+            """
+            SELECT activity_date, COUNT(DISTINCT user_id) as total
+            FROM user_activity_stats
+            WHERE activity_date >= ?
+            GROUP BY activity_date
+            ORDER BY activity_date ASC
+        """,
+            [start_date.isoformat()],
+        )
+
+        by_date: dict[str, int] = {}
+        for row in rows:
+            date_key = row.get("activity_date")
+            if not date_key:
+                continue
+            try:
+                by_date[str(date_key)] = int(row.get("total") or 0)
+            except Exception:
+                by_date[str(date_key)] = 0
+
+        values: list[int] = []
+        for i in range(days_int, -1, -1):
+            d = (end_date - timedelta(days=i)).isoformat()
+            values.append(int(by_date.get(d, 0)))
+        return values
+
     async def _get_ai_requests(self, time_window: str) -> Dict[str, Any]:
         """查询 AI 请求统计。
 

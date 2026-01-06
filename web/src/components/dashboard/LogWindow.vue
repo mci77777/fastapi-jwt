@@ -9,13 +9,22 @@
           style="width: 120px"
           @update:value="handleLevelChange"
         />
+        <div class="system-actions">
+          <span class="request-actions-label">详细</span>
+          <NSwitch v-model:value="systemDetailEnabled" size="small" />
+        </div>
       </div>
-      <div v-else class="header-actions">
-        <div class="request-actions">
-          <span class="request-actions-label">请求日志</span>
-          <NSwitch v-model:value="requestLogEnabledModel" size="small" />
-          <span class="request-actions-label">保留</span>
-          <NInputNumber
+        <div v-else class="header-actions">
+          <div class="request-actions">
+            <span class="request-actions-label">请求日志</span>
+            <NSwitch v-model:value="requestLogEnabledModel" size="small" />
+            <span class="request-actions-label">SQLite</span>
+            <NSwitch v-model:value="requestLogPersistEnabledModel" size="small" />
+            <NButton text size="small" :loading="sqliteLoading" @click="handleRequestLogSync">拉取</NButton>
+            <span class="request-actions-label">详情</span>
+            <NSwitch v-model:value="requestDetailEnabled" size="small" />
+            <span class="request-actions-label">保留</span>
+            <NInputNumber
             v-model:value="requestLogRetentionSizeModel"
             size="small"
             style="width: 110px"
@@ -23,7 +32,7 @@
             :max="1000"
             :step="10"
           />
-          <NButton text size="small" @click="handleRequestLogClear">清空</NButton>
+          <NButton text size="small" :loading="sqliteLoading" @click="handleRequestLogClear">清空</NButton>
         </div>
       </div>
     </template>
@@ -49,7 +58,12 @@
                 <span class="log-time">{{ formatTime(log.timestamp) }}</span>
               </div>
               <div class="log-message">{{ log.message }}</div>
-              <div v-if="log.user_id" class="log-user">用户: {{ log.user_id }}</div>
+              <div v-if="systemDetailEnabled" class="log-detail">
+                <span class="log-meta">{{ log.module }}.{{ log.function }}:{{ log.line }}</span>
+                <span v-if="log.request_id" class="log-meta">request_id: {{ log.request_id }}</span>
+                <span v-if="log.user_id" class="log-meta">user: {{ log.user_id }}</span>
+              </div>
+              <div v-if="log.user_id && !systemDetailEnabled" class="log-user">用户: {{ log.user_id }}</div>
             </div>
           </div>
         </div>
@@ -66,7 +80,7 @@
               v-for="item in requestLogItems"
               :key="item.id"
               class="log-item request-log-item"
-              @click="toggleRequestLogExpand(item.id)"
+              @click="handleRequestLogClick(item.id)"
             >
               <div class="log-header">
                 <div class="request-tags">
@@ -88,7 +102,7 @@
               <div class="request-url">{{ item.url }}</div>
               <div v-if="item.request_id" class="log-user">request_id: {{ item.request_id }}</div>
 
-              <div v-if="isRequestLogExpanded(item.id)" class="request-raw">
+              <div v-if="requestDetailEnabled && isRequestLogExpanded(item.id)" class="request-raw">
                 <div v-if="item.request_raw" class="raw-section">
                   <div class="raw-title">Request</div>
                   <pre class="raw-block">{{ item.request_raw }}</pre>
@@ -130,6 +144,7 @@
 import { ref, computed } from 'vue'
 import { NCard, NTag, NSelect, NButton, NInputNumber, NSwitch, NTabs, NTabPane, useMessage } from 'naive-ui'
 import { useRequestLogStore } from '@/store'
+import { getToken } from '@/utils'
 
 defineOptions({ name: 'LogWindow' })
 
@@ -149,6 +164,8 @@ const emit = defineEmits(['log-click', 'filter-change', 'refresh'])
 const message = useMessage()
 
 const activeTab = ref('system')
+const systemDetailEnabled = ref(false)
+const requestDetailEnabled = ref(true)
 
 // 当前选中的日志级别
 const currentLevel = ref('WARNING')
@@ -191,6 +208,19 @@ const requestLogEnabledModel = computed({
   },
 })
 
+const requestLogPersistEnabledModel = computed({
+  get() {
+    return requestLogStore.persistEnabled
+  },
+  set(val) {
+    const enabled = Boolean(val)
+    requestLogStore.setPersistEnabled(enabled)
+    if (enabled && !requestLogStore.enabled) {
+      requestLogStore.setEnabled(true)
+    }
+  },
+})
+
 const requestLogRetentionSizeModel = computed({
   get() {
     return requestLogStore.retentionSize
@@ -202,6 +232,16 @@ const requestLogRetentionSizeModel = computed({
 
 const requestLogItems = computed(() => requestLogStore.items || [])
 const expandedRequestLogIds = ref([])
+const sqliteLoading = ref(false)
+
+function resolveBaseApiUrl(path) {
+  const rawBaseApi = import.meta.env.VITE_BASE_API || '/api/v1'
+  const baseApi = String(rawBaseApi || '').trim().replace(/\/+$/, '')
+  const cleanPath = String(path || '').trim().replace(/^\/+/, '')
+  if (!baseApi) return `/${cleanPath}`
+  if (/^https?:\/\//i.test(baseApi)) return `${baseApi}/${cleanPath}`
+  return `${baseApi}/${cleanPath}`
+}
 
 function toggleRequestLogExpand(id) {
   if (!id) return
@@ -215,6 +255,11 @@ function toggleRequestLogExpand(id) {
 
 function isRequestLogExpanded(id) {
   return (expandedRequestLogIds.value || []).includes(id)
+}
+
+function handleRequestLogClick(id) {
+  if (!requestDetailEnabled.value) return
+  toggleRequestLogExpand(id)
 }
 
 function formatRequestStatus(status) {
@@ -237,9 +282,75 @@ function getRequestStatusTagType(status) {
 }
 
 function handleRequestLogClear() {
-  requestLogStore.clear()
-  expandedRequestLogIds.value = []
-  message.success('请求日志已清空')
+  const clearLocal = () => {
+    requestLogStore.clear()
+    expandedRequestLogIds.value = []
+  }
+
+  if (!requestLogPersistEnabledModel.value) {
+    clearLocal()
+    message.success('请求日志已清空')
+    return
+  }
+
+  sqliteLoading.value = true
+  fetch(resolveBaseApiUrl('logs/request'), {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${getToken()}` },
+  })
+    .then(async (resp) => {
+      const json = await resp.json().catch(() => null)
+      if (!resp.ok) throw json || new Error('清空失败')
+      clearLocal()
+      message.success('请求日志已清空（含 SQLite）')
+    })
+    .catch(() => {
+      message.error('清空 SQLite 请求日志失败')
+      clearLocal()
+    })
+    .finally(() => {
+      sqliteLoading.value = false
+    })
+}
+
+function handleRequestLogSync() {
+  sqliteLoading.value = true
+  const token = getToken()
+  fetch(resolveBaseApiUrl(`logs/request?limit=${requestLogRetentionSizeModel.value || 200}`), {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+    .then(async (resp) => {
+      const json = await resp.json().catch(() => null)
+      if (!resp.ok) throw json || new Error('拉取失败')
+
+      const payload = json?.data && typeof json.data === 'object' ? json.data : json
+      const items = Array.isArray(payload?.items) ? payload.items : []
+
+      requestLogStore.clear()
+      expandedRequestLogIds.value = []
+      items.forEach((it) => {
+        requestLogStore.append({
+          id: `db-${it?.id}`,
+          kind: it?.kind || 'sqlite',
+          status: it?.status || 'unknown',
+          method: it?.method || '',
+          url: it?.url || '',
+          request_id: it?.request_id || null,
+          created_at: it?.created_at || null,
+          duration_ms: it?.duration_ms ?? null,
+          request_raw: it?.request_raw || '',
+          response_raw: it?.response_raw || '',
+          error: it?.error || null,
+        })
+      })
+      message.success('已从 SQLite 拉取请求日志')
+    })
+    .catch(() => {
+      message.error('拉取 SQLite 请求日志失败')
+    })
+    .finally(() => {
+      sqliteLoading.value = false
+    })
 }
 
 function handleRequestLogCopy(item) {
@@ -316,9 +427,14 @@ function formatTime(timestamp) {
  * 点击日志项（复制到剪贴板）
  */
 function handleLogClick(log) {
-  const logText = `[${log.level}] ${log.timestamp}\n${log.message}${
-    log.user_id ? `\n用户: ${log.user_id}` : ''
-  }`
+  const logText = [
+    `[${log.level}] ${log.timestamp}`,
+    log.request_id ? `request_id: ${log.request_id}` : '',
+    log.message,
+    log.user_id ? `用户: ${log.user_id}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
 
   navigator.clipboard
     .writeText(logText)
@@ -369,6 +485,13 @@ function handleRefresh() {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.system-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 10px;
 }
 
 .request-actions-label {
@@ -537,6 +660,19 @@ function handleRefresh() {
   line-height: 1.5;
   word-break: break-word;
   font-weight: var(--font-weight-medium);
+}
+
+.log-detail {
+  margin-top: var(--spacing-xs);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.log-meta {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace);
+  font-size: 12px;
+  color: var(--claude-text-gray);
 }
 
 .log-user {
