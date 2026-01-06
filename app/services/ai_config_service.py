@@ -572,107 +572,112 @@ class AIConfigService:
                     seen: set[str] = set()
                     model_ids = [item for item in merged if item and not (item in seen or seen.add(item))]
                 else:
-                    for index, auth_headers in enumerate(auth_candidates):
-                        headers = dict(base_headers)
-                        headers.update(auth_headers)
-                        response = await client.get(models_url, headers=headers)
-                        latency_ms = (perf_counter() - start) * 1000
+                    base = normalize_ai_base_url(base_url_text)
+                    openai_models_url = models_url
+                    openai_chat_url = chat_url
+                    claude_models_url = f"{base}/v1/models" if base else "/v1/models"
+                    claude_messages_url = f"{base}/v1/messages" if base else "/v1/messages"
 
-                        if response.status_code != 401 or index >= len(auth_candidates) - 1:
-                            break
+                    async def _probe_route(url: str) -> int:
+                        probe_headers = dict(base_headers)
+                        probe_resp = await client.options(url, headers=probe_headers)
+                        if probe_resp.status_code == 404:
+                            # 兼容：部分上游仅实现 POST（GET/HEAD 返回 404），用空 JSON 做“路由存在性”探测。
+                            probe_resp = await client.post(url, headers=probe_headers, json={})
+                        return int(probe_resp.status_code)
 
-                        payload: object | None = None
-                        try:
-                            payload = response.json()
-                        except Exception:
-                            payload = None
-
-                        if not is_retryable_auth_error(response.status_code, payload):
-                            break
-
-                    if response is None:
-                        raise RuntimeError("upstream_no_response")
-                    # 兼容性：401/403/405/429 多数表示“可达但需要鉴权/限流”，不应判定为 offline。
-                    if response.status_code == 200:
-                        payload = response.json()
-                        items: list[Any]
-                        if isinstance(payload, dict):
-                            items = payload.get("data") or payload.get("models") or payload.get("items") or []
-                        elif isinstance(payload, list):
-                            items = payload
+                    # 协议兜底：默认按 OpenAI 语义探测/拉取，失败（404）再尝试 Claude(/v1/messages)。
+                    openai_probe_status = await _probe_route(openai_chat_url)
+                    protocol = "openai"
+                    if openai_probe_status == 404:
+                        claude_probe_status = await _probe_route(claude_messages_url)
+                        if claude_probe_status == 404:
+                            status_value = "offline"
+                            error_text = f"upstream_routes_not_found: openai={openai_chat_url} claude={claude_messages_url}"
                         else:
-                            items = []
-                        fetched: list[str] = []
-                        for item in items:
-                            if isinstance(item, dict) and "id" in item:
-                                fetched.append(str(item["id"]))
-                            elif isinstance(item, str):
-                                fetched.append(item)
-                        if fetched:
-                            model_ids = fetched
-                        status_value = "online"
-                    elif response.status_code == 404:
-                        # 兼容性：部分上游不提供 /models 列表，但仍支持 chat/completions。
-                        # 不应因此把端点判定为 offline；后续会通过 chat 路由探针兜底确认。
-                        status_value = "online"
-                        error_text = f"models_not_supported: {models_url}"
+                            protocol = "claude"
 
-                        configured_model = str(endpoint.get("model") or "").strip()
-                        if configured_model and configured_model not in model_ids:
-                            model_ids = [configured_model] + model_ids
-                    elif response.status_code in (401, 403, 405, 429):
-                        status_value = "online"
-                        detail = None
-                        try:
+                    if status_value != "offline" and protocol == "claude":
+                        headers = {
+                            "Content-Type": "application/json",
+                        }
+                        if api_key:
+                            headers["x-api-key"] = api_key
+                            headers["anthropic-version"] = "2023-06-01"
+                        response = await client.get(claude_models_url, headers=headers)
+                        latency_ms = (perf_counter() - start) * 1000
+                    elif status_value != "offline":
+                        for index, auth_headers in enumerate(auth_candidates):
+                            headers = dict(base_headers)
+                            headers.update(auth_headers)
+                            response = await client.get(openai_models_url, headers=headers)
+                            latency_ms = (perf_counter() - start) * 1000
+
+                            if response.status_code != 401 or index >= len(auth_candidates) - 1:
+                                break
+
+                            payload: object | None = None
+                            try:
+                                payload = response.json()
+                            except Exception:
+                                payload = None
+
+                            if not is_retryable_auth_error(response.status_code, payload):
+                                break
+
+                    if status_value == "offline":
+                        response = None
+
+                    if response is not None:
+                        # 兼容性：401/403/405/429 多数表示“可达但需要鉴权/限流”，不应判定为 offline。
+                        if response.status_code == 200:
                             payload = response.json()
+                            items: list[Any]
                             if isinstance(payload, dict):
-                                detail = payload.get("error") or payload.get("message")
-                        except Exception:
-                            detail = None
+                                items = payload.get("data") or payload.get("models") or payload.get("items") or []
+                            elif isinstance(payload, list):
+                                items = payload
+                            else:
+                                items = []
+                            fetched: list[str] = []
+                            for item in items:
+                                if isinstance(item, dict) and "id" in item:
+                                    fetched.append(str(item["id"]))
+                                elif isinstance(item, str):
+                                    fetched.append(item)
+                            if fetched:
+                                model_ids = fetched
+                            status_value = "online"
+                        elif response.status_code == 404:
+                            # 兼容性：部分上游不提供 /models 列表，但仍支持 chat/messages。
+                            status_value = "online"
+                            error_text = f"models_not_supported: {response.request.url}"
 
-                        suffix = ""
-                        if isinstance(detail, str) and detail.strip():
-                            safe_detail = detail.strip().replace("\n", " ")[:120]
-                            suffix = f" detail={safe_detail}"
-                        error_text = f"models_unavailable_status={response.status_code} url={models_url}{suffix}"
-                    else:
-                        status_value = "offline"
-                        error_text = f"models_unexpected_status={response.status_code} url={models_url}"
+                            configured_model = str(endpoint.get("model") or "").strip()
+                            if configured_model and configured_model not in model_ids:
+                                model_ids = [configured_model] + model_ids
+                        elif response.status_code in (401, 403, 405, 429):
+                            status_value = "online"
+                            detail = None
+                            try:
+                                payload = response.json()
+                                if isinstance(payload, dict):
+                                    detail = payload.get("error") or payload.get("message")
+                            except Exception:
+                                detail = None
+
+                            suffix = ""
+                            if isinstance(detail, str) and detail.strip():
+                                safe_detail = detail.strip().replace("\n", " ")[:120]
+                                suffix = f" detail={safe_detail}"
+                            error_text = f"models_unavailable_status={response.status_code} url={response.request.url}{suffix}"
+                        else:
+                            status_value = "offline"
+                            error_text = f"models_unexpected_status={response.status_code} url={response.request.url}"
         except httpx.HTTPError as exc:
             latency_ms = (perf_counter() - start) * 1000
             status_value = "offline"
             error_text = str(exc)
-
-        # 兼容性探针：/v1/models 可用不代表 /v1/chat/completions 可用（常见误配置：供应商不支持 chat 端点导致 404）。
-        # 这里用 GET 探测“路由是否存在”即可：405/401/403 视为存在；仅 404 视为不存在并标记 offline。
-        if status_value == "online" and not is_voyage and not is_perplexity:
-            name = str(endpoint.get("name") or "").lower()
-            base_url = str(endpoint.get("base_url") or "").lower()
-            is_claude = "anthropic" in base_url or "claude" in name or "anthropic" in name
-            if is_claude:
-                probe_url = f"{normalize_ai_base_url(str(endpoint.get('base_url') or ''))}/v1/messages"
-                not_found_reason = "anthropic_messages_not_found"
-            else:
-                probe_url = chat_url
-                not_found_reason = "chat_completions_not_found"
-
-            try:
-                async with httpx.AsyncClient(timeout=min(timeout, 5)) as client:
-                    probe_headers = {"Content-Type": "application/json"}
-                    # KISS：优先 OPTIONS 探测路由是否存在。
-                    # 说明：部分本地代理只实现 POST（GET/HEAD 返回 404 而不是 405），
-                    # 若用 GET 探针会误判 offline，导致端点无法进入白名单。
-                    probe_resp = await client.options(probe_url, headers=probe_headers)
-                    if probe_resp.status_code == 404:
-                        # 兼容回退：少数上游不支持 OPTIONS，此时再用 GET 探测一次。
-                        probe_resp = await client.get(probe_url, headers=probe_headers)
-
-                if probe_resp.status_code == 404:
-                    status_value = "offline"
-                    error_text = f"{not_found_reason}: {probe_url}"
-            except httpx.HTTPError as exc:
-                # 不因探针失败覆盖 models 结果；真实调用仍会兜底并写入 last_error
-                logger.debug("compat probe failed endpoint_id=%s error=%s", endpoint_id, exc)
 
         await self.update_endpoint(
             endpoint_id,

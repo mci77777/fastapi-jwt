@@ -155,7 +155,10 @@ async def list_ai_models(
     scope_key: Optional[str] = Query(default=None, description="映射 scope_key 过滤（view=mapped 生效）"),  # noqa: B008
     keyword: Optional[str] = Query(default=None, description="关键词"),  # noqa: B008
     only_active: Optional[bool] = Query(default=None, description="是否仅活跃"),  # noqa: B008
-    refresh_missing_models: bool = Query(default=False, description="是否刷新缺失的 model_list（会触发 /v1/models 探测）"),  # noqa: B008
+    refresh_missing_models: bool = Query(
+        default=False,
+        description="是否刷新缺失的 model_list（会触发上游 models 探测：OpenAI → Claude 兜底）",
+    ),  # noqa: B008
     page: int = Query(default=1, ge=1),  # noqa: B008
     page_size: int = Query(default=20, ge=1, le=100),  # noqa: B008
     debug: bool = Query(default=False, description="是否返回调试字段（仅 DEBUG=true 或管理员生效）"),  # noqa: B008
@@ -225,27 +228,18 @@ async def list_ai_models(
             and endpoint.get("has_api_key")
             and endpoint.get("is_active")
         ]
-        # KISS：限制并发与数量，避免一次页面加载阻塞太久
-        to_refresh = to_refresh[:10]
-        sem = asyncio.Semaphore(5)
-
-        async def _refresh_one(endpoint_id: int) -> None:
-            async with sem:
-                try:
-                    await service.refresh_endpoint_status(endpoint_id)
-                except Exception:
-                    # 不中断列表返回：失败信息会写入 last_error/status
-                    return
-
-        tasks = []
+        # KISS：避免 Dashboard 首屏“批量打爆上游”，每次请求最多刷新 1 个缺失项。
+        to_refresh = to_refresh[:1]
+        refreshed = False
         for ep in to_refresh:
             try:
-                tasks.append(asyncio.create_task(_refresh_one(int(ep["id"]))))
+                await service.refresh_endpoint_status(int(ep["id"]))
+                refreshed = True
             except Exception:
+                # 不中断列表返回：失败信息会写入 last_error/status
                 continue
 
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        if refreshed:
             items, total = await service.list_endpoints(
                 keyword=keyword,
                 only_active=only_active,
