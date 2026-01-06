@@ -23,7 +23,7 @@ BE-020,FastAPI：实现 GET /v1/me（Supabase JWT 认证 + entitlement 聚合）
 - 返回：uid/user_type(anonymous/permanent)、profile(最小)、entitlements(tier/expires_at/flags)、server_time
 - 对匿名：返回 minimal（不读取或读取匿名行按策略）。","1) /v1/me 在 Swagger 可见，schema 明确
 2) 未登录返回 401；登录返回 200 且字段齐全
-3) 返回内容不包含敏感字段（如 service key）",make test + 手动：curl /v1/me（带 token/不带 token）,feedback:codebase-retrieval,TODO,TODO,TODO,D:/GymBro/vue-fastapi-admin/app/api/v1/me.py; D:/GymBro/vue-fastapi-admin/app/core/application.py,BE-010,保持 KISS：/v1/me 仅做聚合，不做复杂写入；写入仍建议客户端直连 Supabase。,,,
+3) 返回内容不包含敏感字段（如 service key）",make test + 手动：curl /v1/me（带 token/不带 token）,feedback:codebase-retrieval,DONE,TODO,TODO,D:/GymBro/vue-fastapi-admin/app/api/v1/me.py; D:/GymBro/vue-fastapi-admin/app/core/application.py,BE-010,保持 KISS：/v1/me 仅做聚合，不做复杂写入；写入仍建议客户端直连 Supabase。 | started_at=2026-01-06T18:05:52+08:00 | 新增 /v1/me（JWT 认证 + anonymous minimal + Supabase bundle 聚合）；mobile_router 无 /api 前缀注册,,commit=BE-020: add /v1/me endpoint done_at=2026-01-06T18:07:03+08:00,BE-020: add /v1/me endpoint
 BE-030,FastAPI：新增 EntitlementGate（AI 端点门控）,"在 AI 相关端点（/v1/ai/* 或现有路径）增加门控：
 - anonymous：限制更严格（或禁止）
 - permanent：根据 entitlement_tier 允许不同模型/配额

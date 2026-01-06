@@ -11,6 +11,7 @@ from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api import api_router
+from app.api.mobile import mobile_router
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import RequestIDMiddleware
 from app.core.policy_gate import PolicyGateMiddleware
@@ -188,4 +189,5 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(api_router, prefix="/api")
+    app.include_router(mobile_router)
     return app
