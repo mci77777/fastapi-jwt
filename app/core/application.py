@@ -25,6 +25,7 @@ from app.services.log_collector import LogCollector
 from app.services.metrics_collector import MetricsCollector
 from app.services.model_mapping_service import ModelMappingService
 from app.services.monitor_service import EndpointMonitor
+from app.services.entitlement_service import EntitlementService
 from app.services.supabase_admin import SupabaseAdminClient
 from app.services.supabase_keepalive import SupabaseKeepaliveService
 from app.services.sync_service import SyncService
@@ -117,14 +118,17 @@ async def lifespan(app: FastAPI):
     # Supabase Admin access (service role) - used by mobile APIs like /v1/me (best-effort init).
     app.state.supabase_admin = None
     app.state.user_repository = None
+    app.state.entitlement_service = None
     if bool(settings.supabase_service_role_key) and (bool(settings.supabase_url) or bool(settings.supabase_project_id)):
         try:
             app.state.supabase_admin = SupabaseAdminClient(settings)
             app.state.user_repository = UserRepository(app.state.supabase_admin, bundle_ttl_seconds=60)
+            app.state.entitlement_service = EntitlementService(app.state.user_repository, ttl_seconds=60)
         except Exception:
             # 缺少配置或初始化失败不阻断启动；具体端点按需返回可诊断错误体。
             app.state.supabase_admin = None
             app.state.user_repository = None
+            app.state.entitlement_service = None
 
     # Supabase 保活服务（防止免费层 7 天无活动后暂停）
     app.state.supabase_keepalive = SupabaseKeepaliveService(settings)
