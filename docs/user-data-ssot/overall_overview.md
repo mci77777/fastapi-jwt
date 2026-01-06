@@ -83,19 +83,20 @@ D:\GymBro\vue-fastapi-admin
 │   │   └── middleware
 │   │       ├── trace_id.py
 │   │       ├── policy_gate.py
-│   │       ├── rate_limit.py
-│   │       └── entitlement_gate.py      # NEW
+│   │       └── rate_limit.py
 │   ├── auth
 │   │   └── dependencies.py
+│   ├── repositories
+│   │   └── user_repo.py                 # NEW
 │   ├── services
-│   │   ├── supabase_admin_client.py     # NEW
-│   │   └── user_repository.py           # NEW
+│   │   ├── supabase_admin.py            # NEW
+│   │   └── entitlement_service.py       # NEW
 │   └── api
 │       └── v1
 │           ├── me.py                    # NEW  (GET /v1/me)
 │           └── ai.py                    # existing (AI endpoints)
 ├── tests
-│   ├── test_me.py                       # NEW
+│   ├── test_me_endpoint.py              # NEW
 │   └── test_entitlement_gate.py         # NEW
 └── docs
     └── dashboard-refactor
@@ -170,4 +171,3 @@ D:\GymBro\vue-fastapi-admin
 - Backend CSV：`backend_fastapi_refactor_todo.csv`
 
 （你可以把它们直接丢到 `issues/` 目录作为任务看板来源。）
-
