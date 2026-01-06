@@ -1,0 +1,44 @@
+ID,Title,Description,Acceptance,Test_Method,Tools,Dev_Status,Review1_Status,Regression_Status,Files,Dependencies,Notes,mcp_scan_query,evidence,commit
+BE-001,Supabase 建表：user_profiles / user_settings / user_entitlements（与 App SupabaseUserWriteMapper 对齐）,"你当前云端 user 数据未制作，但 App 已在 upsert user_settings / user_profiles。需要在 Supabase(Postgres)创建对应表：
+- user_profiles：展示档案+训练偏好+统计+last_updated
+- user_settings：隐私/通知/ai_memory 等 + last_updated
+- user_entitlements：tier/expires_at/flags + last_updated
+并提供 SQL 文件纳入后端 repo（便于版本化）。","1) Supabase 中存在上述 3 表
+2) user_id 为主键或唯一键（UUID，引用 auth.users(id)）
+3) 与 App 写入字段完全一致（字段名/类型）",在 Supabase SQL Editor 执行 + 冒烟：App upsert 不报错,feedback:codebase-retrieval,DONE,TODO,TODO,D:/GymBro/vue-fastapi-admin/docs/supabase/migrations/001_user_tables.sql,,SQL 不要写死任何 key。字段名建议 snake_case，与客户端常量一致。 | started_at=2026-01-06T17:46:12+08:00 | 新增 docs/supabase/migrations/001_user_tables.sql（snake_case + auth.users FK + last_updated）,,commit=BE-001: add Supabase user SSOT tables SQL done_at=2026-01-06T17:55:32+08:00,BE-001: add Supabase user SSOT tables SQL
+BE-002,Supabase RLS 策略：仅允许用户读写自己的 profile/settings/entitlements,"为 user_profiles/user_settings/user_entitlements 开启 RLS，并配置策略：
+- authenticated 用户：SELECT/INSERT/UPDATE 仅限 auth.uid() = user_id
+- service role：后端可全量读（FastAPI 用）
+- anonymous：可选择禁止（推荐），或仅允许创建最小行（如需）。","1) 三张表 RLS 已开启
+2) authenticated 用户无法读写他人 user_id
+3) FastAPI 使用 service role 可读取指定 user_id（用于 /v1/me 聚合）",Supabase Policy Simulator + 本地冒烟,feedback:codebase-retrieval,TODO,TODO,TODO,D:/GymBro/vue-fastapi-admin/docs/supabase/migrations/002_user_rls.sql,BE-001,如果 App 需要匿名用户写入，必须在策略里显式允许且严格限制字段。默认先禁止匿名写。,,,
+BE-010,FastAPI：新增 SupabaseAdminClient 与 UserRepository（服务端读取 user 表）,"在 FastAPI 增加一层 data access：
+- SupabaseAdminClient：使用 service role key 调 PostgREST 或直连 Postgres
+- UserRepository：get_profile/get_settings/get_entitlement
+- 本地缓存：/v1/me 结果 TTL 30~60s（避免每请求打 Supabase）","1) 可用环境变量配置 Supabase URL/ServiceRole（不得打印到日志）
+2) get_profile/get_settings/get_entitlement 有明确返回类型与错误处理
+3) 单测可通过依赖注入 mock 掉 Supabase 客户端",make test + 手动：调用 /v1/me 返回 profile/settings/entitlement,feedback:codebase-retrieval,TODO,TODO,TODO,D:/GymBro/vue-fastapi-admin/app/services/supabase_admin.py; D:/GymBro/vue-fastapi-admin/app/repositories/user_repo.py,BE-001;BE-002,遵循后端既有约定：从 request.app.state 获取服务实例，不做全局导入（按你现有架构）。,,,
+BE-020,FastAPI：实现 GET /v1/me（Supabase JWT 认证 + entitlement 聚合）,"实现移动端核心端点 /v1/me：
+- 使用现有 get_current_user()（Supabase JWT）
+- 返回：uid/user_type(anonymous/permanent)、profile(最小)、entitlements(tier/expires_at/flags)、server_time
+- 对匿名：返回 minimal（不读取或读取匿名行按策略）。","1) /v1/me 在 Swagger 可见，schema 明确
+2) 未登录返回 401；登录返回 200 且字段齐全
+3) 返回内容不包含敏感字段（如 service key）",make test + 手动：curl /v1/me（带 token/不带 token）,feedback:codebase-retrieval,TODO,TODO,TODO,D:/GymBro/vue-fastapi-admin/app/api/v1/me.py; D:/GymBro/vue-fastapi-admin/app/core/application.py,BE-010,保持 KISS：/v1/me 仅做聚合，不做复杂写入；写入仍建议客户端直连 Supabase。,,,
+BE-030,FastAPI：新增 EntitlementGate（AI 端点门控）,"在 AI 相关端点（/v1/ai/* 或现有路径）增加门控：
+- anonymous：限制更严格（或禁止）
+- permanent：根据 entitlement_tier 允许不同模型/配额
+- 门控逻辑：单独模块（EntitlementService），不要散落在各路由。
+可实现为 Depends(require_entitlement) 或中间件（更推荐依赖，便于测试）。","1) 没有 entitlement 的用户访问受限端点返回 403（含标准化错误体）
+2) entitlement 不同 tier 行为不同（至少 free vs pro）
+3) 有单测覆盖 gate 逻辑（mock Supabase repo）",make test + 手动：调用受限 AI 端点验证 403/200,feedback:codebase-retrieval,TODO,TODO,TODO,D:/GymBro/vue-fastapi-admin/app/services/entitlement_service.py; D:/GymBro/vue-fastapi-admin/app/api/v1/ai/*.py,BE-020,错误响应使用你已有 create_error_response() 统一格式；不要在路由里手写 dict。,,,
+BE-040,FastAPI：更新路由注册与文档（区分 admin API 与 mobile /v1）,"当前项目是 Vue3 Admin + FastAPI，已有 /api/v1/... 管理端点。需要：
+- 确认 /v1/* 作为移动端 API 前缀，不被 PolicyGateMiddleware 误拦截
+- 在 application.py 注册新 router，并在 docs/ARCHITECTURE_OVERVIEW.md 增补“移动端 API”章节。","1) /v1/me 不会被 PolicyGateMiddleware 错误阻断
+2) Swagger 文档结构清晰（admin vs mobile）
+3) 文档更新合入",make test + 手动：访问 /docs 验证,feedback:codebase-retrieval,TODO,TODO,TODO,D:/GymBro/vue-fastapi-admin/app/core/application.py; D:/GymBro/vue-fastapi-admin/docs/dashboard-refactor/ARCHITECTURE_OVERVIEW.md,BE-020,如果中间件按 prefix 匹配，确保将 /v1/* 归为“移动端”白名单/单独策略。,,,
+BE-070,后端测试补齐：/v1/me 合约测试 + entitlement gate 回归,"新增测试：
+- test_me_endpoint.py：401/200、字段 schema
+- test_entitlement_gate.py：free/pro/expired
+并将 /v1/me 加入合同测试（如果你已有 test_api_contracts.py）。","1) make test 全绿
+2) 覆盖 401/403/200 三类响应
+3) CI 里可稳定跑（不依赖真实 Supabase；用 mock/stub）",make test,feedback:codebase-retrieval,TODO,TODO,TODO,D:/GymBro/vue-fastapi-admin/tests/test_me_endpoint.py; D:/GymBro/vue-fastapi-admin/tests/test_entitlement_gate.py,BE-030,避免在测试中放真实 token/key；用构造的 JWT payload + mock JWKS/验证器。,,,
