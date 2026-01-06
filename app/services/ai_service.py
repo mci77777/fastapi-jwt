@@ -1148,6 +1148,9 @@ class AIService:
         return name
 
     def _infer_provider(self, endpoint: dict[str, Any]) -> str:
+        protocol = str(endpoint.get("provider_protocol") or "").strip().lower()
+        if protocol in ("openai", "claude"):
+            return protocol
         base_url = str(endpoint.get("base_url") or "").lower()
         name = str(endpoint.get("name") or "").lower()
         if "anthropic" in base_url or "claude" in name or "anthropic" in name:

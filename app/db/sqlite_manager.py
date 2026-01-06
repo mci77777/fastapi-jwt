@@ -17,16 +17,17 @@ INIT_SCRIPT = """
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS ai_endpoints (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    supabase_id INTEGER,
-    name TEXT NOT NULL,
-    base_url TEXT NOT NULL,
-    model TEXT,
-    api_key TEXT,
-    description TEXT,
-    timeout INTEGER DEFAULT 60,
-    is_active INTEGER DEFAULT 1,
+    CREATE TABLE IF NOT EXISTS ai_endpoints (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supabase_id INTEGER,
+        name TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        provider_protocol TEXT DEFAULT 'openai',
+        model TEXT,
+        api_key TEXT,
+        description TEXT,
+        timeout INTEGER DEFAULT 60,
+        is_active INTEGER DEFAULT 1,
     is_default INTEGER DEFAULT 0,
     model_list TEXT,
     status TEXT DEFAULT 'unknown',
@@ -202,9 +203,11 @@ class SQLiteManager:
                     raise
                 await self._recover_from_corruption()
                 await self._conn.executescript(INIT_SCRIPT)
+
             await self._ensure_columns(
                 "ai_endpoints",
                 {
+                    "provider_protocol": "ALTER TABLE ai_endpoints ADD COLUMN provider_protocol TEXT DEFAULT 'openai'",
                     "model": "ALTER TABLE ai_endpoints ADD COLUMN model TEXT",
                     "description": "ALTER TABLE ai_endpoints ADD COLUMN description TEXT",
                     "latency_ms": "ALTER TABLE ai_endpoints ADD COLUMN latency_ms REAL",

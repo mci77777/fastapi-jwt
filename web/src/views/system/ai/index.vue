@@ -69,6 +69,11 @@ const statusLabelMap = {
   unknown: '未知',
 }
 
+const protocolOptions = [
+  { label: 'OpenAI（/v1/chat/completions）', value: 'openai' },
+  { label: 'Claude（/v1/messages）', value: 'claude' },
+]
+
 const supabaseTagType = computed(() => {
   const status = supabaseStatus.value?.status
   if (status === 'online') return 'success'
@@ -151,6 +156,7 @@ const initForm = {
   name: '',
   model: '',
   base_url: '',
+  provider_protocol: 'openai',
   api_key: '',
   description: '',
   timeout: 60,
@@ -165,6 +171,7 @@ function normalizePayload(form, isUpdate = false) {
     name: form.name?.trim(),
     model: form.model?.trim() || null,
     base_url: form.base_url?.trim(),
+    provider_protocol: form.provider_protocol || 'openai',
     api_key: form.api_key?.trim() || undefined,
     description: form.description?.trim() || undefined,
     timeout: form.timeout,
@@ -496,6 +503,21 @@ const columns = [
     ellipsis: { tooltip: true },
   },
   {
+    title: '协议',
+    key: 'provider_protocol',
+    align: 'center',
+    width: 110,
+    render: (row) => {
+      const protocol = row.provider_protocol || 'openai'
+      const isClaude = protocol === 'claude'
+      return h(
+        NTag,
+        { type: isClaude ? 'warning' : 'info', round: true, bordered: false },
+        { default: () => (isClaude ? 'Claude' : 'OpenAI') }
+      )
+    },
+  },
+  {
     title: '状态',
     key: 'status',
     align: 'center',
@@ -806,6 +828,9 @@ onBeforeUnmount(() => {
         </NFormItem>
         <NFormItem label="Base URL" path="base_url">
           <NInput v-model:value="modalForm.base_url" placeholder="例如 https://api.openai.com/v1" />
+        </NFormItem>
+        <NFormItem label="协议" path="provider_protocol">
+          <NSelect v-model:value="modalForm.provider_protocol" :options="protocolOptions" />
         </NFormItem>
         <NFormItem v-if="modalForm.api_key_masked && modalAction === 'edit'" label="当前密钥">
           <NInput :value="modalForm.api_key_masked" disabled />

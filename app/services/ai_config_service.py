@@ -13,6 +13,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
+_SUPPORTED_PROVIDER_PROTOCOLS: tuple[str, ...] = ("openai", "claude")
+
 from app.db import SQLiteManager
 from app.settings.config import Settings
 from app.services.ai_url import build_resolved_endpoints, normalize_ai_base_url
@@ -192,11 +194,21 @@ class AIConfigService:
     def _format_endpoint_row(self, row: dict[str, Any]) -> dict[str, Any]:
         model_list = _safe_json_loads(row.get("model_list")) or []
         resolved = _safe_json_loads(row.get("resolved_endpoints")) or {}
+        provider_protocol = row.get("provider_protocol")
+        if isinstance(provider_protocol, str) and provider_protocol.strip().lower() in _SUPPORTED_PROVIDER_PROTOCOLS:
+            protocol_value = provider_protocol.strip().lower()
+        else:
+            # 兼容：历史数据/未配置时用最小启发式（不阻塞 UI 展示）
+            base_url = str(row.get("base_url") or "").lower()
+            name = str(row.get("name") or "").lower()
+            protocol_value = "claude" if ("anthropic" in base_url or "claude" in name or "anthropic" in name) else "openai"
+
         return {
             "id": row["id"],
             "supabase_id": row.get("supabase_id"),
             "name": row["name"],
             "base_url": row["base_url"],
+            "provider_protocol": protocol_value,
             "model": row.get("model"),
             "description": row.get("description"),
             "timeout": row.get("timeout", self._settings.http_timeout_seconds),
@@ -271,10 +283,13 @@ class AIConfigService:
 
         normalized_base_url = normalize_ai_base_url(payload["base_url"])
         resolved = self._build_resolved_endpoints(normalized_base_url)
+        provider_protocol = str(payload.get("provider_protocol") or "").strip().lower()
+        if provider_protocol not in _SUPPORTED_PROVIDER_PROTOCOLS:
+            provider_protocol = "claude" if ("anthropic" in normalized_base_url.lower() or "claude" in str(payload.get("name") or "").lower()) else "openai"
         await self._db.execute(
             """
             INSERT INTO ai_endpoints (
-                name, base_url, model, description, api_key, timeout,
+                name, base_url, provider_protocol, model, description, api_key, timeout,
                 is_active, is_default, model_list, status,
                 latency_ms, last_checked_at, last_error,
                 sync_status, last_synced_at, resolved_endpoints,
@@ -284,6 +299,7 @@ class AIConfigService:
             [
                 payload["name"],
                 normalized_base_url,
+                provider_protocol,
                 payload.get("model"),
                 payload.get("description"),
                 payload.get("api_key"),
@@ -420,6 +436,12 @@ class AIConfigService:
             if _is_disallowed_test_endpoint_name(payload["name"]):
                 raise ValueError("test_endpoint_name_not_allowed")
             add("name", payload["name"])
+        if "provider_protocol" in payload:
+            protocol = str(payload.get("provider_protocol") or "").strip().lower()
+            if protocol and protocol not in _SUPPORTED_PROVIDER_PROTOCOLS:
+                raise ValueError("provider_protocol_invalid")
+            if protocol:
+                add("provider_protocol", protocol)
         if "base_url" in payload:
             normalized_base_url = normalize_ai_base_url(payload["base_url"])
             computed_resolved = self._build_resolved_endpoints(normalized_base_url)
@@ -572,6 +594,10 @@ class AIConfigService:
                     seen: set[str] = set()
                     model_ids = [item for item in merged if item and not (item in seen or seen.add(item))]
                 else:
+                    configured_protocol = str(endpoint.get("provider_protocol") or "").strip().lower()
+                    if configured_protocol not in _SUPPORTED_PROVIDER_PROTOCOLS:
+                        configured_protocol = ""
+
                     base = normalize_ai_base_url(base_url_text)
                     openai_models_url = models_url
                     openai_chat_url = chat_url
@@ -586,16 +612,27 @@ class AIConfigService:
                             probe_resp = await client.post(url, headers=probe_headers, json={})
                         return int(probe_resp.status_code)
 
-                    # 协议兜底：默认按 OpenAI 语义探测/拉取，失败（404）再尝试 Claude(/v1/messages)。
-                    openai_probe_status = await _probe_route(openai_chat_url)
-                    protocol = "openai"
-                    if openai_probe_status == 404:
+                    # 协议兜底：
+                    # - 若用户显式配置 provider_protocol，则按该协议探测
+                    # - 否则默认 OpenAI，404 再尝试 Claude(/v1/messages)
+                    protocol = configured_protocol or "openai"
+                    if protocol == "openai":
+                        openai_probe_status = await _probe_route(openai_chat_url)
+                        if openai_probe_status == 404 and not configured_protocol:
+                            claude_probe_status = await _probe_route(claude_messages_url)
+                            if claude_probe_status == 404:
+                                status_value = "offline"
+                                error_text = f"upstream_routes_not_found: openai={openai_chat_url} claude={claude_messages_url}"
+                            else:
+                                protocol = "claude"
+                        elif openai_probe_status == 404 and configured_protocol:
+                            status_value = "offline"
+                            error_text = f"chat_completions_not_found: {openai_chat_url}"
+                    else:
                         claude_probe_status = await _probe_route(claude_messages_url)
                         if claude_probe_status == 404:
                             status_value = "offline"
-                            error_text = f"upstream_routes_not_found: openai={openai_chat_url} claude={claude_messages_url}"
-                        else:
-                            protocol = "claude"
+                            error_text = f"anthropic_messages_not_found: {claude_messages_url}"
 
                     if status_value != "offline" and protocol == "claude":
                         headers = {
@@ -982,13 +1019,14 @@ class AIConfigService:
                     pass
 
             now = _utc_now()
+            inferred_protocol = "claude" if ("anthropic" in str(item.get("base_url") or "").lower() or "claude" in str(item.get("name") or "").lower()) else "openai"
             await self._db.execute(
                 """
                 INSERT INTO ai_endpoints (
-                    supabase_id, name, base_url, model, description, api_key,
+                    supabase_id, name, base_url, provider_protocol, model, description, api_key,
                     timeout, is_active, is_default, status, sync_status,
                     last_synced_at, resolved_endpoints, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(supabase_id) DO UPDATE SET
                     name=excluded.name,
                     base_url=excluded.base_url,
@@ -1008,6 +1046,7 @@ class AIConfigService:
                     supabase_id,
                     item.get("name"),
                     item.get("base_url"),
+                    inferred_protocol,
                     item.get("model"),
                     item.get("description"),
                     item.get("api_key"),

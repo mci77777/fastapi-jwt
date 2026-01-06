@@ -38,6 +38,10 @@ class APIEndpointBase(BaseModel):
 
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     base_url: Optional[str] = Field(None, min_length=1)
+    provider_protocol: Optional[Literal["openai", "claude"]] = Field(
+        default=None,
+        description="上游协议：openai=OpenAI-compatible(/v1/chat/completions)；claude=Anthropic Messages(/v1/messages)",
+    )
     model: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = Field(None, max_length=255)
     api_key: Optional[str] = Field(None, max_length=512)
