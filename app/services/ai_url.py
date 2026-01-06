@@ -9,10 +9,15 @@ from app.services.url_rewrite import rewrite_localhost_for_docker
 
 _STRIP_SUFFIXES = (
     "/v1/chat/completions",
+    "/chat/completions",
     "/v1/completions",
+    "/completions",
     "/v1/models",
+    "/models",
     "/v1/embeddings",
+    "/embeddings",
     "/v1/messages",
+    "/messages",
     "/v1",
 )
 
@@ -38,7 +43,9 @@ def normalize_ai_base_url(base_url: str) -> str:
     典型误配：
     - https://host/v1
     - https://host/v1/chat/completions
+    - https://host/chat/completions
     - https://host/v1/models
+    - https://host/models
     - https://host/v1/messages（Anthropic）
     """
 

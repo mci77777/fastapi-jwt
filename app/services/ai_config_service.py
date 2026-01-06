@@ -44,6 +44,14 @@ _VOYAGE_STATIC_MODEL_LIST: tuple[str, ...] = (
     "voyage-lite-01-instruct",
 )
 
+_PERPLEXITY_STATIC_MODEL_LIST: tuple[str, ...] = (
+    # Sonar family (from Perplexity docs)
+    "sonar",
+    "sonar-pro",
+    "sonar-reasoning-pro",
+    "sonar-deep-research",
+)
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -509,6 +517,7 @@ class AIConfigService:
         except Exception:
             base_host = ""
         is_voyage = base_host == "api.voyageai.com" or "voyage" in endpoint_name
+        is_perplexity = base_host == "api.perplexity.ai" or "perplexity" in endpoint_name
 
         try:
             response: httpx.Response | None = None
@@ -536,6 +545,30 @@ class AIConfigService:
                         merged.append(configured_model)
                     merged.extend(model_ids)
                     merged.extend(list(_VOYAGE_STATIC_MODEL_LIST))
+                    seen: set[str] = set()
+                    model_ids = [item for item in merged if item and not (item in seen or seen.add(item))]
+                # 特例：Perplexity 不提供 /models 列表，用 chat 端点探针 + 文档内置模型列表作为可选项
+                elif is_perplexity:
+                    response = await client.options(chat_url, headers=base_headers)
+                    latency_ms = (perf_counter() - start) * 1000
+                    if response.status_code == 404:
+                        status_value = "offline"
+                        error_text = f"chat_completions_not_found: {chat_url}"
+                    elif response.status_code in (200, 204, 405):
+                        status_value = "online"
+                    elif response.status_code in (401, 403, 429):
+                        status_value = "online"
+                        error_text = f"chat_probe_status={response.status_code} url={chat_url}"
+                    else:
+                        status_value = "offline"
+                        error_text = f"chat_probe_unexpected_status={response.status_code} url={chat_url}"
+
+                    configured_model = str(endpoint.get("model") or "").strip()
+                    merged = []
+                    if configured_model:
+                        merged.append(configured_model)
+                    merged.extend(model_ids)
+                    merged.extend(list(_PERPLEXITY_STATIC_MODEL_LIST))
                     seen: set[str] = set()
                     model_ids = [item for item in merged if item and not (item in seen or seen.add(item))]
                 else:
@@ -612,7 +645,7 @@ class AIConfigService:
 
         # 兼容性探针：/v1/models 可用不代表 /v1/chat/completions 可用（常见误配置：供应商不支持 chat 端点导致 404）。
         # 这里用 GET 探测“路由是否存在”即可：405/401/403 视为存在；仅 404 视为不存在并标记 offline。
-        if status_value == "online" and not is_voyage:
+        if status_value == "online" and not is_voyage and not is_perplexity:
             name = str(endpoint.get("name") or "").lower()
             base_url = str(endpoint.get("base_url") or "").lower()
             is_claude = "anthropic" in base_url or "claude" in name or "anthropic" in name
