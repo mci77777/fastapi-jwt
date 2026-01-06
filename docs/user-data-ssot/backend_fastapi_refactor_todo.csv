@@ -11,7 +11,7 @@ BE-002,Supabase RLS 策略：仅允许用户读写自己的 profile/settings/ent
 - service role：后端可全量读（FastAPI 用）
 - anonymous：可选择禁止（推荐），或仅允许创建最小行（如需）。","1) 三张表 RLS 已开启
 2) authenticated 用户无法读写他人 user_id
-3) FastAPI 使用 service role 可读取指定 user_id（用于 /v1/me 聚合）",Supabase Policy Simulator + 本地冒烟,feedback:codebase-retrieval,TODO,TODO,TODO,D:/GymBro/vue-fastapi-admin/docs/supabase/migrations/002_user_rls.sql,BE-001,如果 App 需要匿名用户写入，必须在策略里显式允许且严格限制字段。默认先禁止匿名写。,,,
+3) FastAPI 使用 service role 可读取指定 user_id（用于 /v1/me 聚合）",Supabase Policy Simulator + 本地冒烟,feedback:codebase-retrieval,DONE,TODO,TODO,D:/GymBro/vue-fastapi-admin/docs/supabase/migrations/002_user_rls.sql,BE-001,如果 App 需要匿名用户写入，必须在策略里显式允许且严格限制字段。默认先禁止匿名写。 | started_at=2026-01-06T17:57:24+08:00 | 新增 docs/supabase/migrations/002_user_rls.sql：authenticated 仅 own；service_role 全量；默认不放开 anonymous,,commit=BE-002: add Supabase user SSOT RLS done_at=2026-01-06T17:58:28+08:00,BE-002: add Supabase user SSOT RLS
 BE-010,FastAPI：新增 SupabaseAdminClient 与 UserRepository（服务端读取 user 表）,"在 FastAPI 增加一层 data access：
 - SupabaseAdminClient：使用 service role key 调 PostgREST 或直连 Postgres
 - UserRepository：get_profile/get_settings/get_entitlement
