@@ -578,6 +578,15 @@ class AIConfigService:
                         if fetched:
                             model_ids = fetched
                         status_value = "online"
+                    elif response.status_code == 404:
+                        # 兼容性：部分上游不提供 /models 列表，但仍支持 chat/completions。
+                        # 不应因此把端点判定为 offline；后续会通过 chat 路由探针兜底确认。
+                        status_value = "online"
+                        error_text = f"models_not_supported: {models_url}"
+
+                        configured_model = str(endpoint.get("model") or "").strip()
+                        if configured_model and configured_model not in model_ids:
+                            model_ids = [configured_model] + model_ids
                     elif response.status_code in (401, 403, 405, 429):
                         status_value = "online"
                         detail = None

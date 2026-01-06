@@ -170,7 +170,7 @@ async function refreshAll() {
   localLoading.value = true
   try {
     await Promise.all([
-      store.loadModels({ page_size: 200, refresh_missing_models: true }),
+      store.loadModels({ page_size: 100, refresh_missing_models: true }),
       store.loadBlockedModels(),
       refreshAppModels(),
       store.loadMappings(),
