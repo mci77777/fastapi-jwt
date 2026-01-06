@@ -1,0 +1,93 @@
+﻿ID,Title,Description,Acceptance,Test_Method,Tools,Dev_Status,Review1_Status,Regression_Status,Files,Dependencies,Notes
+APP-001,定义 SSOT：本地 UnifiedUserData / Supabase / FastAPI 职责边界 + 端点契约,"输出一份 SSOT 设计说明，明确：
+- 本地 SSOT：core-user-data-center::UnifiedUserData（auth+profile+entitlement）
+- 云端 SSOT：Supabase（user_profiles / user_settings / user_entitlements）
+- FastAPI：只做聚合与门控（/v1/me）+ AI 编排（/v1/ai/*）
+- 设备级设置：Theme/调试开关/自定义后端域名等（仅本机 DataStore）
+并列出“字段→存储位置→同步路径→消费方(Feature)”的表格。","1) 新增 docs/refactor/USER_DATA_SSOT.md（或同等位置）
+2) 至少覆盖 auth/profile/subscribe/ai-memory/workout-days 字段
+3) 端点清单：/v1/me、/v1/ai/*（并标注 token 需求、匿名策略）
+4) PR Review 通过（架构 + app + backend 各 1）",Doc review + PR checklist,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/docs/refactor/USER_DATA_SSOT.md; X:/GymBro/docs/refactor/USER_TABLES_CONTRACT.md,,后续所有实现按此文档做“删繁就简”，避免重复存储。
+APP-010,补齐 UserPreferencesRepositoryImpl：移除硬编码默认值与 TODO 占位,"当前 UserPreferencesRepositoryImpl 为“紧急修复 DataStore 多实例问题”的简化实现，大量 getter 直接 emit 默认值、setter 直接返回 Success(Unit)，并保留 TODO。需要：
+A) 明确哪些是设备级设置（保留 DataStore）
+B) 哪些是用户级设置（改为桥接到 UserDataCenter / UserSettingsEntity）
+C) 删除所有假实现，确保对外可用。","1) 删除/替换“简化实现… TODO: 完整实现所有方法”的块
+2) 关键设置真实读写且重启保持
+3) 不引入新的 DataStore 多实例问题（单例注入）",gw :dailyDev + 手动：修改设置->杀进程->重启校验,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/data/src/main/kotlin/com/example/gymbro/data/local/datastore/UserPreferencesRepositoryImpl.kt,APP-001,该文件目前明确存在简化实现与 TODO，必须清债。
+APP-020,对齐 Supabase 用户表契约：统一 user_id 命名，移除 upsert 写入降级分支,"SupabaseUserCloudSyncPort.upsertUserSettings 存在 userId / user_id 两套字段写入回退逻辑，说明云端表字段未统一。需要：
+1) 统一列名为 user_id（snake_case）
+2) 更新 SupabaseUserSchema 常量
+3) 删除 USER_ID_UNDERSCORE 等 fallback 写入。
+目标：减少隐藏分叉与不可预测写入。","1) upsertUserSettings/settings() 仅走 user_id 单一路径
+2) onConflict 字段与 Supabase 唯一约束一致
+3) 真机登录后：云端写入成功且日志无 fallback 语句",gw :dailyDev + 手动：登录后触发同步 + Supabase 控制台校验,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/data/src/main/kotlin/**/SupabaseUserCloudSyncPort*.kt; X:/GymBro/data/src/main/kotlin/**/SupabaseUserSchema*.kt,APP-001,依赖：后端已创建并统一表结构（见 BE-001~003）。
+APP-021,完善 SupabaseUserWriteMapper：profile/settings/entitlement 字段映射与时间戳策略统一,"基于 SSOT 文档确认：
+- user_profiles：基础档案 + 训练偏好 + 统计字段
+- user_settings：隐私/通知/AI memory 等
+- user_entitlements：订阅等级/到期时间/功能门控
+统一 last_updated 语义（推荐 epoch ms），并补齐缺失字段映射。","1) 写入 payload 字段与表列完全一致（无多余/缺失）
+2) last_updated/created_at 字段语义一致且全链路可读
+3) 关键 mapper 增加单测（输入 Domain/Entity -> 输出 JSON）",单元测试 + gw :dailyDev,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/data/src/main/kotlin/**/SupabaseUserWriteMapper*.kt; X:/GymBro/core-user-data-center/src/test/kotlin/**/Mapper*Test*.kt,APP-020,避免把“订阅等级”混在 profile 表；如果现有字段 has_valid_subscription 仅作为展示/兼容保留。
+APP-030,实现云端拉取：登录后从 Supabase 拉取 profile/settings 并 hydrate 本地 UnifiedUserData,"目前同步器主要做 best-effort upsert（push）。需要增加 pull：
+- 在 permanent 用户登录后：读取 Supabase user_profiles 与 user_settings（必要时 entitlement）
+- 合并策略：使用 UnifiedUserData.lastUpdated 与云端 last_updated 做 conflict resolution
+- 成功后写入本地 Room（UserCacheEntity/UserProfileEntity/UserSettingsEntity）并更新 syncStatus。","1) 新设备首次登录：可从云端恢复 profile/settings 到本地
+2) 网络失败：不阻塞 UI，syncStatus = PENDING_SYNC（或 IN_PROGRESS->FAILED）
+3) 合并策略有明确单测（本地新/云端新两种）",gw :dailyDev + 手动：清缓存/新装->登录->观察 profile 是否恢复,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/core-user-data-center/src/main/kotlin/**/UserDataSynchronizer.kt; X:/GymBro/data/src/main/kotlin/**/Supabase*CloudSync*.kt,APP-021,pull 只做启动/登录/手动触发三处，先不做实时双向同步，保持 KISS。
+APP-031,补齐 UserDataSynchronizer.startSynchronization：接入真实认证状态监听,"UserDataSynchronizer.startSynchronization() 当前是占位符，仅打印日志。需要接入真实认证状态：
+- 监听 Supabase session/token 变化
+- 登录：syncAuthData(authUser) + 触发 pull(hydrate)
+- 登出：清理本地用户缓存 + 停止同步（必要时取消协程）
+保持 best-effort：云端失败不影响本地写入。","1) 登录自动触发 syncAuthData + pull
+2) 登出后：UnifiedUserData Flow 变为空/匿名状态，且本地 Room 清空
+3) 并发安全：多次登录/刷新不会产生重复协程或竞态",gw :dailyDev + 手动：登录/登出/切换账号回归,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/core-user-data-center/src/main/kotlin/com/example/gymbro/core/userdata/internal/synchronizer/UserDataSynchronizer.kt,APP-030,优先利用现有 AuthProvider/SupabaseAuthServiceProvider 暴露的 session flow；用 MCP 定位。
+APP-032,提供手动同步入口：DataManagementScreen 触发 forceSync 并展示 SyncStatus,"在 Profile -> 数据管理 页面提供：
+- 立即同步按钮（push+pull）
+- 展示 syncStatus / last_updated / 错误提示（仅 UI 友好，不暴露敏感信息）
+- 仅 permanent 用户可用（匿名用户提示“登录后可同步”）。","1) DataManagementScreen 上可见并可触发 forceSync
+2) forceSync 完成后状态刷新（成功/失败都可见）
+3) 匿名用户触发时给出明确 UI 提示，不崩溃",gw :dailyDev + 手动：Profile->数据管理->点击同步,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/features/profile/src/main/kotlin/**/dataManagement/**; X:/GymBro/core-user-data-center/src/main/kotlin/**/UserDataCenterApi*.kt,APP-031,不要直接在 UI 层写 Repository；遵循 MVI：UiEvent->VM->UseCase->Repo。
+APP-040,定义并实现 /v1/me 响应模型：承载 subscription tier + entitlements,"Debug 屏已有“JWT管道网络测试 /v1/me”逻辑。需要将 /v1/me 作为 App 侧“订阅/权限快照”入口：
+- 定义 DTO（MeResponse）含：uid/user_type、entitlement_tier、expires_at、flags(比如 ai_memory)
+- CloudGatewayUserService.getCurrentUser() 解析并暴露 Domain 模型
+- 写入 UnifiedUserData/UserEntitlement（或单独缓存层）供 UI/AI 门控消费。","1) /v1/me 成功响应可解析到 domain 模型
+2) 订阅/权限变更能驱动 UI（例如 Profile 显示订阅等级）
+3) Debug JWT 管道测试显示的字段更新（不再只打印 uid）",gw :dailyDev + 手动：Debug->JWT管道测试（需登录）,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/features/coach/**/Debug*.*; X:/GymBro/data/src/main/kotlin/**/CloudGateway*UserService*.kt; X:/GymBro/core-user-data-center/src/main/kotlin/**/api/model/UserEntitlement*.kt,APP-001,后端必须先提供 /v1/me（见 BE-020）。App 侧不要把 service role 放进客户端。
+APP-041,替换 SubscriptionRepositoryImpl 的“返回 null”简化实现：改为使用 /v1/me 或 Supabase entitlement 表,"SubscriptionRepositoryImpl.getUserSubscription 目前简化为 emit(null)，导致订阅能力不可用。需要：
+- permanent 用户：优先从 /v1/me 获取 entitlement_tier + expires_at
+- anonymous 用户：返回 null
+- 本地缓存：避免每次进入页面都打 /v1/me（TTL 例如 60s）
+- 保持接口签名不破坏上层。","1) getUserSubscription 不再恒为 null（当云端有订阅时能返回）
+2) 缓存生效：连续调用不会频繁请求
+3) 错误可观测：失败时返回 ModernResult.Error（不吞）",单测 + gw :dailyDev,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/data/src/main/kotlin/com/example/gymbro/data/repository/subscription/SubscriptionRepositoryImpl.kt; X:/GymBro/data/src/main/kotlin/**/SubscriptionApi*.kt,APP-040,KISS：先不做 Google Play purchase 校验闭环；先把 entitlement 作为后端/云端事实。
+APP-042,更新 EntitlementResolver：以 UserEntitlement 为唯一门控来源（SSOT）,"core-user-data-center 内已有 entitlement resolver。需要统一：
+- 不再从 Profile.isSubscribed 或本地开关推导权限
+- 所有“付费功能门控”统一从 UserEntitlement（来自 /v1/me 或 Supabase entitlement 表）读取
+- 输出最小的判定 API：canUseAiMemory / canUsePremiumModels / maxRequestsPerDay 等。","1) entitlement 判定逻辑只有一个入口（EntitlementResolver）
+2) 付费功能门控不再出现“影子实现/重复判断”
+3) Resolver 单测覆盖：free/pro/expired 三种",单测 + gw :dailyDev,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/core-user-data-center/src/main/kotlin/**/EntitlementResolver*.kt; X:/GymBro/core-user-data-center/src/test/kotlin/**/EntitlementResolver*Test*.kt,APP-041,把具体 plan 名称抽象为 tier 枚举，避免各层用字符串。
+APP-050,AI Prompt 上下文：UserProfilePromptContextProvider 只从 UnifiedUserData 取“最小上下文”,"已存在 UserProfilePromptContextProvider。需要确保：
+- Prompt context 只取 AI 需要的最小字段（避免状态膨胀）
+- 所有字段来自 UnifiedUserData（SSOT）
+- 对匿名用户：输出匿名最小上下文，不注入敏感字段。","1) Prompt context provider 不再从多个仓库拼接（如果存在）
+2) 上下文字段有白名单（最少必要原则）
+3) 单测：匿名/已登录两种输出差异",单测 + gw :dailyDev,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/core-user-data-center/src/main/kotlin/com/example/gymbro/core/userdata/api/prompt/UserProfilePromptContextProvider.kt; X:/GymBro/core-user-data-center/src/main/kotlin/**/prompt/**,APP-042,减少 prompt 注入数据量，有助于降低 token 与隐私风险。
+APP-060,用户级设置迁移：从 DataStore/旧存储迁移到 UserSettingsEntity（可选、分批）,"若 SSOT 文档决定将部分 user 级设置迁移到 user_settings（Room + Supabase）：
+- 设计迁移标记（例如 prefs_migrated_v1）
+- 首次启动：读取旧 DataStore -> 写入 UserSettingsEntity -> 标记完成
+- 不做回滚（KISS），失败则跳过并保留旧值，避免破坏用户体验。","1) 迁移只执行一次且幂等
+2) 迁移后：设置仍可读写且能同步到 Supabase
+3) 迁移失败不 crash，不阻塞启动",手动：升级安装包->观察设置是否保留；gw :dailyDev,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/data/src/main/kotlin/**/UserPreferencesRepositoryImpl.kt; X:/GymBro/data/src/main/kotlin/**/UserSettings*.kt; X:/GymBro/core-user-data-center/src/main/kotlin/**/UserDataRepository*.kt,APP-010;APP-030,建议先迁移 3~5 个最关键字段（ai_memory/workout_days/privacy），不要一次性全搬。
+APP-070,测试补齐：同步器 push/pull、合并策略、订阅/门控单测 + 冒烟回归清单,"在 core-user-data-center 已有测试目录。补齐：
+- UserDataSynchronizer：push 失败标记 PENDING_SYNC；pull 成功写入
+- UserDataMapper.mergeUnifiedData：时间戳合并
+- EntitlementResolver：free/pro/expired
+同时在 docs 写出冒烟回归步骤。","1) 新增/更新单测覆盖上述 3 类
+2) gw :dailyDev 全绿
+3) docs/REFAC_SMOKE_CHECKLIST.md 给出 10 分钟可跑的回归步骤",单测 + gw :dailyDev,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/core-user-data-center/src/test/kotlin/**; X:/GymBro/docs/refactor/REFAC_SMOKE_CHECKLIST.md,APP-031;APP-042,用假 Supabase client 或接口 mock，不要在单测里依赖真实网络。
+APP-080,清理入口与冗余：删除遗留 TODO/降级分支/重复门控逻辑，保持结构清晰,"在完成上述核心能力后：
+- 删除 fallback 分支、重复的 subscription 判断、未使用的 debug-only 逻辑
+- 统一日志 tag、减少层级
+- 确保每个 Feature 只依赖 contracts/api 模块（不跨 internal 包）。","1) grep TODO/Pending/临时修复 结果只剩合理的已登记 issue
+2) app 模块依赖关系符合模块化边界（无 internal 泄漏）
+3) gw :dailyDev 全绿",gw :dailyDev + 代码审查（dependency graph）,feedback:codebase-retrieval,TODO,TODO,TODO,X:/GymBro/** (按 codebase 检索列出实际修改文件),APP-070,严格按最小改动原则推进：每个 PR 控制在可 Review 的范围。
