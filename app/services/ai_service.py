@@ -866,9 +866,20 @@ class AIService:
             final_messages.extend(user_messages)
 
         resolved_tools = await self._resolve_tools(tools)
+        tools_from_active_prompt = False
         if resolved_tools is None:
             # 透传模式：不注入默认 tools；只有客户端显式提供 tools 才下发。
-            resolved_tools = None if message.skip_prompt else await self._get_active_prompt_tools()
+            if message.skip_prompt:
+                resolved_tools = None
+            else:
+                resolved_tools = await self._get_active_prompt_tools()
+                tools_from_active_prompt = True
+
+        # KISS/兼容性：当前后端不执行 tool_calls。
+        # - server 模式下，若客户端未显式指定 tool_choice，则不向上游发送 tools（避免本地代理对工具名格式校验更严格导致 400）。
+        # - 仍允许客户端在透传/显式 tool_choice 场景自行提供 tools（调用失败由上游/后端兜底）。
+        if tools_from_active_prompt and tool_choice is None:
+            resolved_tools = None
 
         payload: dict[str, Any] = {
             "model": model,
@@ -876,9 +887,6 @@ class AIService:
         }
         if resolved_tools is not None:
             payload["tools"] = resolved_tools
-        # KISS：当前后端不执行 tool_calls，server 模式默认禁用（除非客户端显式指定 tool_choice）。
-        if tool_choice is None and not message.skip_prompt and isinstance(resolved_tools, list) and resolved_tools:
-            tool_choice = "none"
         if tool_choice is not None:
             payload["tool_choice"] = tool_choice
         if temperature is not None:
@@ -1221,27 +1229,6 @@ class AIService:
                     response.raise_for_status()
                     break
                 except httpx.HTTPStatusError as exc:
-                    # 端到端兜底：若 chat_completions 路由不存在（404），将该 endpoint 标记为 offline，
-                    # 避免继续被选中进入白名单/路由。
-                    if (
-                        exc.response is not None
-                        and exc.response.status_code == 404
-                        and self._ai_config_service is not None
-                    ):
-                        endpoint_id = _parse_optional_int(endpoint.get("id"))
-                        if endpoint_id is not None:
-                            try:
-                                await self._ai_config_service.update_endpoint(
-                                    endpoint_id,
-                                    {
-                                        "status": "offline",
-                                        "last_checked_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-                                        "last_error": f"chat_completions_not_found: {chat_url}",
-                                    },
-                                )
-                            except Exception:  # pragma: no cover
-                                pass
-
                     if exc.response is not None and exc.response.status_code == 401 and index < len(auth_candidates) - 1:
                         retry_payload: object | None = None
                         try:
@@ -1319,19 +1306,9 @@ class AIService:
                     and exc.response.status_code == 404
                     and self._ai_config_service is not None
                 ):
-                    endpoint_id = _parse_optional_int(endpoint.get("id"))
-                    if endpoint_id is not None:
-                        try:
-                            await self._ai_config_service.update_endpoint(
-                                endpoint_id,
-                                {
-                                    "status": "offline",
-                                    "last_checked_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-                                    "last_error": f"anthropic_messages_not_found: {messages_url}",
-                                },
-                            )
-                        except Exception:  # pragma: no cover
-                            pass
+                    # 运行时 404 可能来自“模型不存在/权限不足”等上游语义，不应直接将端点置为 offline。
+                    # 路由存在性以 AIConfigService.refresh_endpoint_status 的 probe 为准（SSOT）。
+                    pass
                 raise
 
         data = response.json()

@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth import AuthenticatedUser, get_current_user
 from app.core.middleware import get_current_request_id
+from app.core.sse_guard import get_sse_guard
 
 from app.settings.config import get_settings
 from app.services.ai_service import AIService
@@ -79,6 +80,21 @@ class BlockedModelUpdate(BaseModel):
 
 class BlockedModelsUpdateRequest(BaseModel):
     updates: list[BlockedModelUpdate] = Field(default_factory=list)
+
+
+@router.post("/sse/force-disconnect")
+async def force_disconnect_sse(
+    user_id: str | None = Query(default=None, description="目标 user_id；为空则断开当前用户"),  # noqa: B008
+    _: None = Depends(require_llm_admin),  # noqa: B008
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """强制断开 SSE 连接（E2E/排障用）。"""
+
+    target = str(user_id or "").strip() or current_user.uid
+    guard = get_sse_guard()
+    disconnected = await guard.force_disconnect_user(target)
+    stats = await guard.get_stats()
+    return create_response(data={"user_id": target, "disconnected": disconnected, "stats": stats}, msg="已断开")
 
 
 @router.get("/app/models")
