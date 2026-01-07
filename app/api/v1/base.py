@@ -365,6 +365,15 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
                         "is_hidden": False,
                         "keepalive": False,
                     },
+                    {
+                        "name": "权益等级配置",
+                        "path": "user-entitlements/config",
+                        "component": "/system/user-entitlements/config",
+                        "icon": "mdi:tune-variant",
+                        "order": 4,
+                        "is_hidden": False,
+                        "keepalive": False,
+                    },
                 ],
             }
         )
@@ -477,7 +486,12 @@ async def get_user_api(current_user: AuthenticatedUser = Depends(get_current_use
             "post/api/v1/admin/exercise/library/patch",
             # 用户权益（admin）
             "get/api/v1/admin/user-entitlements",
+            "get/api/v1/admin/user-entitlements/stats",
+            "get/api/v1/admin/user-entitlements/list",
+            "get/api/v1/admin/user-entitlements/presets",
             "post/api/v1/admin/user-entitlements",
+            "post/api/v1/admin/user-entitlements/presets",
+            "delete/api/v1/admin/user-entitlements/presets",
         ]
     )
 

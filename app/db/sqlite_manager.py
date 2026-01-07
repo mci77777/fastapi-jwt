@@ -160,6 +160,17 @@ CREATE TABLE IF NOT EXISTS local_users (
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- User entitlement tier presets（仅用于 Dashboard 配置；不与 Supabase user_entitlements SSOT 冲突）
+CREATE TABLE IF NOT EXISTS user_entitlement_tier_presets (
+    tier TEXT PRIMARY KEY,
+    default_expires_days INTEGER,
+    default_flags_json TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_entitlement_tier_presets_updated_at ON user_entitlement_tier_presets(updated_at DESC);
+
 -- Official Exercise Library snapshots (versioned seed payloads)
 CREATE TABLE IF NOT EXISTS exercise_library_snapshots (
     version INTEGER PRIMARY KEY,
