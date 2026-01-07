@@ -1,15 +1,15 @@
 {
-  "id": "thinkingbox-gymbro-strict",
-  "displayName": "ThinkingBox · GymBro (Strict-XML)",
-  "description": "GymBro Fitness Coach · ThinkingML v4.5 (strict tag regime)",
+  "id": "standard",
+  "displayName": "ThinkingBox · GymBro（默认）",
+  "description": "GymBro 专业健身教练 · 默认提示词（SERP + ToolCall）",
   "version": "4.5.0",
   "protocols": [
     "ThinkingML-v4.5"
   ],
   "outputFormat": "ThinkingML v4.5 XML",
-  "role": "Professional fitness AI coach – GymBro",
+  "role": "GymBro 专业健身教练",
   "enableThinking": true,
-  "systemPrompt": "🔒 Prompt SSOT: see prompts/standard_prompt.txt (includes SERP rules; loaded via systemPromptDocPath).",
+  "systemPrompt": "🔒 Prompt SSOT: see prompts/serp_prompt.md (loaded via systemPromptDocPath). ToolCall rules: see prompts/tool.md.",
   "capabilities": [
     "Evidence-based fitness guidance",
     "Structured reasoning with XML phase blocks",
@@ -30,94 +30,5 @@
     "integrationFocus": "与 GymBro 功能无缝衔接",
     "userExperience": "移动优先，富文本交互"
   },
-  "tools": [
-    {
-      "name": "gymbro.exercise.search",
-      "params": [
-        "query",
-        "muscle_groups",
-        "equipment",
-        "difficulty"
-      ]
-    },
-    {
-      "name": "gymbro.exercise.get_detail",
-      "params": [
-        "exercise_id",
-        "include_variations"
-      ]
-    },
-    {
-      "name": "gymbro.template.search",
-      "params": [
-        "goal",
-        "training_style",
-        "duration",
-        "equipment"
-      ]
-    },
-    {
-      "name": "gymbro.template.generate",
-      "params": [
-        "goals",
-        "preferences",
-        "constraints",
-        "level"
-      ]
-    },
-    {
-      "name": "gymbro.plan.generate_blank",
-      "params": [
-        "level",
-        "duration",
-        "goals",
-        "availability"
-      ]
-    },
-    {
-      "name": "gymbro.session.start",
-      "params": [
-        "workout_type",
-        "planned_exercises",
-        "warm_up"
-      ]
-    },
-    {
-      "name": "gymbro.session.log_set",
-      "params": [
-        "exercise",
-        "weight",
-        "reps",
-        "sets",
-        "notes"
-      ]
-    },
-    {
-      "name": "gymbro.session.complete",
-      "params": [
-        "session_id",
-        "completion_notes",
-        "cooldown"
-      ]
-    },
-    {
-      "name": "gymbro.calendar.add_template",
-      "params": [
-        "template_id",
-        "date",
-        "time",
-        "notes"
-      ]
-    },
-    {
-      "name": "gymbro.calendar.get_schedule",
-      "params": [
-        "date_range",
-        "include_completed",
-        "filter_type"
-      ]
-    }
-  ],
-  "systemPromptDocPath": "prompts/standard_prompt.txt",
-  "serpXmlRules": "SERP：可选 <serp>...</serp>（置于 <thinking> 之前、最多 1 个、仅纯文本摘要）。必须在 <final> 末尾追加注释块：<!-- <serp_queries>\\n[\"q1\",\"q2\"]\\n</serp_queries> -->（每行不缩进）。默认输出 1–3 条；仅当无有效需求/纯寒暄/无法理解才输出 []。JSON 数组 ≤5、去重、每条 ≤80 字、过滤敏感信息。"
+  "systemPromptDocPath": "prompts/serp_prompt.md"
 }

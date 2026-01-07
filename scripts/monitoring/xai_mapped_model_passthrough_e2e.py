@@ -10,7 +10,7 @@ xAI E2E（不做 mock）：
    - passthrough 模式（透传）：客户端完全提供 system/messages/tools
 6) 消费 SSE，校验：
    - routed 事件回传 provider=xai 且 resolved_model=provider_model
-   - completed.reply 满足 docs/ai预期响应结构.md（ThinkingML v4.5 XML）
+   - 由 content_delta 拼接得到的 reply 满足 docs/ai预期响应结构.md（ThinkingML v4.5 XML）
 
 必需环境变量：
   - XAI_API_KEY                 xAI API Key（不要写入仓库）
@@ -131,67 +131,63 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _load_asset_prompts(repo_root: Path) -> tuple[str, list[dict[str, Any]]]:
-    """
-    返回：
-    - system_prompt_text：standard_prompt.txt + serp_prompt.md（合并）
-    - openai_tools_schema：由 assets/prompts/standard_serp_v2.json 的 tools 清单生成
-    """
-    prompts_dir = repo_root / "assets" / "prompts"
-    system_text = _read_text(prompts_dir / "standard_prompt.txt").strip()
-    serp_text = _read_text(prompts_dir / "serp_prompt.md").strip()
+_TOOL_NAME_RE = re.compile(r"^\s*-\s*`([^`]+)`：\s*(.*)\s*$")
+_TOOL_PARAMS_RE = re.compile(r"参数：\s*(.*)\s*$")
 
-    header = (
-        "你必须严格按 docs/ai预期响应结构.md 输出（ThinkingML v4.5 XML）。"
-        "若校验失败，整段输出必须为 <<ParsingError>>。"
-    )
-    system_prompt = "\n\n".join([part for part in (header, system_text, serp_text) if part])
 
-    raw = json.loads(_read_text(prompts_dir / "standard_serp_v2.json"))
-    tool_specs = raw.get("tools") if isinstance(raw, dict) else None
-    if not isinstance(tool_specs, list):
-        tool_specs = []
-
+def _parse_tools_from_tool_md(tool_md: str) -> list[dict[str, Any]]:
+    """从 assets/prompts/tool.md 解析成 OpenAI tools schema（KISS：全部参数按 string 处理）。"""
     tools: list[dict[str, Any]] = []
-    for item in tool_specs:
-        if not isinstance(item, dict):
+
+    current_name: str | None = None
+    current_desc: str = ""
+
+    for raw_line in (tool_md or "").splitlines():
+        line = raw_line.rstrip()
+        m = _TOOL_NAME_RE.match(line)
+        if m:
+            current_name = str(m.group(1) or "").strip()
+            current_desc = str(m.group(2) or "").strip()
             continue
-        name = str(item.get("name") or "").strip()
-        if not name:
+
+        m = _TOOL_PARAMS_RE.search(line)
+        if not m or not current_name:
             continue
-        params = item.get("params")
-        param_names = [str(v).strip() for v in (params or []) if isinstance(v, str) and str(v).strip()]
-        properties = {p: {"type": "string", "description": p} for p in param_names}
+
+        params_text = str(m.group(1) or "")
+        params = [p.strip() for p in re.findall(r"`([^`]+)`", params_text) if str(p).strip()]
+
+        properties = {p: {"type": "string", "description": p} for p in params}
         tools.append(
             {
                 "type": "function",
                 "function": {
-                    "name": name,
-                    "description": f"GymBro tool: {name}",
+                    "name": current_name,
+                    "description": current_desc or f"GymBro tool: {current_name}",
                     "parameters": {"type": "object", "properties": properties, "additionalProperties": False},
                 },
             }
         )
 
-    return system_prompt, tools
+        current_name = None
+        current_desc = ""
+
+    return tools
 
 
-def _build_tools_prompt_text(tools: list[dict[str, Any]]) -> str:
-    names: list[str] = []
-    for tool in tools:
-        fn = tool.get("function") if isinstance(tool, dict) else None
-        if isinstance(fn, dict):
-            name = fn.get("name")
-            if isinstance(name, str) and name.strip():
-                names.append(name.strip())
-    names = list(dict.fromkeys(names))
-    lines = [
-        "可用工具（如需调用）：",
-        *[f"- {name}" for name in names[:50]],
-        "",
-        "规则：仅在确有必要时调用；不要编造工具输出；输出结构仍必须满足 docs/ai预期响应结构.md。",
-    ]
-    return "\n".join(lines).strip()
+def _load_asset_prompts(repo_root: Path) -> tuple[str, str, list[dict[str, Any]]]:
+    """
+    返回：
+    - system_prompt_text：assets/prompts/serp_prompt.md（Strict XML + SERP）
+    - tools_prompt_text：assets/prompts/tool.md（ToolCall 规范补丁）
+    - openai_tools_schema：由 tool.md 解析生成（注入 tools_json）
+    """
+    prompts_dir = repo_root / "assets" / "prompts"
+    system_prompt = _read_text(prompts_dir / "serp_prompt.md").strip()
+    tools_prompt = _read_text(prompts_dir / "tool.md").strip()
+    tools = _parse_tools_from_tool_md(tools_prompt)
+
+    return system_prompt, tools_prompt, tools
 
 
 ALLOWED_TAGS = {"think", "serp", "thinking", "phase", "title", "final"}
@@ -701,6 +697,7 @@ async def _run_one(
     sse = await _consume_sse(api_base=api_base, token=token, request_id=request_id, message_id=mid, conversation_id=cid)
     finished = time.time()
     final = sse.get("final") or {}
+    reply = str(sse.get("reply_accum") or "")
     frames = sse.get("frames") or []
     log.step(
         f"{step_prefix}_consume_sse",
@@ -715,12 +712,6 @@ async def _run_one(
     provider = routed.get("provider") if isinstance(routed, dict) else None
     resolved_model = routed.get("resolved_model") if isinstance(routed, dict) else None
 
-    reply = None
-    if isinstance(final, dict) and final.get("event") == "completed":
-        data = final.get("data")
-        if isinstance(data, dict):
-            reply = str(data.get("reply") or "")
-
     if provider != expected_provider or resolved_model != expected_resolved_model:
         return RunResult(
             ok=False,
@@ -732,7 +723,7 @@ async def _run_one(
             reason="routed_mismatch",
         )
 
-    ok, reason = _validate_expected_structure(reply or "")
+    ok, reason = _validate_expected_structure(reply)
     return RunResult(
         ok=ok,
         message_id=mid,
@@ -793,8 +784,7 @@ async def main() -> int:
     scope_key = mapped_key.split(":", 1)[1] if ":" in mapped_key else mapped_key
     text = (os.getenv("E2E_MESSAGE_TEXT") or "给我一份三分化训练方案").strip()
 
-    system_prompt_text, openai_tools = _load_asset_prompts(repo_root)
-    tools_prompt_text = _build_tools_prompt_text(openai_tools)
+    system_prompt_text, tools_prompt_text, openai_tools = _load_asset_prompts(repo_root)
 
     output_path = os.getenv("E2E_OUTPUT_PATH") or str(
         repo_root / "e2e" / "real_user_sse" / "artifacts" / f"xai_mapped_model_trace_{request_id}.json"
@@ -867,7 +857,7 @@ async def main() -> int:
         # 2) passthrough 模式：全量透传 system/messages/tools
         passthrough_openai = {
             "model": mapped_key,
-            "messages": [{"role": "system", "content": system_prompt_text}, {"role": "user", "content": text}],
+            "messages": [{"role": "system", "content": system_prompt_text + "\n\n" + tools_prompt_text}, {"role": "user", "content": text}],
             "tools": openai_tools,
             # 透传模式下避免触发 tool_calls（当前后端不执行工具），确保能拿到结构化 reply
             "tool_choice": "none",

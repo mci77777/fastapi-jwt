@@ -133,6 +133,11 @@
 - 可加 CDN/缓存：
   - `meta` 短缓存（分钟级）
   - `full` 可较长缓存（小时级），并配合 `checksum/version` 做缓存失效
+- 服务端支持 HTTP 缓存协商（推荐客户端启用）：
+  - `meta/full` 返回 `ETag`；客户端可带 `If-None-Match`，命中则返回 `304 Not Modified`
+  - `full` 支持 `?version=<int>`（与 `downloadUrl` 对齐），便于客户端“钉住版本”做灰度/回滚
+
+> 统一 seed manifest（可选聚合入口）：`GET /api/v1/seed/manifest`
 
 ---
 

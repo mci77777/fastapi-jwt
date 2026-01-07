@@ -111,13 +111,13 @@ docker-compose up -d api
 
 ```bash
 # Linux/Mac
-bash scripts/quick_verify.sh
+bash scripts/verification/quick_verify.sh
 
 # Windows (PowerShell)
-.\scripts\quick_verify.ps1
+pwsh scripts/verification/quick_verify.ps1
 
 # Python验证脚本
-python scripts/verify_gw_auth.py
+python scripts/verification/verify_gw_auth.py
 ```
 
 ## 📊 监控配置
@@ -214,9 +214,10 @@ WHITELIST_PATHS = {
 │   └── runbooks/
 │       └── GW_AUTH_ROLLBACK.md # 回滚预案
 ├── scripts/
-│   ├── verify_gw_auth.py      # Python验证脚本
-│   ├── quick_verify.sh        # Bash验证脚本
-│   └── quick_verify.ps1       # PowerShell验证脚本
+│   └── verification/
+│       ├── verify_gw_auth.py      # Python验证脚本
+│       ├── quick_verify.sh        # Bash验证脚本
+│       └── quick_verify.ps1       # PowerShell验证脚本
 └── .env.example               # 环境变量示例（修改）
 ```
 
@@ -271,12 +272,11 @@ pip install prometheus_client
 
 ## 📚 相关文档
 
-- [JWT认证系统实现总结](jwt改造/archive/IMPLEMENTATION_SUMMARY.md)
-- [匿名用户功能实现报告](jwt改造/ANON_IMPLEMENTATION_FINAL_REPORT.md)
-- [K1-K5基础设施文档](jwt改造/)
+- [JWT 认证系统实现总结](archive/jwt改造/archive/IMPLEMENTATION_SUMMARY.md)
+- [匿名用户 RLS/策略说明](archive/jwt改造/archive/ANON_RLS_README.md)
+- [K4/K5 基础设施产物](archive/jwt改/README.md)
 
 ---
 
 **维护者**: GymBro DevOps Team  
 **最后更新**: 2025-09-30
-

@@ -22,7 +22,8 @@ Cloud 不负责：
 - GET `/api/v1/llm/models`（建议 `view=mapped`）
 - POST `/api/v1/messages`
 - GET `/api/v1/messages/{message_id}/events`（SSE）
-- （建议新增）GET `/api/v1/seed/manifest` + GET `/api/v1/seed/files/{name}`
+- GET `/api/v1/seed/manifest`
+- GET `/api/v1/seed/files/{name}`（当前实现：`exercise_library`）
 
 ## 3. /messages：两种输入模式（关键）
 ### 3.1 GymBro SSOT 模式（默认）
@@ -72,6 +73,24 @@ Cloud 不负责：
 - `heartbeat`: `{"ts": "...", "request_id":"..."}`
 
 ## 6. 种子文件/动作库远程更新（需要澄清的契约）
-建议（如当前已实现请对齐口径）：
-- manifest 返回：version, sha256, files[], updated_at
-- file 下载支持：ETag/If-None-Match；支持增量/灰度；失败回滚
+当前实现（SSOT：`/api/v1/seed/manifest` + `/api/v1/exercise/library/*`）：
+- `seed/manifest`：返回资源列表（name/version/checksum/download_url/增量策略）
+- `exercise/library/full`：支持 `?version=` 并返回 `ETag`；客户端可用 `If-None-Match` 命中 `304`
+- 回滚策略：客户端可“钉住旧版本”（使用 `downloadUrl` 或 `?version=`），或增量失败时回退 full
+
+## 7. 联调 / E2E 验收（最小闭环）
+
+对齐口径（SSOT）：
+- AI 输出结构：`docs/ai预期响应结构.md`
+- Quick Start：`docs/e2e-ai-conversation/QUICK_START.md`
+
+最小闭环（推荐双方统一验收用例）：
+1) `GET /api/v1/llm/models?view=mapped` → 取 `data[].name` 作为 `model`
+2) `POST /api/v1/messages` → 得到 `message_id` / `conversation_id`
+3) `GET /api/v1/messages/{message_id}/events?conversation_id=...`（SSE）
+   - 至少收到 1 次 `content_delta`
+   - 最终必须收到 `completed` 或 `error`
+   - reply 由 `content_delta.delta` 拼接得到；`completed.reply_len` 仅作摘要/长度校验参考
+
+本地可复现（mock 上游，不出网）：
+- `.venv/bin/python scripts/monitoring/local_mock_ai_conversation_e2e.py`

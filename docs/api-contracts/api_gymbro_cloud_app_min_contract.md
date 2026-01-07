@@ -48,7 +48,11 @@
       "scope_type": "global",
       "scope_key": "xai",
       "updated_at": "2026-01-04T00:00:00+00:00",
-      "candidates_count": 1
+      "candidates_count": 1,
+      "provider": "xai",
+      "dialect": "openai.chat_completions",
+      "capabilities": { "supports_tools": true, "supports_vision": false, "max_output_tokens": 4096 },
+      "endpoint_hint": { "endpoint_id": 28, "endpoint_name": "xai-default" }
     }
   ],
   "total": 1
@@ -58,6 +62,7 @@
 App 侧建议持久化字段（例如 `coach_cloud_model`）：
 - `selected_model_key`：使用 `data[].name`（这是发送消息时的 `model`）
 - `selected_model_label`：使用 `data[].label`（仅用于 UI 展示，不作为路由输入）
+- `dialect/capabilities`：可用于 UI 提示（例如 tool/vision 能力），但不应作为路由输入
 
 ---
 
@@ -103,6 +108,78 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
 }
 ```
 
+#### 2.3 Provider Payload 模式（新增，4 方言；高级功能）
+
+当 `payload` 存在时：
+- 必须同时提供 `dialect`
+- `text/messages/tools/...` 等 SSOT 字段与 payload 模式**不可混用**（否则 422）
+- 服务端仍会：
+  - 强制 `stream=true`（或等价），统一走 GymBro SSE 输出链路
+  - 覆盖上游的 `model` 为映射后的 `resolved_model`（客户端不得直接指定真实 model/base_url/api_key）
+- `payload` 存在白名单字段校验（非白名单字段会 422：`payload_fields_not_allowed`）
+
+> 权限：payload 模式属于“高级能力”，匿名用户禁止；永久用户需有有效 Pro Entitlement（否则 403）。
+
+**(A) OpenAI Chat Completions**：`dialect=openai.chat_completions`
+```json
+{
+  "model": "global:xai",
+  "dialect": "openai.chat_completions",
+  "payload": {
+    "messages": [
+      { "role": "user", "content": "给我一份三分化训练方案" }
+    ],
+    "temperature": 0.7,
+    "tool_choice": "none"
+  },
+  "metadata": { "client": "app", "save_history": true }
+}
+```
+
+**(B) OpenAI Responses**：`dialect=openai.responses`
+```json
+{
+  "model": "global:xai",
+  "dialect": "openai.responses",
+  "payload": {
+    "input": "给我一份三分化训练方案",
+    "max_output_tokens": 512
+  },
+  "metadata": { "client": "app", "save_history": true }
+}
+```
+
+**(C) Anthropic Messages**：`dialect=anthropic.messages`
+```json
+{
+  "model": "global:claude",
+  "dialect": "anthropic.messages",
+  "payload": {
+    "messages": [
+      { "role": "user", "content": "给我一份三分化训练方案" }
+    ],
+    "max_tokens": 512,
+    "temperature": 0.7
+  },
+  "metadata": { "client": "app", "save_history": true }
+}
+```
+
+**(D) Gemini streamGenerateContent**：`dialect=gemini.generate_content`
+```json
+{
+  "model": "global:gemini",
+  "dialect": "gemini.generate_content",
+  "payload": {
+    "contents": [
+      { "role": "user", "parts": [{ "text": "给我一份三分化训练方案" }] }
+    ],
+    "generationConfig": { "temperature": 0.7 }
+  },
+  "metadata": { "client": "app", "save_history": true }
+}
+```
+
 ### 兼容（仅兜底，不推荐）
 
 为兼容历史 App：允许把 OpenAI 兼容请求体放入 `metadata.chat_request` 或 `metadata.openai`。  
@@ -137,9 +214,9 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
 - `event: status`：
   - `{"state":"queued|working","message_id":"..."}`
   - `{"state":"routed","message_id":"...","request_id":"...","provider":"xai","resolved_model":"grok-4-1-fast-reasoning","endpoint_id":123,"upstream_request_id":null}`
-- `event: content_delta`：`{"message_id":"...","delta":"..."}`
-- `event: completed`：`{"message_id":"...","reply":"...","request_id":"...","provider":"...","resolved_model":"...","endpoint_id":123,"upstream_request_id":"...|null"}`
-- `event: error`：`{"message_id":"...","error":"...","request_id":"...","provider":"...|null","resolved_model":"...|null","endpoint_id":123|null}`
+- `event: content_delta`：`{"message_id":"...","request_id":"...","seq":1,"delta":"..."}`
+- `event: completed`：`{"message_id":"...","request_id":"...","reply_len":1234,"provider":"...","resolved_model":"...","endpoint_id":123,"upstream_request_id":"...|null","metadata":null}`
+- `event: error`：`{"message_id":"...","request_id":"...","code":"...","message":"...","error":"...","provider":"...|null","resolved_model":"...|null","endpoint_id":123|null}`
+- `event: heartbeat`：`{"message_id":"...","request_id":"...","ts":1736253242000}`
 
-> `completed.reply` 的结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。
-
+> reply 由 `content_delta.delta` 拼接得到；结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。

@@ -165,7 +165,7 @@ make setup-git-hooks
 - **新仓库**: https://github.com/mci77777/fastapi-jwt
 - **创建仓库**: https://github.com/new
 - **xAI Console**: https://console.x.ai/api-keys
-- **安全指南**: [`docs/KEY_LEAK_RESPONSE.md`](docs/KEY_LEAK_RESPONSE.md)
+- **安全指南**: [`docs/KEY_LEAK_RESPONSE.md`](../KEY_LEAK_RESPONSE.md)
 
 ---
 

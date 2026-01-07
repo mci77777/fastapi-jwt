@@ -53,6 +53,7 @@ class OpenAIResponsesAdapter:
 
         reply_parts: list[str] = []
         upstream_request_id: Optional[str] = None
+        usage: Optional[dict[str, Any]] = None
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             for index, auth_headers in enumerate(auth_candidates):
@@ -96,6 +97,10 @@ class OpenAIResponsesAdapter:
                         except Exception:
                             continue
 
+                        candidate_usage = obj.get("usage") if isinstance(obj, dict) else None
+                        if isinstance(candidate_usage, dict):
+                            usage = dict(candidate_usage)
+
                         if isinstance(obj, dict) and obj.get("error"):
                             raise ProviderError("upstream_error")
 
@@ -118,9 +123,12 @@ class OpenAIResponsesAdapter:
                     reply_text = "".join(reply_parts).strip()
                     if not reply_text:
                         raise ProviderError("upstream_empty_content")
+                    payload_out: dict[str, Any] = {"stream": True, "chunks": len(reply_parts)}
+                    if usage:
+                        payload_out["usage"] = usage
                     return (
                         reply_text,
-                        json.dumps({"stream": True, "chunks": len(reply_parts)}, ensure_ascii=False),
+                        json.dumps(payload_out, ensure_ascii=False),
                         upstream_request_id,
                         None,
                     )
@@ -153,4 +161,3 @@ def _extract_any_text(obj: Any) -> str:
 def _stream_chunks(text: str, chunk_size: int = 120):
     for index in range(0, len(text), chunk_size):
         yield text[index : index + chunk_size]
-

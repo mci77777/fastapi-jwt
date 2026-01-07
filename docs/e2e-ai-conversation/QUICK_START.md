@@ -80,10 +80,10 @@ event: status
 data: {"state":"routed","message_id":"abc123def456","request_id":"...","provider":"xai","resolved_model":"grok-4-1-fast-reasoning","endpoint_id":28,"upstream_request_id":"..."}
 
 event: content_delta
-data: {"message_id": "abc123def456", "delta": "For beginners, I recommend..."}
+data: {"message_id":"abc123def456","request_id":"...","seq":1,"delta":"For beginners, I recommend..."}
 
 event: completed
-data: {"message_id":"abc123def456","reply":"...","request_id":"...","provider":"xai","resolved_model":"...","endpoint_id":28,"upstream_request_id":"..."}
+data: {"message_id":"abc123def456","request_id":"...","provider":"xai","resolved_model":"...","endpoint_id":28,"upstream_request_id":"...","reply_len":1234,"metadata":null}
 ```
 
 ### 6. Check Metrics
@@ -205,6 +205,13 @@ POST /api/v1/messages
   "text": ""
 }
 # Expected: 422 Validation Error
+```
+
+### Scenario 4: Provider Payload Mode (4 dialect smoke)
+
+CI/本地（mock 上游，不出网）：
+```bash
+PYTHONPATH=. .venv/bin/pytest -q tests/test_provider_dialects_micro_e2e.py
 ```
 
 ---
@@ -355,13 +362,13 @@ event: status
 data: {"state": "working", "message_id": "..."}
 
 event: content_delta
-data: {"message_id": "...", "delta": "chunk of text"}
+data: {"message_id":"...","request_id":"...","seq":1,"delta":"chunk of text"}
 
 event: completed
-data: {"message_id": "...", "reply": "full response"}
+data: {"message_id":"...","request_id":"...","provider":"openai","resolved_model":"...","endpoint_id":1,"upstream_request_id":"...","reply_len":1234,"metadata":null}
 
 event: error
-data: {"message_id": "...", "error": "error message"}
+data: {"message_id":"...","request_id":"...","code":"provider_error","message":"...","error":"...","provider":"openai","resolved_model":"...","endpoint_id":1}
 ```
 
 ---
@@ -380,6 +387,6 @@ data: {"message_id": "...", "error": "error message"}
 ## 📞 Support
 
 - **Documentation**: `docs/e2e-ai-conversation/IMPLEMENTATION_PLAN.md`
-- **Architecture**: `docs/dashboard-refactor/ARCHITECTURE_OVERVIEW.md`
-- **JWT Guide**: `docs/JWT_HARDENING_GUIDE.md`
-- **API Monitoring**: `docs/API_MONITOR_HANDOVER.md`
+- **Architecture**: `docs/archive/dashboard-refactor/ARCHITECTURE_OVERVIEW.md`
+- **JWT Guide**: `docs/archive/jwt改造/archive/JWT_HARDENING_GUIDE.md`
+- **API Monitoring**: `docs/features/DASHBOARD_FEATURES.md`（见“API 监控功能”章节）

@@ -405,10 +405,10 @@ sudo crontab -l | grep certbot
 
 ## 📚 相关文档
 
-- **本地开发**: [`docs/DEV_START.md`](DEV_START.md)
-- **环境配置**: [`docs/ENV_CONFIGURATION_GUIDE.md`](ENV_CONFIGURATION_GUIDE.md)
+- **本地开发**: [`DEV_START.md`](../../DEV_START.md)
+- **环境配置**: [`docs/ENV_CONFIGURATION_GUIDE.md`](../ENV_CONFIGURATION_GUIDE.md)
 - **API 文档**: https://api.gymbro.cloud/docs
-- **项目架构**: [`docs/PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md)
+- **项目架构**: [`docs/PROJECT_OVERVIEW.md`](../PROJECT_OVERVIEW.md)
 
 ---
 

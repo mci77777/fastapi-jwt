@@ -196,7 +196,7 @@ def generate_report(results):
         print("\n📝 下一步：")
         print("1. 启动开发服务器：cd web && pnpm dev")
         print("2. 访问 http://localhost:3101/dashboard")
-        print("3. 执行手动验证清单（见 docs/dashboard-refactor/PHASE4_UI_OPTIMIZATION_2025-10-12.md）")
+        print("3. 执行手动验证清单（见 docs/archive/dashboard-refactor/PHASE4_UI_OPTIMIZATION_2025-10-12.md）")
         return True
     else:
         print("\n⚠️ 部分检查未通过，请检查上述失败项。")

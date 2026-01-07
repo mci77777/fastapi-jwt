@@ -99,7 +99,7 @@ D:\GymBro\vue-fastapi-admin
 │   ├── test_me_endpoint.py              # NEW
 │   └── test_entitlement_gate.py         # NEW
 └── docs
-    └── dashboard-refactor
+    └── archive/dashboard-refactor
         └── ARCHITECTURE_OVERVIEW.md     # update mobile API section
 
 ```
@@ -131,7 +131,7 @@ D:\GymBro\vue-fastapi-admin
 - D:/GymBro/vue-fastapi-admin/app/repositories/user_repo.py
 - D:/GymBro/vue-fastapi-admin/app/services/entitlement_service.py
 - D:/GymBro/vue-fastapi-admin/app/services/supabase_admin.py
-- D:/GymBro/vue-fastapi-admin/docs/dashboard-refactor/ARCHITECTURE_OVERVIEW.md
+- D:/GymBro/vue-fastapi-admin/docs/archive/dashboard-refactor/ARCHITECTURE_OVERVIEW.md
 - D:/GymBro/vue-fastapi-admin/docs/supabase/migrations/001_user_tables.sql
 - D:/GymBro/vue-fastapi-admin/docs/supabase/migrations/002_user_rls.sql
 - D:/GymBro/vue-fastapi-admin/tests/test_entitlement_gate.py

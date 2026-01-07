@@ -134,9 +134,9 @@ git push
 
 ## 📚 相关文档
 
-- 详细报告: [docs/REPO_RESTORATION_REPORT.md](./REPO_RESTORATION_REPORT.md)
-- 云端部署: [docs/deployment/CLOUD_DEPLOYMENT_GUIDE.md](./deployment/CLOUD_DEPLOYMENT_GUIDE.md)
-- 快速开始: [DEV_START.md](../DEV_START.md)
+- 详细报告: [docs/incidents/2024-10-repo-restoration-report.md](./2024-10-repo-restoration-report.md)
+- 云端部署: [docs/deployment/CLOUD_DEPLOYMENT_GUIDE.md](../deployment/CLOUD_DEPLOYMENT_GUIDE.md)
+- 快速开始: [DEV_START.md](../../DEV_START.md)
 
 ---
 

@@ -152,12 +152,15 @@ class AnonymousE2E:
                 }
             if event == "completed":
                 reply = str(data.get("reply") or "")
+                reply_len = data.get("reply_len")
+                if not isinstance(reply_len, int):
+                    reply_len = len(reply)
                 return {
                     "event": event,
                     "data": {
                         "message_id": data.get("message_id"),
-                        "reply_len": len(reply),
-                        "reply_preview": reply[:40],
+                        "reply_len": reply_len,
+                        "reply_preview": reply[:40] if reply else None,
                         "request_id": data.get("request_id"),
                     },
                 }

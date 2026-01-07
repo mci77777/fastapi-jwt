@@ -53,7 +53,7 @@ vue-fastapi-admin/
 | `scripts/verification/verify_jwks_cache.py` | ✅ 综合校验 JWKS 缓存与 JWT 验证链路 | `python scripts/verification/verify_jwks_cache.py` |
 | `scripts/verification/verify_phase4_ui.py` | Phase 4 UI 验证 | `python scripts/verification/verify_phase4_ui.py` |
 | `scripts/verification/visual_verification_phase4.py` | Phase 4 可视化验证 | `python scripts/verification/visual_verification_phase4.py` |
-| `scripts/verification/audit_supabase_naming.py` | Supabase 命名/引用审计（输出到 docs/_audit） | `python scripts/verification/audit_supabase_naming.py` |
+| `scripts/verification/audit_supabase_naming.py` | Supabase 命名/引用审计（输出到 report/audit） | `python scripts/verification/audit_supabase_naming.py` |
 
 ### 5. API / 前端测试（3 个）
 

@@ -64,7 +64,7 @@ complexity: complex
 - Commit after: Phase 2 / Phase 3 / Phase 4 / Phase 5
 
 ## References
-- `docs/dashboard-refactor/AI_SUPPLIER_SSOT_CALLPOINTS.md`
+- `docs/archive/dashboard-refactor/AI_SUPPLIER_SSOT_CALLPOINTS.md`
 - `app/services/ai_config_service.py`
 - `app/services/model_mapping_service.py`
 - `app/api/v1/llm_models.py`

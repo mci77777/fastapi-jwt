@@ -1,6 +1,6 @@
-# GymBro 文档索引
+# GymBro Docs（Wiki）
 
-> 项目文档导航 - 快速查找所需文档
+> 项目文档导航（SSOT）。建议从 `docs/SUMMARY.md` 进入做全局浏览；历史材料统一从 `docs/archive/` 入口访问。
 
 ---
 
@@ -11,6 +11,17 @@
 | [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md) | 整体架构与技术栈概览 |
 | [GW_AUTH_README.md](./GW_AUTH_README.md) | 网关改造与运行须知 |
 | [SCRIPTS_INDEX.md](./SCRIPTS_INDEX.md) | 脚本与工具索引 |
+
+---
+
+## 🔌 API / SSE / E2E（对接必读）
+
+| 文档 | 描述 |
+|------|------|
+| [api-contracts/](./api-contracts/) | Cloud API 最小契约（App/Web） |
+| [sse/](./sse/) | SSE 对话链路 + 统一事件（GymBro SSE） |
+| [ai预期响应结构.md](./ai预期响应结构.md) | AI 输出结构 SSOT（ThinkingML v4.5） |
+| [e2e-ai-conversation/](./e2e-ai-conversation/) | E2E 对话验收（含 mock 上游） |
 
 ---
 
@@ -69,17 +80,15 @@
 |------|------|
 | [auth/migrations](./auth/migrations/) | 阶段总结与 Supabase 配置速览 |
 | [deployment/](./deployment/) | Supabase 匿名 JWT 部署摘要 |
-| [jwt改/](./jwt改/) | JWT 改造阶段归档摘要 |
-| [jwt改造/](./jwt改造/) | JWT 改造阶段归档摘要 |
 | [runbooks/](./runbooks/) | 运行手册速查 |
-| [task/](./task/) | 匿名 E2E 任务摘要 |
-| [_audit/](./\_audit/) | 项目审计报告（测试/脚本/文档整合） |
+| [archive/](./archive/) | 历史归档入口（阶段交付/审计/旧任务） |
 
 ---
 
 ## 📅 最近更新
 
 - **2025-10-17**: 完成项目审计与重组（测试/脚本/文档整合，文件减少 52%）
+- **2026-01-07**: Cloud SSE 统一事件 + 4 dialect payload 模式 + E2E 回归（见 `docs/sse/`）
 - **2025-01-11**: Dashboard 作为系统首页实现完成，修复登录后动态路由加载时序问题
 
 ---

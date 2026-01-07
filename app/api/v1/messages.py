@@ -549,7 +549,6 @@ async def stream_message_events(
                     safe_data = {
                         "message_id": safe_data.get("message_id"),
                         "delta_len": len(delta),
-                        "delta_preview": delta[:20],
                     }
                 elif item.event == "completed":
                     safe_data = {

@@ -62,6 +62,24 @@ Passthrough 模式（客户端完全控制 messages/system/tools）：
 }
 ```
 
+### Provider Payload 模式（新增，4 方言）
+
+当 `payload` 存在时，必须同时提供 `dialect`，并进入 provider passthrough 分支（仍强制 `stream=true`）：  
+`dialect ∈ openai.chat_completions | openai.responses | anthropic.messages | gemini.generate_content`。
+
+示例（OpenAI Chat Completions）：
+```json
+{
+  "model": "global:xai",
+  "dialect": "openai.chat_completions",
+  "payload": {
+    "messages": [{ "role": "user", "content": "hello" }],
+    "temperature": 0.7
+  },
+  "metadata": { "client": "app" }
+}
+```
+
 ### Response（202）
 ```json
 { "message_id": "<opaque>", "conversation_id": "<uuid>" }
@@ -104,4 +122,3 @@ Passthrough 模式（客户端完全控制 messages/system/tools）：
 2) **fetch 流式**：需运行时支持 `ReadableStream`；移动端/WebView 需评估兼容或引入 SSE 库。
 
 3) **网关 301**：若 `/api/v1/messages` 存在重定向，会破坏 POST/SSE；参考 `deploy/web.conf` 的 location 修复。
-

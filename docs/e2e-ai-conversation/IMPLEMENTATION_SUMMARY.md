@@ -392,16 +392,15 @@ SUPABASE_CHAT_TABLE=chat_messages
 **Documentation**:
 - Implementation Plan: `docs/e2e-ai-conversation/IMPLEMENTATION_PLAN.md`
 - Quick Start: `docs/e2e-ai-conversation/QUICK_START.md`
-- Architecture: `docs/dashboard-refactor/ARCHITECTURE_OVERVIEW.md`
+- Architecture: `docs/archive/dashboard-refactor/ARCHITECTURE_OVERVIEW.md`
 
 **Related Systems**:
-- JWT Auth: `docs/JWT_HARDENING_GUIDE.md`
-- API Monitoring: `docs/API_MONITOR_HANDOVER.md`
-- Supabase: `docs/jwt改造/archive/SUPABASE_SETUP_GUIDE.md`
+- JWT Auth: `docs/archive/jwt改造/archive/JWT_HARDENING_GUIDE.md`
+- API Monitoring: `docs/features/DASHBOARD_FEATURES.md`（见“API 监控功能”章节）
+- Supabase: `docs/archive/jwt改造/archive/SUPABASE_SETUP_GUIDE.md`
 
 **Code References**:
 - Messages API: `app/api/v1/messages.py`
 - AI Service: `app/services/ai_service.py`
 - Metrics: `app/core/metrics.py`
 - Frontend Component: `web/src/components/dashboard/AiConversationMetrics.vue`
-

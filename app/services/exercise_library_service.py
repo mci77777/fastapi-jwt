@@ -135,11 +135,9 @@ class ExerciseLibraryService:
             generated_at_ms = int(seed_meta.get("generatedAt") or generated_at_ms)
         return await self.publish(payload, generated_at_ms=generated_at_ms, version_override=version_override)
 
-    async def get_meta(self) -> ExerciseLibraryMeta:
-        latest = await self._get_latest_snapshot()
-        if latest is None:
-            raise ExerciseLibraryError("exercise_library_not_seeded", "Exercise library is not seeded")
-        return self._row_to_meta(latest)
+    async def get_meta(self, *, version: int | None = None) -> ExerciseLibraryMeta:
+        snapshot = await self._get_snapshot(version)
+        return self._row_to_meta(snapshot)
 
     async def get_full(self, *, version: int | None = None) -> list[ExerciseDto]:
         snapshot = await self._get_snapshot(version)
@@ -343,7 +341,7 @@ class ExerciseLibraryService:
             totalCount=total_count,
             lastUpdated=generated_at_ms,
             checksum=f"sha256:{checksum}",
-            downloadUrl=None,
+            downloadUrl=f"/api/v1/exercise/library/full?version={next_version}",
         )
 
     def _load_seed_file(self) -> tuple[list[ExerciseDto], dict[str, Any] | None]:
@@ -417,7 +415,7 @@ class ExerciseLibraryService:
             totalCount=row.total_count,
             lastUpdated=last_updated,
             checksum=f"sha256:{row.checksum}",
-            downloadUrl=None,
+            downloadUrl=f"/api/v1/exercise/library/full?version={row.version}",
         )
 
     def _diff(self, old_items: list[ExerciseDto], new_items: list[ExerciseDto]) -> ExerciseLibraryDiff:

@@ -322,12 +322,14 @@ def main():
     rollback_playbook = drill_manager.generate_rollback_playbook()
 
     # 保存演练报告
-    drill_report_file = "docs/jwt改造/K5_rollback_drill_report.json"
+    drill_report_file = os.path.join("docs", "archive", "jwt改造", "K5_rollback_drill_report.json")
+    os.makedirs(os.path.dirname(drill_report_file), exist_ok=True)
     with open(drill_report_file, "w", encoding="utf-8") as f:
         json.dump(drill_report, f, ensure_ascii=False, indent=2)
 
     # 保存回滚手册
-    playbook_file = "docs/jwt改造/K5_rollback_playbook.json"
+    playbook_file = os.path.join("docs", "archive", "jwt改造", "K5_rollback_playbook.json")
+    os.makedirs(os.path.dirname(playbook_file), exist_ok=True)
     with open(playbook_file, "w", encoding="utf-8") as f:
         json.dump(rollback_playbook, f, ensure_ascii=False, indent=2)
 

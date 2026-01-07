@@ -54,6 +54,7 @@ class AnthropicMessagesAdapter:
 
         reply_parts: list[str] = []
         upstream_request_id: Optional[str] = None
+        usage: Optional[dict[str, Any]] = None
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream("POST", url, json=body, headers=headers) as response:
@@ -92,6 +93,10 @@ class AnthropicMessagesAdapter:
                     except Exception:
                         continue
 
+                    candidate_usage = obj.get("usage") if isinstance(obj, dict) else None
+                    if isinstance(candidate_usage, dict):
+                        usage = dict(candidate_usage)
+
                     if event_name == "error" or (isinstance(obj, dict) and obj.get("type") == "error"):
                         raise ProviderError("upstream_error")
 
@@ -109,9 +114,12 @@ class AnthropicMessagesAdapter:
         reply_text = "".join(reply_parts).strip()
         if not reply_text:
             raise ProviderError("upstream_empty_content")
+        payload_out: dict[str, Any] = {"stream": True, "chunks": len(reply_parts)}
+        if usage:
+            payload_out["usage"] = usage
         return (
             reply_text,
-            json.dumps({"stream": True, "chunks": len(reply_parts)}, ensure_ascii=False),
+            json.dumps(payload_out, ensure_ascii=False),
             upstream_request_id,
             None,
         )
@@ -120,4 +128,3 @@ class AnthropicMessagesAdapter:
 def _stream_chunks(text: str, chunk_size: int = 120):
     for index in range(0, len(text), chunk_size):
         yield text[index : index + chunk_size]
-

@@ -39,7 +39,7 @@ complexity: medium
    - 解析 JSON → 展示 added/updated/deleted 数量与样例预览 → 发布。
    - 权限：`v-permission="'post/api/v1/admin/exercise/library/patch'"`。
 4. 文档与回归
-   - 更新 `docs/后端方案/*` 与 `docs/task/2026-01-02_exercise-library-seed-sync.md`：补充 patch 示例与注意事项。
+   - 更新 `docs/后端方案/*` 与 `docs/archive/task/2026-01-02_exercise-library-seed-sync.md`：补充 patch 示例与注意事项。
    - 验证：pytest + `cd web && npm run build`。
 
 ## Tests & Verification

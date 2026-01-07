@@ -52,10 +52,28 @@ def test_llm_models_default_view_is_mapped_and_endpoints_view_still_works(mock_g
     assert any(item.get("name") == app_key for item in mapped_items)
 
     picked = next(item for item in mapped_items if item.get("name") == app_key)
-    assert set(picked.keys()).issuperset({"name", "default_model", "candidates"})
+    assert set(picked.keys()).issuperset(
+        {
+            "name",
+            "default_model",
+            "candidates",
+            # enrich（SSOT：registry）
+            "provider",
+            "dialect",
+            "capabilities",
+            "endpoint_hint",
+        }
+    )
     assert "base_url" not in picked
     assert "model_list" not in picked
     assert picked.get("default_model") == "gpt-4o-mini"
+
+    assert picked.get("provider") in {"openai", "claude", "xai", "gemini"}
+    assert isinstance(picked.get("dialect"), str) and picked.get("dialect")
+    caps = picked.get("capabilities")
+    assert isinstance(caps, dict) and set(caps.keys()).issuperset({"supports_tools", "supports_vision", "max_output_tokens"})
+    hint = picked.get("endpoint_hint")
+    assert isinstance(hint, dict) and isinstance(hint.get("endpoint_id"), int)
 
     # view=endpoints：管理后台仍可拉取供应商 endpoint 列表
     endpoints = client.get("/api/v1/llm/models?view=endpoints", headers=headers)

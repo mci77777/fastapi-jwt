@@ -65,10 +65,13 @@ def _safe_sse_event(event: str, data: Any) -> Dict[str, Any]:
         }
     elif event == "completed" and isinstance(data, dict):
         reply = str(data.get("reply") or "")
+        reply_len = data.get("reply_len")
+        if not isinstance(reply_len, int):
+            reply_len = len(reply)
         safe_data = {
             "message_id": data.get("message_id"),
-            "reply_len": len(reply),
-            "reply_preview": reply[:40],
+            "reply_len": reply_len,
+            "reply_preview": reply[:40] if reply else None,
             "request_id": data.get("request_id"),
         }
     elif event == "error" and isinstance(data, dict):

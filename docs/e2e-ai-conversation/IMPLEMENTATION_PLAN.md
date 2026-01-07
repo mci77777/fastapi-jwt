@@ -532,8 +532,7 @@ INFO: Conversation NOT saved (user preference): message_id=def789 user_id=user-1
 ---
 
 ## 📚 Related Documentation
-- [JWT Authentication Guide](../JWT_HARDENING_GUIDE.md)
-- [API Monitoring Handover](../API_MONITOR_HANDOVER.md)
-- [Supabase Integration](../jwt改造/archive/SUPABASE_SETUP_GUIDE.md)
-- [Prometheus Metrics](../dashboard-refactor/PROMETHEUS_METRICS_FIX_HANDOVER.md)
-
+- [JWT Authentication Guide](../archive/jwt改造/archive/JWT_HARDENING_GUIDE.md)
+- [API Monitoring](../features/DASHBOARD_FEATURES.md#2-api-监控功能)
+- [Supabase Integration](../archive/jwt改造/archive/SUPABASE_SETUP_GUIDE.md)
+- [Prometheus Metrics](../archive/dashboard-refactor/PROMETHEUS_METRICS_FIX_HANDOVER.md)

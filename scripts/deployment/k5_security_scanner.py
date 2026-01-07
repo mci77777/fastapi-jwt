@@ -331,7 +331,8 @@ def main():
     report = scanner.scan_all()
 
     # 保存报告
-    report_file = "docs/jwt改造/K5_security_scan_report.json"
+    report_file = os.path.join("docs", "archive", "jwt改造", "K5_security_scan_report.json")
+    os.makedirs(os.path.dirname(report_file), exist_ok=True)
     with open(report_file, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
 

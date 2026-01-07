@@ -86,7 +86,7 @@ complexity: complex
 - Commit after: 日志详情 + SQLite 可选持久化完成并通过构建/测试
 
 ## References
-- `docs/dashboard-refactor/ARCHITECTURE_OVERVIEW.md`
+- `docs/archive/dashboard-refactor/ARCHITECTURE_OVERVIEW.md`
 - `web/src/views/dashboard/index.vue`
 - `web/src/components/dashboard/ServerLoadCard.vue`
 - `web/src/components/dashboard/EndpointConnectivityCard.vue`

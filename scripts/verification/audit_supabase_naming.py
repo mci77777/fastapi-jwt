@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Supabase 命名与引用审计（仓库内扫描 + 生成 docs 报告）
+Supabase 命名与引用审计（仓库内扫描 + 生成报告）
 
 目标：
 - 明确“后端归属表”与“App 端归属表”的边界（以 docs/schemas/SUPABASE_SCHEMA_OWNERSHIP_AND_NAMING.md 为准）
 - 扫描仓库内对 Supabase 表的引用（REST / SQL DDL / 文档）
-- 检测命名是否符合 snake_case，并输出报告到 docs/_audit/
+- 检测命名是否符合 snake_case，并输出报告到 report/audit/
 
 注意：
 - 本脚本不改动 Supabase 数据库，仅做静态扫描与报告生成。
@@ -319,12 +319,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--out-md",
-        default=str(PROJECT_ROOT / "docs" / "_audit" / "supabase_naming_report.md"),
+        default=str(PROJECT_ROOT / "report" / "audit" / "supabase_naming_report.md"),
         help="Markdown 报告输出路径",
     )
     parser.add_argument(
         "--out-json",
-        default=str(PROJECT_ROOT / "docs" / "_audit" / "supabase_naming_report.json"),
+        default=str(PROJECT_ROOT / "report" / "audit" / "supabase_naming_report.json"),
         help="JSON 报告输出路径",
     )
     parser.add_argument(

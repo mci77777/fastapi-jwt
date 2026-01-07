@@ -82,6 +82,7 @@ class OpenAIChatCompletionsAdapter:
         tool_call_names: list[str] = []
         saw_function_call = False
         upstream_request_id: Optional[str] = None
+        usage: Optional[dict[str, Any]] = None
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             for index, auth_headers in enumerate(auth_candidates):
@@ -144,6 +145,10 @@ class OpenAIChatCompletionsAdapter:
                         except Exception:
                             continue
 
+                        candidate_usage = obj.get("usage") if isinstance(obj, dict) else None
+                        if isinstance(candidate_usage, dict):
+                            usage = dict(candidate_usage)
+
                         if isinstance(obj, dict) and obj.get("error"):
                             raise ProviderError("upstream_error")
 
@@ -175,9 +180,12 @@ class OpenAIChatCompletionsAdapter:
                         names = list(dict.fromkeys([x for x in tool_call_names if x]))
                         if names:
                             metadata = {"tool_calls": {"names": names[:20]}}
+                        payload_out: dict[str, Any] = {"stream": True, "chunks": len(reply_parts)}
+                        if usage:
+                            payload_out["usage"] = usage
                         return (
                             reply_text,
-                            json.dumps({"stream": True, "chunks": len(reply_parts)}, ensure_ascii=False),
+                            json.dumps(payload_out, ensure_ascii=False),
                             upstream_request_id,
                             metadata,
                         )

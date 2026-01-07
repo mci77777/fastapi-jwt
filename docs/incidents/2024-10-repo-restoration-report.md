@@ -163,7 +163,7 @@ git diff HEAD..old-origin/feature/dashboard-phase2 --stat
 | 认证与安全 | 3 | app/auth/dependencies.py, app/core/policy_gate.py |
 | API 端点 | 3 | app/api/v1/base.py, llm_models.py, llm_mappings.py |
 | 前端组件 | 15+ | Dashboard 相关 Vue 组件 |
-| 文档 | 20+ | docs/dashboard-refactor/* 交接文档 |
+| 文档 | 20+ | docs/archive/dashboard-refactor/* 交接文档 |
 | 脚本工具 | 15+ | scripts/* 运维脚本 |
 
 ### 关键文件恢复状态
@@ -197,7 +197,7 @@ detect-secrets scan --baseline .secrets.baseline --exclude-files '\.git/|\.venv/
 **推荐**: 方案A（升级），保持工具链最新
 
 ### 2. 大量文档和脚本被删除
-**统计**: 21055 行删除，主要是 docs/dashboard-refactor/* 交接文档
+**统计**: 21055 行删除，主要是 docs/archive/dashboard-refactor/* 交接文档
 
 **影响评估**:
 - ✅ 不影响功能运行
@@ -255,10 +255,10 @@ detect-secrets scan --baseline .secrets.baseline --exclude-files '\.git/|\.venv/
 5. **选择性恢复文档**
    ```bash
    # 恢复关键实现文档
-   git show old-origin/feature/dashboard-phase2:docs/dashboard-refactor/IMPLEMENTATION_PLAN.md > docs/dashboard-refactor/IMPLEMENTATION_PLAN.md
+   git show old-origin/feature/dashboard-phase2:docs/dashboard-refactor/IMPLEMENTATION_PLAN.md > docs/archive/dashboard-refactor/IMPLEMENTATION_PLAN.md
 
    # 恢复用户指南
-   git show old-origin/feature/dashboard-phase2:docs/dashboard-refactor/USER_GUIDE.md > docs/dashboard-refactor/USER_GUIDE.md
+   git show old-origin/feature/dashboard-phase2:docs/dashboard-refactor/USER_GUIDE.md > docs/archive/dashboard-refactor/USER_GUIDE.md
    ```
 
 ### 可选优化 (P2)

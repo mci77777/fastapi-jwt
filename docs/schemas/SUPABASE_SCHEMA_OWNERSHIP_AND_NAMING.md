@@ -112,5 +112,5 @@
 ## 配套审计脚本
 
 - 运行：`python scripts/verification/audit_supabase_naming.py`
-- 输出：`docs/_audit/supabase_naming_report.md`、`docs/_audit/supabase_naming_report.json`
+- 输出：`report/audit/supabase_naming_report.md`、`report/audit/supabase_naming_report.json`
 - 归属配置：`docs/schemas/supabase_ownership_map.json`

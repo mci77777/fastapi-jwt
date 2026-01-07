@@ -220,11 +220,20 @@ async def list_ai_models(
                 if not name:
                     continue
                 copy = dict(item)
+                # 稳定 schema：字段存在但允许为 null（resolve 失败时不阻塞列表）
+                copy.setdefault("provider", None)
+                copy.setdefault("dialect", None)
+                copy.setdefault("capabilities", None)
+                copy.setdefault("endpoint_hint", None)
                 try:
                     route = await registry.resolve_model_key(name)
-                    copy.setdefault("provider", route.provider)
-                    copy.setdefault("dialect", route.dialect)
-                    copy.setdefault("capabilities", registry.infer_capabilities(route))
+                    copy["provider"] = route.provider
+                    copy["dialect"] = route.dialect
+                    copy["capabilities"] = registry.infer_capabilities(route)
+                    copy["endpoint_hint"] = {
+                        "endpoint_id": route.endpoint_id,
+                        "endpoint_name": route.endpoint.get("name"),
+                    }
                 except Exception:
                     # 不阻塞列表：缺失字段按旧 schema 兼容
                     pass

@@ -200,7 +200,7 @@ GymBro是一个基于FastAPI + Vue 3的现代化管理后台系统，提供完�
 7. **role_apis** - 角色-API关联表
 8. **audit_logs** - 审计日志表
 
-详细设计见：[DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md)（待创建）
+数据库与 Schema 相关设计见：[`docs/schemas/README.md`](schemas/README.md)（SSOT）。
 
 ## 🔐 认证流程
 
@@ -279,11 +279,11 @@ GymBro是一个基于FastAPI + Vue 3的现代化管理后台系统，提供完�
 
 ## 📚 相关文档
 
-- [详细执行计划](./EXECUTION_PLAN.md)
-- [App JWT对接指南](./APP_JWT_INTEGRATION.md)（待创建）
-- [数据库设计文档](./DATABASE_SCHEMA.md)（待创建）
-- [部署文档](./DEPLOYMENT.md)（待创建）
-- [运维手册](./OPERATIONS.md)（待创建）
+- Wiki 导航：[`docs/SUMMARY.md`](SUMMARY.md)
+- 认证与 JWT：[`docs/auth/README.md`](auth/README.md)
+- 数据库与 Schema：[`docs/schemas/README.md`](schemas/README.md)
+- 云端部署：[`docs/deployment/CLOUD_DEPLOYMENT_GUIDE.md`](deployment/CLOUD_DEPLOYMENT_GUIDE.md)
+- 运维 Runbook：[`docs/runbooks/README.md`](runbooks/README.md)
 
 ## 🚀 快速开始
 

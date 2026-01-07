@@ -35,7 +35,7 @@ BE-040,FastAPI：更新路由注册与文档（区分 admin API 与 mobile /v1�
 - 确认 /v1/* 作为移动端 API 前缀，不被 PolicyGateMiddleware 误拦截
 - 在 application.py 注册新 router，并在 docs/ARCHITECTURE_OVERVIEW.md 增补“移动端 API”章节。","1) /v1/me 不会被 PolicyGateMiddleware 错误阻断
 2) Swagger 文档结构清晰（admin vs mobile）
-3) 文档更新合入",make test + 手动：访问 /docs 验证,feedback:codebase-retrieval,DONE,TODO,TODO,D:/GymBro/vue-fastapi-admin/app/core/application.py; D:/GymBro/vue-fastapi-admin/docs/dashboard-refactor/ARCHITECTURE_OVERVIEW.md,BE-020,如果中间件按 prefix 匹配，确保将 /v1/* 归为“移动端”白名单/单独策略。 | started_at=2026-01-06T18:16:47+08:00 | ARCHITECTURE_OVERVIEW 增补 /v1/me；移动端路由通过 mobile_router 注册且不匹配 PolicyGate 的 /api/v1 限制,,commit=BE-040: document mobile API routing done_at=2026-01-06T18:17:56+08:00,BE-040: document mobile API routing
+3) 文档更新合入",make test + 手动：访问 /docs 验证,feedback:codebase-retrieval,DONE,TODO,TODO,D:/GymBro/vue-fastapi-admin/app/core/application.py; D:/GymBro/vue-fastapi-admin/docs/archive/dashboard-refactor/ARCHITECTURE_OVERVIEW.md,BE-020,如果中间件按 prefix 匹配，确保将 /v1/* 归为“移动端”白名单/单独策略。 | started_at=2026-01-06T18:16:47+08:00 | ARCHITECTURE_OVERVIEW 增补 /v1/me；移动端路由通过 mobile_router 注册且不匹配 PolicyGate 的 /api/v1 限制,,commit=BE-040: document mobile API routing done_at=2026-01-06T18:17:56+08:00,BE-040: document mobile API routing
 BE-070,后端测试补齐：/v1/me 合约测试 + entitlement gate 回归,"新增测试：
 - test_me_endpoint.py：401/200、字段 schema
 - test_entitlement_gate.py：free/pro/expired

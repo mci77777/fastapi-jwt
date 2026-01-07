@@ -15,6 +15,14 @@ class TestExerciseLibraryContracts:
         assert isinstance(data["lastUpdated"], int)
         assert isinstance(data["checksum"], str)
 
+    def test_meta_etag_not_modified(self, client):
+        first = client.get("/api/v1/exercise/library/meta")
+        assert first.status_code == 200
+        etag = first.headers.get("ETag")
+        assert etag
+        second = client.get("/api/v1/exercise/library/meta", headers={"If-None-Match": etag})
+        assert second.status_code == 304
+
     def test_full_contract(self, client):
         resp = client.get("/api/v1/exercise/library/full")
         assert resp.status_code == 200
@@ -41,6 +49,18 @@ class TestExerciseLibraryContracts:
         assert isinstance(sample["id"], str)
         assert isinstance(sample["equipment"], list)
         assert isinstance(sample["isCustom"], bool)
+
+    def test_full_supports_version_query_and_etag(self, client):
+        meta = client.get("/api/v1/exercise/library/meta").json()
+        version = meta["version"]
+
+        first = client.get(f"/api/v1/exercise/library/full?version={version}")
+        assert first.status_code == 200
+        etag = first.headers.get("ETag")
+        assert etag
+
+        second = client.get(f"/api/v1/exercise/library/full?version={version}", headers={"If-None-Match": etag})
+        assert second.status_code == 304
 
     def test_updates_contract_from_zero(self, client):
         meta = client.get("/api/v1/exercise/library/meta").json()

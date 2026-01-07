@@ -50,7 +50,9 @@
   "tool_choice": "any, optional",
   "temperature": "number, optional",
   "top_p": "number, optional",
-  "max_tokens": "integer, optional"
+  "max_tokens": "integer, optional",
+  "dialect": "string, optional (payload 模式必填)",
+  "payload": "object, optional (provider 原生请求体；payload 模式)"
 }
 ```
 
@@ -63,6 +65,11 @@
 - `metadata`：客户端附加信息（可选，任意键值对；服务端会透传/落库用于追踪与扩展）。
 - `skip_prompt`：是否跳过 system prompt（可选，默认 `false`）。
 - `system_prompt/tools/tool_choice/...`：按 OpenAI 语义解释并转发；若你没有本地工具执行器，建议显式设置 `tool_choice: "none"`。
+- `dialect/payload`：provider passthrough（新增，4 方言）
+  - 当 `payload` 存在时，必须提供 `dialect`
+  - `dialect ∈ openai.chat_completions | openai.responses | anthropic.messages | gemini.generate_content`
+  - payload 存在白名单字段校验，非白名单字段返回 `422 payload_fields_not_allowed`
+  - payload 模式属于“高级能力”：匿名用户禁止；永久用户需有效 Pro Entitlement（否则 403）
 
 ### Response（202 Accepted）
 ```json
@@ -136,31 +143,34 @@
 #### `event: content_delta`
 - 增量文本块
 ```json
-{ "message_id": "<message_id>", "delta": "chunk of text" }
+{ "message_id": "<message_id>", "request_id": "<request_id>", "seq": 1, "delta": "chunk of text" }
 ```
 
 #### `event: completed`
-- 最终完整回复（可用于落地展示与校验）
+- 终止事件（不含 reply 原文；客户端需拼接 `content_delta.delta` 得到 reply）
 ```json
 {
   "message_id": "<message_id>",
-  "reply": "full response",
   "request_id": "<request_id>",
   "provider": "xai|openai|claude|...",
   "resolved_model": "upstream provider model id",
   "endpoint_id": 123,
-  "upstream_request_id": "<redacted>|null"
+  "upstream_request_id": "<redacted>|null",
+  "reply_len": 1234,
+  "metadata": null
 }
 ```
 
-> `reply` 的结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。
+> reply 的结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。
 
 #### `event: error`
 - 处理失败（可用于兜底 UI）
 ```json
 {
   "message_id": "<message_id>",
-  "error": "error message",
+  "code": "provider_error|internal_error|...",
+  "message": "error message",
+  "error": "error message (legacy)",
   "request_id": "<request_id>",
   "provider": "xai|openai|claude|...|null",
   "resolved_model": "upstream provider model id|null",
@@ -171,7 +181,7 @@
 #### `event: heartbeat`
 - 心跳（用于保持连接/探活）
 ```json
-{ "message_id": "<message_id>", "event": "heartbeat" }
+{ "message_id": "<message_id>", "request_id": "<request_id>", "ts": 1736253242000 }
 ```
 
 ### 何时结束
@@ -258,6 +268,14 @@ curl https://api.gymbro.cloud/api/v1/base/userinfo \
   -H "Authorization: Bearer <redacted>"
 ```
 
+### 5.4 Provider Payload（示例：OpenAI Responses）
+```bash
+curl -X POST https://api.gymbro.cloud/api/v1/messages \
+  -H "Authorization: Bearer <redacted>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"global:xai","dialect":"openai.responses","payload":{"input":"Hello","max_output_tokens":64}}'
+```
+
 ---
 
 ## 6) JSON Schema（最小版，便于 App 端 Agent 落地校验）
@@ -281,7 +299,12 @@ curl https://api.gymbro.cloud/api/v1/base/userinfo \
     "tool_choice": {},
     "temperature": { "type": "number" },
     "top_p": { "type": "number" },
-    "max_tokens": { "type": "integer" }
+    "max_tokens": { "type": "integer" },
+    "dialect": {
+      "type": "string",
+      "enum": ["openai.chat_completions","openai.responses","anthropic.messages","gemini.generate_content"]
+    },
+    "payload": { "type": "object", "additionalProperties": true }
   }
 }
 ```
@@ -329,6 +352,8 @@ curl https://api.gymbro.cloud/api/v1/base/userinfo \
           "required": ["message_id", "delta"],
           "properties": {
             "message_id": { "type": "string" },
+            "request_id": { "type": "string" },
+            "seq": { "type": "integer" },
             "delta": { "type": "string" }
           }
         }
@@ -341,10 +366,11 @@ curl https://api.gymbro.cloud/api/v1/base/userinfo \
         "event": { "const": "completed" },
         "data": {
           "type": "object",
-          "required": ["message_id", "reply"],
+          "required": ["message_id", "reply_len"],
           "properties": {
             "message_id": { "type": "string" },
-            "reply": { "type": "string" }
+            "request_id": { "type": "string" },
+            "reply_len": { "type": "integer" }
           }
         }
       }
@@ -356,9 +382,12 @@ curl https://api.gymbro.cloud/api/v1/base/userinfo \
         "event": { "const": "error" },
         "data": {
           "type": "object",
-          "required": ["message_id", "error"],
+          "required": ["message_id", "message"],
           "properties": {
             "message_id": { "type": "string" },
+            "request_id": { "type": "string" },
+            "code": { "type": "string" },
+            "message": { "type": "string" },
             "error": { "type": "string" }
           }
         }
@@ -371,10 +400,11 @@ curl https://api.gymbro.cloud/api/v1/base/userinfo \
         "event": { "const": "heartbeat" },
         "data": {
           "type": "object",
-          "required": ["message_id", "event"],
+          "required": ["message_id", "ts"],
           "properties": {
             "message_id": { "type": "string" },
-            "event": { "const": "heartbeat" }
+            "request_id": { "type": "string" },
+            "ts": { "type": "integer" }
           }
         }
       }
