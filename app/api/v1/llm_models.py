@@ -16,6 +16,7 @@ from app.core.sse_guard import get_sse_guard
 
 from app.settings.config import get_settings
 from app.services.ai_service import AIService
+from app.services.llm_model_registry import LlmModelRegistry
 
 from .llm_common import (
     SyncDirection,
@@ -209,6 +210,27 @@ async def list_ai_models(
             include_debug_fields=allow_debug,
         )
 
+        registry = getattr(request.app.state, "llm_model_registry", None)
+        if isinstance(registry, LlmModelRegistry):
+            enriched: list[dict[str, Any]] = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or "").strip()
+                if not name:
+                    continue
+                copy = dict(item)
+                try:
+                    route = await registry.resolve_model_key(name)
+                    copy.setdefault("provider", route.provider)
+                    copy.setdefault("dialect", route.dialect)
+                    copy.setdefault("capabilities", registry.infer_capabilities(route))
+                except Exception:
+                    # 不阻塞列表：缺失字段按旧 schema 兼容
+                    pass
+                enriched.append(copy)
+            items = enriched
+
         # 兼容：对 mapped 视图保留 keyword 过滤（按 name / default_model / candidates）
         keyword_text = str(keyword or "").strip().lower()
         if keyword_text:
@@ -272,6 +294,56 @@ async def list_ai_models(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/models/registry")
+async def list_model_registry(
+    request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """聚合后的“模型 -> 上游配置”视图（仅管理员/内部排障）。"""
+
+    ai_service = getattr(request.app.state, "ai_service", None)
+    if not isinstance(ai_service, AIService):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=create_response(code=503, msg="AI service unavailable"),
+        )
+
+    registry = getattr(request.app.state, "llm_model_registry", None)
+    if not isinstance(registry, LlmModelRegistry):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=create_response(code=503, msg="Model registry unavailable"),
+        )
+
+    items = await ai_service.list_app_model_scopes(include_inactive=True, include_debug_fields=True)
+    resolved: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        try:
+            route = await registry.resolve_model_key(name)
+        except Exception:
+            continue
+        resolved.append(
+            {
+                "name": name,
+                "provider": route.provider,
+                "dialect": route.dialect,
+                "capabilities": registry.infer_capabilities(route),
+                "real_model": route.resolved_model,
+                "base_url": route.endpoint.get("base_url"),
+                "endpoint_id": route.endpoint_id,
+                "endpoint_name": route.endpoint.get("name"),
+            }
+        )
+
+    return create_response(data=resolved, total=len(resolved))
 
 
 @router.post("/models")

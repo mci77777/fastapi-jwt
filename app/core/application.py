@@ -22,6 +22,7 @@ from app.services.ai_config_service import AIConfigService
 from app.services.ai_service import AIService, MessageEventBroker
 from app.services.dashboard_broker import DashboardBroker
 from app.services.log_collector import LogCollector
+from app.services.llm_model_registry import LlmModelRegistry
 from app.services.metrics_collector import MetricsCollector
 from app.services.model_mapping_service import ModelMappingService
 from app.services.monitor_service import EndpointMonitor
@@ -100,6 +101,11 @@ async def lifespan(app: FastAPI):
         await app.state.model_mapping_service.ensure_minimal_global_mapping()
     except Exception:
         pass
+    app.state.llm_model_registry = LlmModelRegistry(
+        app.state.ai_config_service,
+        app.state.model_mapping_service,
+        settings,
+    )
 
     # Dashboard 服务层（Phase 1）
     app.state.log_collector = LogCollector(max_size=100)
@@ -113,6 +119,7 @@ async def lifespan(app: FastAPI):
         db_manager=sqlite_manager,
         ai_config_service=app.state.ai_config_service,
         model_mapping_service=app.state.model_mapping_service,
+        llm_model_registry=app.state.llm_model_registry,
     )
 
     # Supabase Admin access (service role) - used by mobile APIs like /v1/me (best-effort init).

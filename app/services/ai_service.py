@@ -22,6 +22,7 @@ from app.services.ai_endpoint_rules import looks_like_test_endpoint
 from app.services.ai_config_service import AIConfigService
 from app.services.ai_model_rules import looks_like_embedding_model
 from app.services.ai_url import build_resolved_endpoints, normalize_ai_base_url
+from app.services.llm_model_registry import LlmModelRegistry
 from app.services.upstream_auth import is_retryable_auth_error, iter_auth_headers, should_send_x_api_key
 from app.services.model_mapping_service import ModelMappingService
 from app.settings.config import get_settings
@@ -170,12 +171,14 @@ class AIService:
         *,
         ai_config_service: Optional[AIConfigService] = None,
         model_mapping_service: Optional[ModelMappingService] = None,
+        llm_model_registry: Optional[LlmModelRegistry] = None,
     ) -> None:
         self._settings = get_settings()
         self._provider = provider or get_auth_provider()
         self._db = db_manager  # SQLiteManager 实例（用于记录统计/日志）
         self._ai_config_service = ai_config_service
         self._model_mapping_service = model_mapping_service
+        self._llm_model_registry = llm_model_registry
 
     async def list_model_whitelist(
         self,
@@ -743,14 +746,28 @@ class AIService:
             preferred_endpoint_id = _parse_optional_int(
                 (message.metadata or {}).get("endpoint_id") or (message.metadata or {}).get("endpointId")
             )
-        selected_endpoint, selected_model, provider_name = await self._select_endpoint_and_model(
-            openai_req,
-            preferred_endpoint_id=preferred_endpoint_id,
-        )
 
-        api_key = await self._get_endpoint_api_key(selected_endpoint)
-        if not api_key:
-            raise ProviderError("endpoint_missing_api_key")
+        if self._llm_model_registry is None:
+            selected_endpoint, selected_model, provider_name = await self._select_endpoint_and_model(
+                openai_req,
+                preferred_endpoint_id=preferred_endpoint_id,
+            )
+            api_key = await self._get_endpoint_api_key(selected_endpoint)
+            if not api_key:
+                raise ProviderError("endpoint_missing_api_key")
+            endpoint_id = _parse_optional_int(selected_endpoint.get("id"))
+            dialect = "anthropic.messages" if provider_name == "claude" else "openai.chat_completions"
+        else:
+            route = await self._llm_model_registry.resolve_openai_request(
+                openai_req,
+                preferred_endpoint_id=preferred_endpoint_id,
+            )
+            selected_endpoint = route.endpoint
+            selected_model = route.resolved_model
+            provider_name = route.provider
+            api_key = route.api_key
+            endpoint_id = route.endpoint_id
+            dialect = route.dialect
 
         request_payload = json.dumps(
             {
@@ -762,7 +779,6 @@ class AIService:
             ensure_ascii=False,
         )
 
-        endpoint_id = _parse_optional_int(selected_endpoint.get("id"))
         await broker.publish(
             message_id,
             MessageEvent(
@@ -779,7 +795,7 @@ class AIService:
             ),
         )
 
-        if provider_name == "claude":
+        if dialect == "anthropic.messages":
             reply_text, response_payload, upstream_request_id = await self._call_anthropic_messages_streaming(
                 selected_endpoint,
                 api_key,
