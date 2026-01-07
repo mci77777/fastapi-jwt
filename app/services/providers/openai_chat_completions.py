@@ -55,10 +55,8 @@ class OpenAIChatCompletionsAdapter:
         if rid:
             headers[REQUEST_ID_HEADER_NAME] = rid
 
-        payload: dict[str, Any] = {}
-        for key in ("model", "messages", "tools", "tool_choice", "temperature", "top_p", "max_tokens"):
-            if key in openai_req and openai_req[key] is not None:
-                payload[key] = openai_req[key]
+        # payload 模式：允许在白名单范围内全量透传；SSOT：服务端强制 stream=true
+        payload = {str(k): v for k, v in (openai_req or {}).items() if v is not None}
         payload["stream"] = True
 
         return str(chat_url), headers, payload
@@ -209,4 +207,3 @@ def _collect_tool_call_names(tool_calls: list[Any]) -> list[str]:
 def _stream_chunks(text: str, chunk_size: int = 120):
     for index in range(0, len(text), chunk_size):
         yield text[index : index + chunk_size]
-

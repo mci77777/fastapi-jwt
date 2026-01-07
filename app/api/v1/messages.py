@@ -6,7 +6,7 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -41,6 +41,20 @@ class MessageCreateRequest(BaseModel):
     top_p: Optional[float] = Field(None, description="OpenAI top_p")
     max_tokens: Optional[int] = Field(None, description="OpenAI max_tokens")
 
+    # Provider payload 模式（可选）
+    dialect: Optional[
+        Literal[
+            "openai.chat_completions",
+            "openai.responses",
+            "anthropic.messages",
+            "gemini.generate_content",
+        ]
+    ] = Field(
+        default=None,
+        description="上游方言（payload 模式必填）：openai.chat_completions/openai.responses/anthropic.messages/gemini.generate_content",
+    )
+    payload: Optional[dict[str, Any]] = Field(default=None, description="上游 provider 原生请求体（payload 模式）")
+
     def _extract_metadata_chat_request(self) -> dict[str, Any]:
         if not isinstance(self.metadata, dict):
             return {}
@@ -54,6 +68,10 @@ class MessageCreateRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_text_or_messages(self) -> "MessageCreateRequest":
+        # payload 模式：允许不提供 text/messages（由 payload 决定）
+        if self.payload is not None:
+            return self
+
         has_text = bool((self.text or "").strip())
         has_messages = bool(self.messages)
         if not has_text and not has_messages:
@@ -82,6 +100,119 @@ class MessageCreateResponse(BaseModel):
     conversation_id: str
 
 
+PROVIDER_PAYLOAD_ALLOWLIST: dict[str, set[str]] = {
+    # https://platform.openai.com/docs/api-reference/chat/create (subset, stable & safe for passthrough)
+    "openai.chat_completions": {
+        "model",
+        "messages",
+        "modalities",
+        "audio",
+        "temperature",
+        "top_p",
+        "max_tokens",
+        "max_completion_tokens",
+        "n",
+        "stop",
+        "presence_penalty",
+        "frequency_penalty",
+        "logit_bias",
+        "logprobs",
+        "top_logprobs",
+        "response_format",
+        "seed",
+        "stream",
+        "stream_options",
+        "tools",
+        "tool_choice",
+        "parallel_tool_calls",
+        "user",
+        "service_tier",
+        "metadata",
+        "store",
+        "reasoning_effort",
+    },
+    # https://platform.openai.com/docs/api-reference/responses/create (subset, stable & safe for passthrough)
+    "openai.responses": {
+        "model",
+        "input",
+        "instructions",
+        "modalities",
+        "audio",
+        "temperature",
+        "top_p",
+        "max_output_tokens",
+        "truncation",
+        "seed",
+        "stream",
+        "stream_options",
+        "tools",
+        "tool_choice",
+        "metadata",
+        "user",
+        "store",
+        "reasoning",
+        "text",
+        "include",
+    },
+    # https://docs.anthropic.com/en/api/messages (subset, stable & safe for passthrough)
+    "anthropic.messages": {
+        "model",
+        "messages",
+        "system",
+        "max_tokens",
+        "stream",
+        "temperature",
+        "top_p",
+        "top_k",
+        "stop_sequences",
+        "tools",
+        "tool_choice",
+        "metadata",
+        "thinking",
+    },
+    # https://ai.google.dev/api/generate-content (support camelCase & snake_case keys)
+    "gemini.generate_content": {
+        "contents",
+        "systemInstruction",
+        "system_instruction",
+        "tools",
+        "toolConfig",
+        "tool_config",
+        "generationConfig",
+        "generation_config",
+        "safetySettings",
+        "safety_settings",
+        "cachedContent",
+        "cached_content",
+        "labels",
+    },
+}
+
+
+def _sanitize_provider_payload(
+    *,
+    dialect: str,
+    payload: dict[str, Any],
+    request_id: Optional[str],
+) -> dict[str, Any]:
+    allow = PROVIDER_PAYLOAD_ALLOWLIST.get(dialect)
+    if not allow:
+        return dict(payload)
+    extra = sorted([str(k) for k in payload.keys() if str(k) not in allow])
+    if extra:
+        shown = ",".join(extra[:10])
+        more = f" +{len(extra) - 10}" if len(extra) > 10 else ""
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "payload_fields_not_allowed",
+                "message": f"payload 存在非白名单字段：{shown}{more}",
+                "request_id": request_id or "",
+            },
+        )
+    return {str(k): v for k, v in payload.items() if str(k) in allow}
+
+
 async def _require_entitlement_for_message(
     payload: MessageCreateRequest,
     request: Request,
@@ -92,8 +223,8 @@ async def _require_entitlement_for_message(
     - Anonymous: always denied for advanced features
     - Permanent: requires active "pro" entitlement for advanced features
     """
-    # KISS：当前仅对 “skip_prompt” 做门控（避免影响基础对话链路）。
-    wants_advanced = bool(payload.skip_prompt)
+    # KISS：仅对“跳过服务端 prompt 注入”与“provider payload 模式”做门控（避免影响基础对话链路）。
+    wants_advanced = bool(payload.skip_prompt) or payload.payload is not None
     if not wants_advanced:
         return
 
@@ -202,66 +333,140 @@ async def create_message(
     if conversation_id is None:
         conversation_id = str(uuid.uuid4())
 
+    is_payload_mode = payload.payload is not None
+    if is_payload_mode:
+        dialect = str(payload.dialect or "").strip()
+        if not dialect:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "dialect_required",
+                    "message": "payload 模式必须提供 dialect",
+                    "request_id": request_id or "",
+                },
+            )
+        if not isinstance(payload.payload, dict):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "payload_invalid",
+                    "message": "payload 必须是 JSON object",
+                    "request_id": request_id or "",
+                },
+            )
+
+        sanitized_payload = _sanitize_provider_payload(
+            dialect=dialect,
+            payload=payload.payload,
+            request_id=request_id,
+        )
+
+        conflicts: list[str] = []
+        if payload.text is not None:
+            conflicts.append("text")
+        if payload.messages is not None:
+            conflicts.append("messages")
+        if payload.system_prompt is not None:
+            conflicts.append("system_prompt")
+        if payload.tools is not None:
+            conflicts.append("tools")
+        if payload.tool_choice is not None:
+            conflicts.append("tool_choice")
+        if payload.temperature is not None:
+            conflicts.append("temperature")
+        if payload.top_p is not None:
+            conflicts.append("top_p")
+        if payload.max_tokens is not None:
+            conflicts.append("max_tokens")
+        if conflicts:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "payload_mode_conflict",
+                    "message": f"payload 模式不允许同时提供：{','.join(conflicts)}",
+                    "request_id": request_id or "",
+                },
+            )
+
+        message_input = AIMessageInput(
+            conversation_id=conversation_id,
+            metadata=payload.metadata,
+            # payload 模式：服务端不注入默认 prompt/tools（以 payload 为准）
+            skip_prompt=True,
+            model=requested_model,
+            dialect=dialect,
+            payload=sanitized_payload,
+        )
+    else:
+        if payload.dialect is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "payload_required",
+                    "message": "dialect 仅在 payload 模式下使用（请同时提供 payload）",
+                    "request_id": request_id or "",
+                },
+            )
+        # 对齐“顶层字段为 SSOT，metadata.chat_request 仅兜底”的取值顺序
+        normalized_messages = payload.messages
+        if normalized_messages is None and isinstance(meta_chat, dict):
+            meta_messages = meta_chat.get("messages")
+            if isinstance(meta_messages, list):
+                normalized_messages = [item for item in meta_messages if isinstance(item, dict)]
+
+        normalized_system_prompt = payload.system_prompt
+        if not (isinstance(normalized_system_prompt, str) and normalized_system_prompt.strip()) and isinstance(meta_chat, dict):
+            meta_system_prompt = meta_chat.get("system_prompt")
+            if isinstance(meta_system_prompt, str) and meta_system_prompt.strip():
+                normalized_system_prompt = meta_system_prompt.strip()
+
+        normalized_tools = payload.tools
+        if normalized_tools is None and isinstance(meta_chat, dict):
+            meta_tools = meta_chat.get("tools")
+            if isinstance(meta_tools, list):
+                normalized_tools = meta_tools
+
+        normalized_tool_choice = payload.tool_choice
+        if normalized_tool_choice is None and isinstance(meta_chat, dict):
+            normalized_tool_choice = meta_chat.get("tool_choice")
+
+        normalized_temperature = payload.temperature
+        if normalized_temperature is None and isinstance(meta_chat, dict):
+            t = meta_chat.get("temperature")
+            if isinstance(t, (int, float)):
+                normalized_temperature = float(t)
+
+        normalized_top_p = payload.top_p
+        if normalized_top_p is None and isinstance(meta_chat, dict):
+            t = meta_chat.get("top_p")
+            if isinstance(t, (int, float)):
+                normalized_top_p = float(t)
+
+        normalized_max_tokens = payload.max_tokens
+        if normalized_max_tokens is None and isinstance(meta_chat, dict):
+            t = meta_chat.get("max_tokens")
+            if isinstance(t, int):
+                normalized_max_tokens = t
+
+        message_input = AIMessageInput(
+            text=payload.text,
+            conversation_id=conversation_id,
+            metadata=payload.metadata,
+            skip_prompt=payload.skip_prompt,
+            model=requested_model,
+            messages=normalized_messages,
+            system_prompt=normalized_system_prompt,
+            tools=normalized_tools,
+            tool_choice=normalized_tool_choice,
+            temperature=normalized_temperature,
+            top_p=normalized_top_p,
+            max_tokens=normalized_max_tokens,
+        )
+
     await broker.create_channel(
         message_id,
         owner_user_id=current_user.uid,
         conversation_id=conversation_id,
-    )
-
-    # 对齐“顶层字段为 SSOT，metadata.chat_request 仅兜底”的取值顺序
-    normalized_messages = payload.messages
-    if normalized_messages is None and isinstance(meta_chat, dict):
-        meta_messages = meta_chat.get("messages")
-        if isinstance(meta_messages, list):
-            normalized_messages = [item for item in meta_messages if isinstance(item, dict)]
-
-    normalized_system_prompt = payload.system_prompt
-    if not (isinstance(normalized_system_prompt, str) and normalized_system_prompt.strip()) and isinstance(meta_chat, dict):
-        meta_system_prompt = meta_chat.get("system_prompt")
-        if isinstance(meta_system_prompt, str) and meta_system_prompt.strip():
-            normalized_system_prompt = meta_system_prompt.strip()
-
-    normalized_tools = payload.tools
-    if normalized_tools is None and isinstance(meta_chat, dict):
-        meta_tools = meta_chat.get("tools")
-        if isinstance(meta_tools, list):
-            normalized_tools = meta_tools
-
-    normalized_tool_choice = payload.tool_choice
-    if normalized_tool_choice is None and isinstance(meta_chat, dict):
-        normalized_tool_choice = meta_chat.get("tool_choice")
-
-    normalized_temperature = payload.temperature
-    if normalized_temperature is None and isinstance(meta_chat, dict):
-        t = meta_chat.get("temperature")
-        if isinstance(t, (int, float)):
-            normalized_temperature = float(t)
-
-    normalized_top_p = payload.top_p
-    if normalized_top_p is None and isinstance(meta_chat, dict):
-        t = meta_chat.get("top_p")
-        if isinstance(t, (int, float)):
-            normalized_top_p = float(t)
-
-    normalized_max_tokens = payload.max_tokens
-    if normalized_max_tokens is None and isinstance(meta_chat, dict):
-        t = meta_chat.get("max_tokens")
-        if isinstance(t, int):
-            normalized_max_tokens = t
-
-    message_input = AIMessageInput(
-        text=payload.text,
-        conversation_id=conversation_id,
-        metadata=payload.metadata,
-        skip_prompt=payload.skip_prompt,
-        model=requested_model,
-        messages=normalized_messages,
-        system_prompt=normalized_system_prompt,
-        tools=normalized_tools,
-        tool_choice=normalized_tool_choice,
-        temperature=normalized_temperature,
-        top_p=normalized_top_p,
-        max_tokens=normalized_max_tokens,
     )
 
     async def runner() -> None:

@@ -85,6 +85,8 @@ class AIMessageInput:
     conversation_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     skip_prompt: bool = False
+    dialect: Optional[str] = None
+    payload: Optional[dict[str, Any]] = None
 
     # OpenAI 兼容透传字段（SSOT：OpenAI 语义）
     model: Optional[str] = None
@@ -777,7 +779,13 @@ class AIService:
 
             return reply_text, model_used, request_payload, None, None, None, "openai", None
 
-        openai_req = await self._build_openai_request(message, user_details=user_details)
+        payload_mode = isinstance(message.payload, dict) and message.payload is not None
+        dialect_override = str(message.dialect or "").strip() if payload_mode else ""
+
+        if payload_mode:
+            openai_req: dict[str, Any] = {"model": str(message.model or "").strip()}
+        else:
+            openai_req = await self._build_openai_request(message, user_details=user_details)
         preferred_endpoint_id: Optional[int] = None
         if getattr(self._settings, "allow_test_ai_endpoints", False) and _is_dashboard_admin_user(user):
             preferred_endpoint_id = _parse_optional_int(
@@ -806,15 +814,31 @@ class AIService:
             endpoint_id = route.endpoint_id
             dialect = route.dialect
 
-        request_payload = json.dumps(
-            {
-                "conversation_id": message.conversation_id,
-                "text": message.text,
-                "model": openai_req.get("model"),
-                "messages": openai_req.get("messages"),
-            },
-            ensure_ascii=False,
-        )
+        effective_dialect = dialect_override or dialect
+        if effective_dialect == "gemini.generate_content":
+            provider_name = "gemini"
+
+        if payload_mode:
+            raw_payload = message.payload if isinstance(message.payload, dict) else {}
+            request_payload = json.dumps(
+                {
+                    "conversation_id": message.conversation_id,
+                    "model": str(message.model or "").strip(),
+                    "dialect": effective_dialect,
+                    "payload_keys": sorted([str(k) for k in raw_payload.keys()])[:50],
+                },
+                ensure_ascii=False,
+            )
+        else:
+            request_payload = json.dumps(
+                {
+                    "conversation_id": message.conversation_id,
+                    "text": message.text,
+                    "model": openai_req.get("model"),
+                    "messages": openai_req.get("messages"),
+                },
+                ensure_ascii=False,
+            )
 
         await broker.publish(
             message_id,
@@ -834,71 +858,87 @@ class AIService:
 
         provider_metadata: Optional[dict[str, Any]] = None
 
-        if dialect == "anthropic.messages":
-            reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_anthropic_messages_streaming(
-                selected_endpoint,
-                api_key,
-                openai_req,
-                message_id=message_id,
-                broker=broker,
-            )
-            return (
-                reply_text,
-                selected_model,
-                request_payload,
-                response_payload,
-                upstream_request_id,
-                endpoint_id,
-                provider_name,
-                provider_metadata,
-            )
+        if payload_mode:
+            provider_payload = dict(message.payload or {})
+            if effective_dialect in {"openai.chat_completions", "openai.responses", "anthropic.messages"}:
+                provider_payload["model"] = selected_model
+                # 端到端 SSOT：payload 模式也必须强制流式
+                provider_payload["stream"] = True
 
-        if dialect == "openai.responses":
-            reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_openai_responses_streaming(
-                selected_endpoint,
-                api_key,
-                openai_req,
-                message_id=message_id,
-                broker=broker,
-            )
-            return (
-                reply_text,
-                selected_model,
-                request_payload,
-                response_payload,
-                upstream_request_id,
-                endpoint_id,
-                provider_name,
-                provider_metadata,
-            )
+            if effective_dialect == "anthropic.messages":
+                adapter = get_provider_adapter("anthropic.messages")
+                timeout = selected_endpoint.get("timeout") or self._settings.http_timeout_seconds
 
-        if dialect == "gemini.generate_content":
-            reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_gemini_generate_content_streaming(
-                selected_endpoint,
-                api_key,
-                openai_req,
-                model=str(selected_model or ""),
-                message_id=message_id,
-                broker=broker,
-            )
-            return (
-                reply_text,
-                selected_model,
-                request_payload,
-                response_payload,
-                upstream_request_id,
-                endpoint_id,
-                provider_name,
-                provider_metadata,
-            )
+                async def _publish(event: str, data: dict[str, Any]) -> None:
+                    await broker.publish(message_id, MessageEvent(event=event, data=data))
 
-        reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_openai_chat_completions_streaming(
-            selected_endpoint,
-            api_key,
-            openai_req,
-            message_id=message_id,
-            broker=broker,
-        )
+                reply_text, response_payload, upstream_request_id, provider_metadata = await adapter.stream(
+                    endpoint=selected_endpoint,
+                    api_key=api_key,
+                    payload=provider_payload,
+                    timeout=timeout,
+                    publish=_publish,
+                )
+            elif effective_dialect == "openai.responses":
+                reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_openai_responses_streaming(
+                    selected_endpoint,
+                    api_key,
+                    provider_payload,
+                    message_id=message_id,
+                    broker=broker,
+                )
+            elif effective_dialect == "gemini.generate_content":
+                reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_gemini_generate_content_streaming(
+                    selected_endpoint,
+                    api_key,
+                    provider_payload,
+                    model=str(selected_model or ""),
+                    message_id=message_id,
+                    broker=broker,
+                )
+            else:
+                reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_openai_chat_completions_streaming(
+                    selected_endpoint,
+                    api_key,
+                    provider_payload,
+                    message_id=message_id,
+                    broker=broker,
+                )
+        else:
+            if dialect == "anthropic.messages":
+                reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_anthropic_messages_streaming(
+                    selected_endpoint,
+                    api_key,
+                    openai_req,
+                    message_id=message_id,
+                    broker=broker,
+                )
+            elif dialect == "openai.responses":
+                reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_openai_responses_streaming(
+                    selected_endpoint,
+                    api_key,
+                    openai_req,
+                    message_id=message_id,
+                    broker=broker,
+                )
+            elif dialect == "gemini.generate_content":
+                reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_gemini_generate_content_streaming(
+                    selected_endpoint,
+                    api_key,
+                    openai_req,
+                    model=str(selected_model or ""),
+                    message_id=message_id,
+                    broker=broker,
+                )
+            else:
+                reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_openai_chat_completions_streaming(
+                    selected_endpoint,
+                    api_key,
+                    openai_req,
+                    message_id=message_id,
+                    broker=broker,
+                )
+
         return (
             reply_text,
             selected_model,
