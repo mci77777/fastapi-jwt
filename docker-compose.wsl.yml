@@ -1,0 +1,10 @@
+services:
+  # WSL/Docker Desktop 兼容：避免 bind mount 触发 docker-desktop-bind-mounts 报错
+  app:
+    volumes:
+      - vue-fastapi-admin-data:/opt/vue-fastapi-admin/data
+      - vue-fastapi-admin-logs:/opt/vue-fastapi-admin/logs
+
+volumes:
+  vue-fastapi-admin-data:
+  vue-fastapi-admin-logs:
