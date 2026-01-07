@@ -109,6 +109,7 @@ class MessageChannelMeta:
     created_at: datetime
     closed: bool = False
     terminal_event: Optional[MessageEvent] = None
+    delta_seq: int = 0
 
 
 class MessageEventBroker:
@@ -146,6 +147,15 @@ class MessageEventBroker:
         queue = self._channels.get(message_id)
         if queue:
             meta = self._meta.get(message_id)
+            if meta:
+                # SSE 对外 SSOT：所有事件默认包含 message_id/request_id；content_delta 自动补齐 seq。
+                event.data.setdefault("message_id", message_id)
+                request_id = get_current_request_id()
+                if request_id:
+                    event.data.setdefault("request_id", request_id)
+                if event.event == "content_delta":
+                    meta.delta_seq += 1
+                    event.data.setdefault("seq", meta.delta_seq)
             if meta and event.event in {"completed", "error"}:
                 meta.terminal_event = event
             await queue.put(event)
@@ -635,9 +645,10 @@ class AIService:
                 MessageEvent(
                     event="error",
                     data={
-                        "message_id": message_id,
+                        "code": "provider_error",
+                        "message": str(exc) or type(exc).__name__,
+                        # 兼容旧客户端：保留 legacy 字段
                         "error": str(exc) or type(exc).__name__,
-                        "request_id": request_id,
                         "provider": provider_used,
                         "resolved_model": model_used,
                         "endpoint_id": endpoint_id_used,
@@ -652,9 +663,10 @@ class AIService:
                 MessageEvent(
                     event="error",
                     data={
-                        "message_id": message_id,
+                        "code": "internal_error",
+                        "message": str(exc) or type(exc).__name__,
+                        # 兼容旧客户端：保留 legacy 字段
                         "error": str(exc) or type(exc).__name__,
-                        "request_id": request_id,
                         "provider": provider_used,
                         "resolved_model": model_used,
                         "endpoint_id": endpoint_id_used,

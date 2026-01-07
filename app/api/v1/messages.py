@@ -323,8 +323,13 @@ async def stream_message_events(
                 try:
                     item = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval)
                 except asyncio.TimeoutError:
-                    heartbeat = json.dumps({"message_id": message_id, "event": "heartbeat"})
-                    frames.append({"event": "heartbeat", "data": {"message_id": message_id, "event": "heartbeat"}})
+                    heartbeat_data = {
+                        "message_id": message_id,
+                        "request_id": request_id or "",
+                        "ts": int(time.time() * 1000),
+                    }
+                    heartbeat = json.dumps(heartbeat_data, ensure_ascii=False, separators=(",", ":"))
+                    frames.append({"event": "heartbeat", "data": {"message_id": message_id, "ts": heartbeat_data["ts"]}})
                     yield f"event: heartbeat\ndata: {heartbeat}\n\n"
                     continue
 
@@ -348,7 +353,7 @@ async def stream_message_events(
                     }
                 frames.append({"event": item.event, "data": safe_data})
 
-                yield f"event: {item.event}\ndata: {json.dumps(item.data)}\n\n"
+                yield f"event: {item.event}\ndata: {json.dumps(item.data, ensure_ascii=False, separators=(',', ':'))}\n\n"
                 if item.event in {"completed", "error"}:
                     terminal_sent = True
                     end_reason = "terminal_event_sent"
@@ -364,13 +369,16 @@ async def stream_message_events(
                         event="error",
                         data={
                             "message_id": message_id,
+                            "code": "sse_stream_closed_without_terminal_event",
+                            "message": "sse_stream_closed_without_terminal_event",
+                            # 兼容旧客户端：保留 legacy 字段
                             "error": "sse_stream_closed_without_terminal_event",
-                            "request_id": request_id,
+                            "request_id": request_id or "",
                         },
                     )
                 try:
                     frames.append({"event": fallback.event, "data": {"message_id": message_id, "hint": "terminal_fallback"}})
-                    yield f"event: {fallback.event}\ndata: {json.dumps(fallback.data)}\n\n"
+                    yield f"event: {fallback.event}\ndata: {json.dumps(fallback.data, ensure_ascii=False, separators=(',', ':'))}\n\n"
                     terminal_sent = True
                     end_reason = f"{end_reason}:terminal_fallback"
                 except Exception:
