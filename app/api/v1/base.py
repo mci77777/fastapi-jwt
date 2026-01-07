@@ -356,6 +356,15 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
                         "is_hidden": False,
                         "keepalive": False,
                     },
+                    {
+                        "name": "用户权益",
+                        "path": "user-entitlements",
+                        "component": "/system/user-entitlements",
+                        "icon": "mdi:account-star-outline",
+                        "order": 3,
+                        "is_hidden": False,
+                        "keepalive": False,
+                    },
                 ],
             }
         )
@@ -466,6 +475,9 @@ async def get_user_api(current_user: AuthenticatedUser = Depends(get_current_use
             # 动作库发布（admin）
             "post/api/v1/admin/exercise/library/publish",
             "post/api/v1/admin/exercise/library/patch",
+            # 用户权益（admin）
+            "get/api/v1/admin/user-entitlements",
+            "post/api/v1/admin/user-entitlements",
         ]
     )
 

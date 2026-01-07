@@ -31,7 +31,7 @@ class SupabaseAdminClient:
                 message="Supabase service role key is not configured",
                 status_code=500,
                 hint="Set SUPABASE_SERVICE_ROLE_KEY",
-            )
+        )
         self._timeout = settings.http_timeout_seconds
 
     @staticmethod
@@ -47,12 +47,15 @@ class SupabaseAdminClient:
             hint="Set SUPABASE_URL or SUPABASE_PROJECT_ID",
         )
 
-    def _headers(self) -> dict[str, str]:
-        return {
+    def _headers(self, extra: Optional[dict[str, str]] = None) -> dict[str, str]:
+        headers = {
             "apikey": self._service_role_key,
             "Authorization": f"Bearer {self._service_role_key}",
             "Content-Type": "application/json",
         }
+        if extra:
+            headers.update({k: str(v) for k, v in extra.items()})
+        return headers
 
     async def fetch_one_by_user_id(
         self,
@@ -116,3 +119,50 @@ class SupabaseAdminClient:
             )
         return row
 
+    async def upsert_one(
+        self,
+        *,
+        table: str,
+        values: dict[str, Any],
+        on_conflict: str = "user_id",
+    ) -> Optional[dict[str, Any]]:
+        """Upsert a single row and return representation (best-effort).
+
+        Notes:
+        - Uses PostgREST upsert semantics: Prefer: resolution=merge-duplicates.
+        - Returns the first row when representation is returned as a list.
+        """
+        url = f"{self._base_url}/rest/v1/{table}"
+        params = {"on_conflict": on_conflict}
+        headers = self._headers({"Prefer": "resolution=merge-duplicates,return=representation"})
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.post(url, headers=headers, params=params, json=values)
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status = int(getattr(exc.response, "status_code", 0) or 0) or 502
+            logger.warning("Supabase admin upsert failed table=%s status=%s", table, status)
+            raise SupabaseAdminError(
+                code="supabase_upsert_failed",
+                message="Supabase upsert failed",
+                status_code=status,
+            ) from exc
+        except httpx.HTTPError as exc:
+            logger.warning("Supabase admin upsert error table=%s error=%s", table, type(exc).__name__)
+            raise SupabaseAdminError(
+                code="supabase_upsert_error",
+                message="Supabase upsert error",
+                status_code=502,
+            ) from exc
+
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+
+        if isinstance(data, dict):
+            return data
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            return data[0]
+        return None

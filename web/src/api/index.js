@@ -115,6 +115,9 @@ export default {
   getExerciseLibraryMeta: () => request.get('/exercise/library/meta'),
   publishExerciseLibrarySeed: (items) => request.post('/admin/exercise/library/publish', items),
   patchExerciseLibrarySeed: (payload) => request.post('/admin/exercise/library/patch', payload),
+  // user entitlements (admin)
+  getUserEntitlements: (params = {}) => request.get('/admin/user-entitlements', { params }),
+  upsertUserEntitlements: (data = {}) => request.post('/admin/user-entitlements', data),
   // depts
   getDepts: (params = {}) => request.get('/dept/list', { params }),
   createDept: (data = {}) => request.post('/dept/create', data),
