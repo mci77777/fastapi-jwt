@@ -1,4 +1,4 @@
-"""AIService: 组装 System + Tools Prompt，并默认注入 tools。"""
+"""AIService: 组装 System + Tools Prompt，按需注入 tools。"""
 
 from __future__ import annotations
 
@@ -38,11 +38,13 @@ class FakeAIConfigService:
 @pytest.mark.asyncio
 async def test_build_openai_request_assembles_prompt_and_injects_tools():
     service = AIService(ai_config_service=FakeAIConfigService())
-    message = AIMessageInput(messages=[{"role": "user", "content": "hi"}], skip_prompt=False)
+    # server 默认不执行 tool_calls：只有显式 tool_choice 才会把 active tools 下发给上游
+    message = AIMessageInput(messages=[{"role": "user", "content": "hi"}], skip_prompt=False, tool_choice="auto")
     payload = await service._build_openai_request(message, user_details=UserDetails(uid="u1"))
 
     assert payload["messages"][0]["role"] == "system"
     assert payload["messages"][0]["content"] == "SYSTEM_PROMPT\n\nTOOLS_PROMPT"
+    assert payload["tool_choice"] == "auto"
     assert payload["tools"][0]["function"]["name"] == "ping"
 
 
@@ -53,4 +55,3 @@ async def test_build_openai_request_does_not_override_explicit_tools_list():
     payload = await service._build_openai_request(message, user_details=UserDetails(uid="u1"))
 
     assert payload["tools"] == []
-

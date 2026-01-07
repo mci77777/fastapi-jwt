@@ -13,6 +13,7 @@ def _auth_user() -> AuthenticatedUser:
             "email": "test@example.com",
             "iss": "https://test.supabase.co",
             "aud": "test-audience",
+            "user_metadata": {"username": "admin", "is_admin": True},
         },
     )
 
@@ -25,7 +26,6 @@ def test_llm_models_default_view_is_mapped_and_endpoints_view_still_works(mock_g
 
     headers = {
         "Authorization": "Bearer mock-jwt-token",
-        "X-LLM-Admin-Key": "test-llm-admin",
     }
 
     app_key = "test-mapped"

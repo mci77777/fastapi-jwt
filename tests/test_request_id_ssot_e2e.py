@@ -13,6 +13,22 @@ from app import app as fastapi_app
 from app.auth import AuthenticatedUser, ProviderError
 
 
+def _mock_httpx_stream_json(mock_httpx: MagicMock, payload: dict[str, Any], *, headers: dict[str, str] | None = None) -> None:
+    response = MagicMock()
+    response.status_code = 200
+    response.headers = {"content-type": "application/json"}
+    if headers:
+        response.headers.update(headers)
+    response.raise_for_status = MagicMock()
+    response.aread = AsyncMock(return_value=json.dumps(payload).encode("utf-8"))
+
+    stream_ctx = MagicMock()
+    stream_ctx.__aenter__ = AsyncMock(return_value=response)
+    stream_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    mock_httpx.return_value.__aenter__.return_value.stream = MagicMock(return_value=stream_ctx)
+
+
 async def _collect_sse_events(client: AsyncClient, url: str, headers: dict[str, str], *, max_events: int = 50) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     async with client.stream("GET", url, headers=headers, timeout=5.0) as response:
@@ -127,13 +143,11 @@ class TestRequestIdSSOT:
                     }
                 )
 
-                mock_response = MagicMock()
-                mock_response.json.return_value = {
-                    "choices": [{"message": {"content": "Hello from AI."}}],
-                }
-                mock_response.raise_for_status = MagicMock()
-                mock_response.headers = {"x-request-id": "upstream-rid"}
-                mock_httpx.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+                _mock_httpx_stream_json(
+                    mock_httpx,
+                    {"choices": [{"message": {"content": "Hello from AI."}}]},
+                    headers={"x-request-id": "upstream-rid"},
+                )
 
                 create = await async_client.post(
                     "/api/v1/messages",
@@ -170,13 +184,13 @@ class TestRequestIdSSOT:
                 assert "completed" in event_names
 
                 # 验证上游转发：仅 OpenAI 语义字段 + 透传 request_id header
-                call_args = mock_httpx.return_value.__aenter__.return_value.post.call_args
+                call_args = mock_httpx.return_value.__aenter__.return_value.stream.call_args
                 assert call_args is not None
                 upstream_headers = call_args[1]["headers"]
                 assert upstream_headers.get("X-Request-Id") == request_id
                 upstream_payload = call_args[1]["json"]
                 assert set(upstream_payload.keys()).issubset(
-                    {"model", "messages", "tools", "tool_choice", "temperature", "top_p", "max_tokens"}
+                    {"model", "messages", "tools", "tool_choice", "temperature", "top_p", "max_tokens", "stream"}
                 )
 
     @pytest.mark.asyncio
@@ -214,22 +228,22 @@ class TestRequestIdSSOT:
                     }
                 )
 
-                mock_response = MagicMock()
-                mock_response.json.return_value = {
-                    "choices": [
-                        {
-                            "message": {
-                                "content": "",
-                                "tool_calls": [
-                                    {"id": "call_1", "type": "function", "function": {"name": "noop", "arguments": "{}"}}
-                                ],
+                _mock_httpx_stream_json(
+                    mock_httpx,
+                    {
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": "",
+                                    "tool_calls": [
+                                        {"id": "call_1", "type": "function", "function": {"name": "noop", "arguments": "{}"}}
+                                    ],
+                                }
                             }
-                        }
-                    ],
-                }
-                mock_response.raise_for_status = MagicMock()
-                mock_response.headers = {"x-request-id": "upstream-rid"}
-                mock_httpx.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+                        ]
+                    },
+                    headers={"x-request-id": "upstream-rid"},
+                )
 
                 create = await async_client.post(
                     "/api/v1/messages",
@@ -292,13 +306,11 @@ class TestRequestIdSSOT:
                     }
                 )
 
-                mock_response = MagicMock()
-                mock_response.json.return_value = {
-                    "content": [{"type": "text", "text": "Hello from Claude."}],
-                }
-                mock_response.raise_for_status = MagicMock()
-                mock_response.headers = {"request-id": "anthropic-request-id"}
-                mock_httpx.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+                _mock_httpx_stream_json(
+                    mock_httpx,
+                    {"content": [{"type": "text", "text": "Hello from Claude."}]},
+                    headers={"request-id": "anthropic-request-id"},
+                )
 
                 create = await async_client.post(
                     "/api/v1/messages",
@@ -325,7 +337,7 @@ class TestRequestIdSSOT:
                 assert any(item["event"] == "completed" for item in events)
 
                 # Claude header 合规断言：必须 x-api-key + anthropic-version，不默认 anthropic-beta
-                call_args = mock_httpx.return_value.__aenter__.return_value.post.call_args
+                call_args = mock_httpx.return_value.__aenter__.return_value.stream.call_args
                 assert call_args is not None
                 hdr = call_args[1]["headers"]
                 assert hdr.get("x-api-key") == "test-claude-key"
@@ -345,8 +357,8 @@ class TestRequestIdSSOT:
 
             with patch.object(
                 fastapi_app.state.ai_service,
-                "_call_openai_chat_completions",
-                side_effect=ProviderError("forced_provider_error"),
+                "_call_openai_chat_completions_streaming",
+                new=AsyncMock(side_effect=ProviderError("forced_provider_error")),
             ):
                 create = await async_client.post(
                     "/api/v1/messages",

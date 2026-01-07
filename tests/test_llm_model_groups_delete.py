@@ -14,6 +14,7 @@ def _auth_user() -> AuthenticatedUser:
             "email": "test@example.com",
             "iss": "https://test.supabase.co",
             "aud": "test-audience",
+            "user_metadata": {"username": "admin", "is_admin": True},
         },
     )
 
@@ -26,7 +27,6 @@ def test_delete_model_group_removes_mapping(mock_get_verifier, client):
 
     headers = {
         "Authorization": "Bearer mock-jwt-token",
-        "X-LLM-Admin-Key": "test-llm-admin",
     }
 
     scope_key = f"delete-{uuid.uuid4().hex[:8]}"
@@ -54,4 +54,3 @@ def test_delete_model_group_removes_mapping(mock_get_verifier, client):
     assert listed.status_code == 200
     ids = [item.get("id") for item in (listed.json().get("data") or [])]
     assert mapping_id not in ids
-

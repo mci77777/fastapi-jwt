@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,6 +13,22 @@ from httpx import AsyncClient
 from app import app as fastapi_app
 from app.auth import AuthenticatedUser
 from app.services.ai_service import AIMessageInput, AIService, MessageEventBroker
+
+
+def _mock_httpx_stream_json(mock_httpx: MagicMock, payload: dict[str, Any], *, headers: dict[str, str] | None = None) -> None:
+    response = MagicMock()
+    response.status_code = 200
+    response.headers = {"content-type": "application/json"}
+    if headers:
+        response.headers.update(headers)
+    response.raise_for_status = MagicMock()
+    response.aread = AsyncMock(return_value=json.dumps(payload).encode("utf-8"))
+
+    stream_ctx = MagicMock()
+    stream_ctx.__aenter__ = AsyncMock(return_value=response)
+    stream_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    mock_httpx.return_value.__aenter__.return_value.stream = MagicMock(return_value=stream_ctx)
 
 
 class TestModelSelection:
@@ -50,12 +68,10 @@ class TestModelSelection:
                     }
                 )
 
-                mock_response = MagicMock()
-                mock_response.json.return_value = {
-                    "choices": [{"message": {"content": "Test response from GPT-4"}}],
-                }
-                mock_response.raise_for_status = MagicMock()
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+                _mock_httpx_stream_json(
+                    mock_client,
+                    {"choices": [{"message": {"content": "Test response from GPT-4"}}]},
+                )
 
                 with patch.object(
                     fastapi_app.state.model_mapping_service,
@@ -76,7 +92,7 @@ class TestModelSelection:
                 assert "message_id" in data
 
                 # Verify OpenAI was called with the resolved vendor model
-                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+                call_args = mock_client.return_value.__aenter__.return_value.stream.call_args
                 assert call_args is not None
                 payload = call_args[1]["json"]
                 assert payload["model"] == "gpt-4o"
@@ -115,12 +131,7 @@ class TestModelSelection:
                     }
                 )
 
-                mock_response = MagicMock()
-                mock_response.json.return_value = {
-                    "choices": [{"message": {"content": "Test response"}}],
-                }
-                mock_response.raise_for_status = MagicMock()
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+                _mock_httpx_stream_json(mock_client, {"choices": [{"message": {"content": "Test response"}}]})
 
                 with patch.object(
                     fastapi_app.state.model_mapping_service,
@@ -138,7 +149,7 @@ class TestModelSelection:
 
                 assert response.status_code == status.HTTP_202_ACCEPTED
 
-                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+                call_args = mock_client.return_value.__aenter__.return_value.stream.call_args
                 assert call_args is not None
                 payload = call_args[1]["json"]
                 assert payload["model"] == "gpt-4o"
@@ -177,12 +188,7 @@ class TestModelSelection:
                     }
                 )
 
-                mock_response = MagicMock()
-                mock_response.json.return_value = {
-                    "choices": [{"message": {"content": "Test response"}}],
-                }
-                mock_response.raise_for_status = MagicMock()
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+                _mock_httpx_stream_json(mock_client, {"choices": [{"message": {"content": "Test response"}}]})
 
                 with patch.object(
                     fastapi_app.state.model_mapping_service,
@@ -203,7 +209,7 @@ class TestModelSelection:
                 assert payload.get("code") == "model_not_allowed"
                 assert payload.get("request_id")
 
-                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+                call_args = mock_client.return_value.__aenter__.return_value.stream.call_args
                 assert call_args is None
 
     @pytest.mark.asyncio
@@ -295,12 +301,7 @@ class TestModelSelection:
                     }
                 )
 
-                mock_response = MagicMock()
-                mock_response.json.return_value = {
-                    "choices": [{"message": {"content": "Test response"}}],
-                }
-                mock_response.raise_for_status = MagicMock()
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+                _mock_httpx_stream_json(mock_client, {"choices": [{"message": {"content": "Test response"}}]})
 
                 with patch.object(
                     fastapi_app.state.model_mapping_service,
@@ -319,9 +320,9 @@ class TestModelSelection:
 
                 assert response.status_code == status.HTTP_202_ACCEPTED
 
-                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+                call_args = mock_client.return_value.__aenter__.return_value.stream.call_args
                 assert call_args is not None
-                called_url = call_args[0][0]
+                called_url = call_args[0][1]
                 assert isinstance(called_url, str)
                 assert "example.openai-proxy.local" in called_url
                 assert endpoint_a["id"] != endpoint_b["id"]
@@ -513,12 +514,10 @@ class TestE2EFlow:
             mock_get_verifier.return_value = mock_verifier
 
             with patch("app.services.ai_service.httpx.AsyncClient") as mock_client:
-                mock_response = MagicMock()
-                mock_response.json.return_value = {
-                    "choices": [{"message": {"content": "This is a test response from the AI."}}],
-                }
-                mock_response.raise_for_status = MagicMock()
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+                _mock_httpx_stream_json(
+                    mock_client,
+                    {"choices": [{"message": {"content": "This is a test response from the AI."}}]},
+                )
 
                 # Step 1: Create message
                 response = await async_client.post(

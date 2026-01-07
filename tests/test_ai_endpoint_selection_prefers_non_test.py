@@ -13,6 +13,22 @@ from app import app as fastapi_app
 from app.auth import AuthenticatedUser
 
 
+def _mock_httpx_stream_json(mock_httpx: MagicMock, payload: dict[str, Any], *, headers: dict[str, str] | None = None) -> None:
+    response = MagicMock()
+    response.status_code = 200
+    response.headers = {"content-type": "application/json"}
+    if headers:
+        response.headers.update(headers)
+    response.raise_for_status = MagicMock()
+    response.aread = AsyncMock(return_value=json.dumps(payload).encode("utf-8"))
+
+    stream_ctx = MagicMock()
+    stream_ctx.__aenter__ = AsyncMock(return_value=response)
+    stream_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    mock_httpx.return_value.__aenter__.return_value.stream = MagicMock(return_value=stream_ctx)
+
+
 async def _collect_sse_events(client: AsyncClient, url: str, headers: dict[str, str], *, max_events: int = 30) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     async with client.stream("GET", url, headers=headers, timeout=5.0) as response:
@@ -112,13 +128,11 @@ class TestAIEndpointSelectionPrefersNonTest:
                         }
                     )
 
-                    mock_response = MagicMock()
-                    mock_response.json.return_value = {
-                        "choices": [{"message": {"content": "Hello from AI."}}],
-                    }
-                    mock_response.raise_for_status = MagicMock()
-                    mock_response.headers = {"x-request-id": "upstream-rid"}
-                    mock_httpx.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+                    _mock_httpx_stream_json(
+                        mock_httpx,
+                        {"choices": [{"message": {"content": "Hello from AI."}}]},
+                        headers={"x-request-id": "upstream-rid"},
+                    )
 
                     with patch.object(
                         fastapi_app.state.model_mapping_service,
@@ -144,9 +158,9 @@ class TestAIEndpointSelectionPrefersNonTest:
                     )
                     assert any(item["event"] == "completed" for item in events)
 
-                    call_args = mock_httpx.return_value.__aenter__.return_value.post.call_args
+                    call_args = mock_httpx.return_value.__aenter__.return_value.stream.call_args
                     assert call_args is not None
-                    called_url = call_args[0][0]
+                    called_url = call_args[0][1]
                     assert isinstance(called_url, str)
                     assert called_url.startswith("https://api.openai.com")
                 finally:

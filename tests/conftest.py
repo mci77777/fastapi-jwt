@@ -19,8 +19,6 @@ os.environ["SUPABASE_KEEPALIVE_ENABLED"] = "false"
 os.environ["SUPABASE_PROVIDER_ENABLED"] = "false"
 # 测试环境：禁用启动期端点探针（避免真实外网调用与用例间串扰）
 os.environ["ENDPOINT_MONITOR_PROBE_ENABLED"] = "false"
-# 测试环境：允许通过 header 验证 LLM 管理端点
-os.environ["LLM_ADMIN_API_KEY"] = "test-llm-admin"
 # 测试环境强制关闭 Supabase Provider（避免真实网络调用/泄露密钥）
 os.environ["SUPABASE_PROJECT_ID"] = ""
 os.environ["SUPABASE_SERVICE_ROLE_KEY"] = ""
@@ -99,8 +97,22 @@ def _mock_ai_service_httpx(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_response.raise_for_status = MagicMock()
     mock_response.headers = {}
 
+    mock_stream_response = MagicMock()
+    mock_stream_response.status_code = 200
+    mock_stream_response.headers = {"content-type": "application/json"}
+    mock_stream_response.raise_for_status = MagicMock()
+    mock_stream_response.aread = AsyncMock(
+        return_value=b'{"choices":[{"message":{"content":"test response"}}]}',
+    )
+
+    mock_stream_ctx = MagicMock()
+    mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_stream_response)
+    mock_stream_ctx.__aexit__ = AsyncMock(return_value=False)
+
     mock_ctx = MagicMock()
-    mock_ctx.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+    mock_client = mock_ctx.__aenter__.return_value
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.stream = MagicMock(return_value=mock_stream_ctx)
     mock_ctx.__aexit__.return_value = False
 
     monkeypatch.setattr(ai_service_module.httpx, "AsyncClient", MagicMock(return_value=mock_ctx))

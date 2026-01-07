@@ -111,7 +111,6 @@ class Settings(BaseSettings):
     policy_gate_enabled: bool = Field(default=True, alias="POLICY_GATE_ENABLED")
 
     # LLM 管理端点权限（防止任意 Bearer 用户篡改默认 endpoint）
-    llm_admin_api_key: Optional[str] = Field(default=None, alias="LLM_ADMIN_API_KEY")
     llm_admin_uids: List[str] = Field(default_factory=list, alias="LLM_ADMIN_UIDS")
 
     # AI 端点选择策略

@@ -36,7 +36,6 @@ class TestLLMBlockedModels:
         special = "test-blocked-model-app"
         admin_headers = {
             "Authorization": f"Bearer {admin_token}",
-            "X-LLM-Admin-Key": "test-llm-admin",
         }
 
         # 创建一个支持 special 的默认端点（否则白名单解析会自动回退到可用候选）

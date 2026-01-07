@@ -342,11 +342,9 @@ async def stream_message_events(
                         "delta_preview": delta[:20],
                     }
                 elif item.event == "completed":
-                    reply = str(safe_data.get("reply") or "")
                     safe_data = {
                         "message_id": safe_data.get("message_id"),
-                        "reply_len": len(reply),
-                        "reply_preview": reply[:20],
+                        "reply_len": safe_data.get("reply_len"),
                     }
                 frames.append({"event": item.event, "data": safe_data})
 

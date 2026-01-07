@@ -13,6 +13,22 @@ from app import app as fastapi_app
 from app.auth import AuthenticatedUser
 
 
+def _mock_httpx_stream_json(mock_httpx: MagicMock, payload: dict[str, Any], *, headers: dict[str, str] | None = None) -> None:
+    response = MagicMock()
+    response.status_code = 200
+    response.headers = {"content-type": "application/json"}
+    if headers:
+        response.headers.update(headers)
+    response.raise_for_status = MagicMock()
+    response.aread = AsyncMock(return_value=json.dumps(payload).encode("utf-8"))
+
+    stream_ctx = MagicMock()
+    stream_ctx.__aenter__ = AsyncMock(return_value=response)
+    stream_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    mock_httpx.return_value.__aenter__.return_value.stream = MagicMock(return_value=stream_ctx)
+
+
 async def _collect_sse_events(
     client: AsyncClient,
     url: str,
@@ -110,11 +126,11 @@ class TestAppModelsMicroE2E:
                     }
                 )
 
-                mock_response = MagicMock()
-                mock_response.json.return_value = {"choices": [{"message": {"content": "Hello from xAI."}}]}
-                mock_response.raise_for_status = MagicMock()
-                mock_response.headers = {"x-request-id": "upstream-rid"}
-                mock_httpx.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+                _mock_httpx_stream_json(
+                    mock_httpx,
+                    {"choices": [{"message": {"content": "Hello from xAI."}}]},
+                    headers={"x-request-id": "upstream-rid"},
+                )
 
                 try:
                     # 1) 拉取模型列表：name 为业务 key
@@ -170,7 +186,7 @@ class TestAppModelsMicroE2E:
                     assert "completed" in event_names
 
                     # 上游 payload.model 必须是 resolved vendor model（不能是业务 key）
-                    call_args = mock_httpx.return_value.__aenter__.return_value.post.call_args
+                    call_args = mock_httpx.return_value.__aenter__.return_value.stream.call_args
                     assert call_args is not None
                     upstream_payload = call_args[1]["json"]
                     assert upstream_payload.get("model") == "grok-4"

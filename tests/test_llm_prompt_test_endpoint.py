@@ -13,6 +13,7 @@ def _auth_user() -> AuthenticatedUser:
             "email": "test@example.com",
             "iss": "https://test.supabase.co",
             "aud": "test-audience",
+            "user_metadata": {"username": "admin", "is_admin": True},
         },
     )
 
@@ -25,7 +26,6 @@ def test_llm_prompts_test_accepts_skip_prompt_and_resolves_mapping_key(mock_get_
 
     headers = {
         "Authorization": "Bearer mock-jwt-token",
-        "X-LLM-Admin-Key": "test-llm-admin",
     }
 
     prompt_resp = client.post(

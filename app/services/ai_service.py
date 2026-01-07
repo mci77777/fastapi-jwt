@@ -551,7 +551,13 @@ class AIService:
             )
 
             reply_text, model_used, request_payload, response_payload, upstream_request_id, endpoint_id_used, provider_used = (
-                await self._generate_reply(message, user, user_details)
+                await self._generate_reply(
+                    message_id=message_id,
+                    message=message,
+                    user=user,
+                    user_details=user_details,
+                    broker=broker,
+                )
             )
             if provider_used is None and self._ai_config_service is None:
                 provider_used = "openai"
@@ -565,32 +571,7 @@ class AIService:
                 provider_used,
             )
 
-            await broker.publish(
-                message_id,
-                MessageEvent(
-                    event="status",
-                    data={
-                        "state": "routed",
-                        "message_id": message_id,
-                        "request_id": request_id,
-                        "provider": provider_used,
-                        "resolved_model": model_used,
-                        "endpoint_id": endpoint_id_used,
-                        "upstream_request_id": None,
-                    },
-                ),
-            )
-
             reply_text = _sanitize_thinkingml_reply(reply_text)
-
-            async for chunk in self._stream_chunks(reply_text):
-                await broker.publish(
-                    message_id,
-                    MessageEvent(
-                        event="content_delta",
-                        data={"message_id": message_id, "delta": chunk},
-                    ),
-                )
 
             save_history = bool((message.metadata or {}).get("save_history", True))
             # 兼容：Supabase Provider 强依赖 UUID（user_id/conversation_id），而本地 admin/test token 可能是非 UUID。
@@ -633,12 +614,12 @@ class AIService:
                     event="completed",
                     data={
                         "message_id": message_id,
-                        "reply": reply_text,
                         "request_id": request_id,
                         "provider": provider_used,
                         "resolved_model": model_used,
                         "endpoint_id": endpoint_id_used,
                         "upstream_request_id": upstream_request_id,
+                        "reply_len": len(reply_text),
                     },
                 ),
             )
@@ -719,15 +700,42 @@ class AIService:
 
     async def _generate_reply(
         self,
+        *,
+        message_id: str,
         message: AIMessageInput,
         user: AuthenticatedUser,
         user_details: UserDetails,
+        broker: MessageEventBroker,
     ) -> tuple[str, Optional[str], Optional[str], Optional[str], Optional[str], Optional[int], Optional[str]]:
+        request_id = get_current_request_id()
+
         if self._ai_config_service is None:
             reply_text = await self._call_openai_completion_settings(message)
             model_used = self._settings.ai_model or "gpt-4o-mini"
             request_payload = json.dumps({"model": model_used, "text": message.text}, ensure_ascii=False)
-            return reply_text, model_used, request_payload, None, None, None, None
+
+            await broker.publish(
+                message_id,
+                MessageEvent(
+                    event="status",
+                    data={
+                        "state": "routed",
+                        "message_id": message_id,
+                        "request_id": request_id,
+                        "provider": "openai",
+                        "resolved_model": model_used,
+                        "endpoint_id": None,
+                        "upstream_request_id": None,
+                    },
+                ),
+            )
+            async for chunk in self._stream_chunks(reply_text):
+                await broker.publish(
+                    message_id,
+                    MessageEvent(event="content_delta", data={"message_id": message_id, "delta": chunk}),
+                )
+
+            return reply_text, model_used, request_payload, None, None, None, "openai"
 
         openai_req = await self._build_openai_request(message, user_details=user_details)
         preferred_endpoint_id: Optional[int] = None
@@ -754,21 +762,40 @@ class AIService:
             ensure_ascii=False,
         )
 
+        endpoint_id = _parse_optional_int(selected_endpoint.get("id"))
+        await broker.publish(
+            message_id,
+            MessageEvent(
+                event="status",
+                data={
+                    "state": "routed",
+                    "message_id": message_id,
+                    "request_id": request_id,
+                    "provider": provider_name,
+                    "resolved_model": selected_model,
+                    "endpoint_id": endpoint_id,
+                    "upstream_request_id": None,
+                },
+            ),
+        )
+
         if provider_name == "claude":
-            reply_text, response_payload, upstream_request_id = await self._call_anthropic_messages(
+            reply_text, response_payload, upstream_request_id = await self._call_anthropic_messages_streaming(
                 selected_endpoint,
                 api_key,
                 openai_req,
+                message_id=message_id,
+                broker=broker,
             )
-            endpoint_id = _parse_optional_int(selected_endpoint.get("id"))
             return reply_text, selected_model, request_payload, response_payload, upstream_request_id, endpoint_id, provider_name
 
-        reply_text, response_payload, upstream_request_id = await self._call_openai_chat_completions(
+        reply_text, response_payload, upstream_request_id = await self._call_openai_chat_completions_streaming(
             selected_endpoint,
             api_key,
             openai_req,
+            message_id=message_id,
+            broker=broker,
         )
-        endpoint_id = _parse_optional_int(selected_endpoint.get("id"))
         return reply_text, selected_model, request_payload, response_payload, upstream_request_id, endpoint_id, provider_name
 
     async def _call_openai_completion_settings(self, message: AIMessageInput) -> str:
@@ -1274,6 +1301,327 @@ class AIService:
 
         upstream_request_id = response.headers.get("x-request-id") or response.headers.get("request-id")
         return content.strip(), json.dumps(data, ensure_ascii=False), upstream_request_id
+
+    async def _call_openai_chat_completions_streaming(
+        self,
+        endpoint: dict[str, Any],
+        api_key: str,
+        openai_req: dict[str, Any],
+        *,
+        message_id: str,
+        broker: MessageEventBroker,
+    ) -> tuple[str, str, Optional[str]]:
+        """OpenAI Chat Completions 真流式：解析 SSE 并将 delta.content 逐段转发到 broker。"""
+
+        resolved = endpoint.get("resolved_endpoints") or {}
+        chat_url = resolved.get("chat_completions")
+        computed_chat_url = build_resolved_endpoints(str(endpoint.get("base_url") or "")).get("chat_completions")
+        if isinstance(computed_chat_url, str) and computed_chat_url.strip():
+            computed_chat_url = computed_chat_url.strip()
+            if (
+                not isinstance(chat_url, str)
+                or not chat_url.strip()
+                or chat_url.strip() != computed_chat_url
+                or "/v1/v1/" in chat_url
+                or "/chat/completions/v1/chat/completions" in chat_url
+            ):
+                chat_url = computed_chat_url
+        elif (
+            not isinstance(chat_url, str)
+            or not chat_url.strip()
+            or "/v1/v1/" in chat_url
+            or "/chat/completions/v1/chat/completions" in chat_url
+        ):
+            base = normalize_ai_base_url(str(endpoint.get("base_url") or ""))
+            chat_url = f"{base}/v1/chat/completions" if base else "/v1/chat/completions"
+
+        base_headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+        request_id = get_current_request_id()
+        if request_id:
+            base_headers[REQUEST_ID_HEADER_NAME] = request_id
+
+        payload: dict[str, Any] = {}
+        for key in ("model", "messages", "tools", "tool_choice", "temperature", "top_p", "max_tokens"):
+            if key in openai_req and openai_req[key] is not None:
+                payload[key] = openai_req[key]
+        payload["stream"] = True
+
+        reply_parts: list[str] = []
+        timeout = endpoint.get("timeout") or self._settings.http_timeout_seconds
+        auth_candidates = iter_auth_headers(api_key, chat_url or "") or [{"Authorization": f"Bearer {api_key}"}]
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for index, auth_headers in enumerate(auth_candidates):
+                headers = dict(base_headers)
+                headers.update(auth_headers)
+
+                async with client.stream("POST", chat_url, json=payload, headers=headers) as response:
+                    if response.status_code == 401 and index < len(auth_candidates) - 1:
+                        retry_payload: object | None = None
+                        try:
+                            raw = await response.aread()
+                            retry_payload = json.loads(raw) if raw else None
+                        except Exception:
+                            retry_payload = None
+                        if is_retryable_auth_error(response.status_code, retry_payload):
+                            continue
+
+                    response.raise_for_status()
+                    upstream_request_id = response.headers.get("x-request-id") or response.headers.get("request-id")
+                    content_type = str(response.headers.get("content-type") or "").lower()
+
+                    if "text/event-stream" not in content_type:
+                        # 降级：非 SSE 响应按普通 JSON 处理，再做分片转发
+                        raw = await response.aread()
+                        try:
+                            data = json.loads(raw)
+                        except Exception as exc:  # pragma: no cover
+                            raise ProviderError("upstream_invalid_response") from exc
+
+                        choices = data.get("choices") or []
+                        if not choices:
+                            raise ProviderError("upstream_empty_choices")
+
+                        choice0 = choices[0] if isinstance(choices[0], dict) else {}
+                        message_obj = choice0.get("message") if isinstance(choice0, dict) else None
+                        message_obj = message_obj if isinstance(message_obj, dict) else {}
+                        content = message_obj.get("content", "")
+                        if not content:
+                            tool_calls = message_obj.get("tool_calls")
+                            if isinstance(tool_calls, list) and tool_calls:
+                                names: list[str] = []
+                                for item in tool_calls:
+                                    fn = item.get("function") if isinstance(item, dict) else None
+                                    if isinstance(fn, dict):
+                                        name = fn.get("name")
+                                        if isinstance(name, str) and name.strip():
+                                            names.append(name.strip())
+                                names = list(dict.fromkeys(names))
+                                suffix = f" tools={','.join(names[:5])}" if names else ""
+                                raise ProviderError(f"tool_calls_not_supported{suffix}")
+
+                            function_call = message_obj.get("function_call")
+                            if isinstance(function_call, dict) and function_call.get("name"):
+                                raise ProviderError("function_call_not_supported")
+
+                            raise ProviderError("upstream_empty_content")
+
+                        reply_text = content.strip()
+                        async for chunk in self._stream_chunks(reply_text):
+                            await broker.publish(
+                                message_id,
+                                MessageEvent(event="content_delta", data={"message_id": message_id, "delta": chunk}),
+                            )
+                        return reply_text, json.dumps(data, ensure_ascii=False), upstream_request_id
+
+                    data_lines: list[str] = []
+
+                    async def dispatch_event() -> bool:
+                        nonlocal data_lines
+                        if not data_lines:
+                            return False
+                        raw_text = "\n".join(data_lines).strip()
+                        data_lines = []
+                        if not raw_text:
+                            return False
+                        if raw_text == "[DONE]":
+                            return True
+
+                        try:
+                            obj = json.loads(raw_text)
+                        except Exception:
+                            return False
+
+                        if isinstance(obj, dict) and obj.get("error"):
+                            raise ProviderError("upstream_error")
+
+                        choices = obj.get("choices") if isinstance(obj, dict) else None
+                        if not isinstance(choices, list) or not choices:
+                            return False
+
+                        choice0 = choices[0] if isinstance(choices[0], dict) else {}
+                        delta = choice0.get("delta") if isinstance(choice0.get("delta"), dict) else None
+                        if isinstance(delta, dict):
+                            tool_calls = delta.get("tool_calls")
+                            if isinstance(tool_calls, list) and tool_calls:
+                                names: list[str] = []
+                                for item in tool_calls:
+                                    fn = item.get("function") if isinstance(item, dict) else None
+                                    if isinstance(fn, dict):
+                                        name = fn.get("name")
+                                        if isinstance(name, str) and name.strip():
+                                            names.append(name.strip())
+                                names = list(dict.fromkeys(names))
+                                suffix = f" tools={','.join(names[:5])}" if names else ""
+                                raise ProviderError(f"tool_calls_not_supported{suffix}")
+
+                            function_call = delta.get("function_call")
+                            if isinstance(function_call, dict) and function_call.get("name"):
+                                raise ProviderError("function_call_not_supported")
+
+                            text = delta.get("content")
+                            if isinstance(text, str) and text:
+                                reply_parts.append(text)
+                                await broker.publish(
+                                    message_id,
+                                    MessageEvent(event="content_delta", data={"message_id": message_id, "delta": text}),
+                                )
+
+                        return False
+
+                    async for line in response.aiter_lines():
+                        if line is None:
+                            continue
+                        if not line:
+                            if await dispatch_event():
+                                break
+                            continue
+                        if line.startswith(":"):
+                            continue
+                        if line.startswith("data:"):
+                            data_lines.append(line[len("data:") :].strip())
+                            continue
+
+                    await dispatch_event()
+
+                    reply_text = "".join(reply_parts).strip()
+                    if not reply_text:
+                        raise ProviderError("upstream_empty_content")
+                    return (
+                        reply_text,
+                        json.dumps({"stream": True, "chunks": len(reply_parts)}, ensure_ascii=False),
+                        upstream_request_id,
+                    )
+
+        raise RuntimeError("upstream_no_response")
+
+    async def _call_anthropic_messages_streaming(
+        self,
+        endpoint: dict[str, Any],
+        api_key: str,
+        openai_req: dict[str, Any],
+        *,
+        message_id: str,
+        broker: MessageEventBroker,
+    ) -> tuple[str, str, Optional[str]]:
+        """Claude Messages 真流式：解析 SSE 并将 text_delta 逐段转发到 broker。"""
+
+        base_url = normalize_ai_base_url(str(endpoint.get("base_url") or ""))
+        messages_url = f"{base_url}/v1/messages"
+
+        payload = self._convert_openai_to_anthropic(openai_req)
+        payload["stream"] = True
+
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
+        request_id = get_current_request_id()
+        if request_id:
+            headers[REQUEST_ID_HEADER_NAME] = request_id
+
+        reply_parts: list[str] = []
+        timeout = endpoint.get("timeout") or self._settings.http_timeout_seconds
+        upstream_request_id: Optional[str] = None
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream("POST", messages_url, json=payload, headers=headers) as response:
+                response.raise_for_status()
+                upstream_request_id = response.headers.get("request-id") or response.headers.get("x-request-id")
+                content_type = str(response.headers.get("content-type") or "").lower()
+
+                if "text/event-stream" not in content_type:
+                    raw = await response.aread()
+                    try:
+                        data = json.loads(raw)
+                    except Exception as exc:  # pragma: no cover
+                        raise ProviderError("upstream_invalid_response") from exc
+                    blocks = data.get("content") if isinstance(data, dict) else None
+                    if not isinstance(blocks, list):
+                        raise ProviderError("upstream_invalid_response")
+                    text = "".join(
+                        block.get("text", "")
+                        for block in blocks
+                        if isinstance(block, dict) and block.get("type") == "text"
+                    )
+                    if not text:
+                        raise ProviderError("upstream_empty_content")
+                    reply_text = text.strip()
+                    async for chunk in self._stream_chunks(reply_text):
+                        await broker.publish(
+                            message_id,
+                            MessageEvent(event="content_delta", data={"message_id": message_id, "delta": chunk}),
+                        )
+                    return reply_text, json.dumps(data, ensure_ascii=False), upstream_request_id
+
+                current_event: str | None = None
+                data_lines: list[str] = []
+
+                async def dispatch_event() -> bool:
+                    nonlocal current_event, data_lines
+                    if not data_lines:
+                        current_event = None
+                        return False
+
+                    raw_text = "\n".join(data_lines).strip()
+                    data_lines = []
+                    event_name = (current_event or "").strip()
+                    current_event = None
+
+                    if not raw_text:
+                        return False
+                    if raw_text == "[DONE]":
+                        return True
+
+                    try:
+                        obj = json.loads(raw_text)
+                    except Exception:
+                        return False
+
+                    if event_name == "error" or (isinstance(obj, dict) and obj.get("type") == "error"):
+                        raise ProviderError("upstream_error")
+
+                    if event_name == "content_block_delta" and isinstance(obj, dict):
+                        delta = obj.get("delta") if isinstance(obj.get("delta"), dict) else None
+                        if delta and delta.get("type") == "text_delta":
+                            text = delta.get("text")
+                            if isinstance(text, str) and text:
+                                reply_parts.append(text)
+                                await broker.publish(
+                                    message_id,
+                                    MessageEvent(event="content_delta", data={"message_id": message_id, "delta": text}),
+                                )
+
+                    return event_name == "message_stop"
+
+                async for line in response.aiter_lines():
+                    if line is None:
+                        continue
+                    if not line:
+                        if await dispatch_event():
+                            break
+                        continue
+                    if line.startswith(":"):
+                        continue
+                    if line.startswith("event:"):
+                        current_event = line[len("event:") :].strip()
+                        continue
+                    if line.startswith("data:"):
+                        data_lines.append(line[len("data:") :].strip())
+                        continue
+
+                await dispatch_event()
+
+        reply_text = "".join(reply_parts).strip()
+        if not reply_text:
+            raise ProviderError("upstream_empty_content")
+        return (
+            reply_text,
+            json.dumps({"stream": True, "chunks": len(reply_parts)}, ensure_ascii=False),
+            upstream_request_id,
+        )
 
     async def _call_anthropic_messages(
         self,

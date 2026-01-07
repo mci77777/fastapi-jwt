@@ -28,7 +28,6 @@ def test_persistence_and_delete_do_not_rebounce_after_restart(tmp_path: Path) ->
         "SUPABASE_PROVIDER_ENABLED",
         "SUPABASE_KEEPALIVE_ENABLED",
         "RATE_LIMIT_ENABLED",
-        "LLM_ADMIN_API_KEY",
         "DEBUG",
         "CORS_ALLOW_ORIGINS",
     ]
@@ -76,21 +75,30 @@ def test_persistence_and_delete_do_not_rebounce_after_restart(tmp_path: Path) ->
         os.environ["SUPABASE_PROVIDER_ENABLED"] = "false"
         os.environ["SUPABASE_KEEPALIVE_ENABLED"] = "false"
         os.environ["RATE_LIMIT_ENABLED"] = "false"
-        os.environ["LLM_ADMIN_API_KEY"] = "test-llm-admin"
         os.environ["DEBUG"] = "false"
         os.environ["CORS_ALLOW_ORIGINS"] = "*"
 
         get_settings.cache_clear()
         get_auth_provider.cache_clear()
 
-        admin_headers = {"Authorization": "Bearer mock", "X-LLM-Admin-Key": "test-llm-admin"}
-        user_headers = {"Authorization": "Bearer mock"}
+        admin_headers = {"Authorization": "Bearer mock-admin"}
+        user_headers = {"Authorization": "Bearer mock-user"}
 
         created_endpoint_id: int | None = None
 
         with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
             mock_verifier = Mock()
-            mock_verifier.verify_token.return_value = _auth_user()
+            admin_user = AuthenticatedUser(
+                uid="test-user-123",
+                claims={"sub": "test-user-123", "user_metadata": {"username": "admin", "is_admin": True}},
+            )
+
+            def _verify(token: str) -> AuthenticatedUser:
+                if token == "mock-admin":
+                    return admin_user
+                return _auth_user()
+
+            mock_verifier.verify_token.side_effect = _verify
             mock_get_verifier.return_value = mock_verifier
 
             # 1) 第一次启动：触发 legacy→data 迁移，并创建一个 endpoint
