@@ -117,6 +117,12 @@ export default {
   patchExerciseLibrarySeed: (payload) => request.post('/admin/exercise/library/patch', payload),
   // user entitlements (admin)
   getUserEntitlements: (params = {}) => request.get('/admin/user-entitlements', { params }),
+  getUserEntitlementsStats: () => request.get('/admin/user-entitlements/stats'),
+  listUserEntitlements: (params = {}) => request.get('/admin/user-entitlements/list', { params }),
+  getUserEntitlementTierPresets: () => request.get('/admin/user-entitlements/presets'),
+  upsertUserEntitlementTierPreset: (data = {}) => request.post('/admin/user-entitlements/presets', data),
+  deleteUserEntitlementTierPreset: (tier) =>
+    request.delete(`/admin/user-entitlements/presets/${encodeURIComponent(String(tier || '').trim())}`),
   upsertUserEntitlements: (data = {}) => request.post('/admin/user-entitlements', data),
   // depts
   getDepts: (params = {}) => request.get('/dept/list', { params }),

@@ -57,6 +57,19 @@ class SupabaseAdminClient:
             headers.update({k: str(v) for k, v in extra.items()})
         return headers
 
+    @staticmethod
+    def _parse_content_range_total(value: Optional[str]) -> Optional[int]:
+        """Parse PostgREST Content-Range total like "0-0/123"."""
+        if not value:
+            return None
+        if "/" not in value:
+            return None
+        total_text = value.split("/", 1)[-1].strip()
+        try:
+            return int(total_text)
+        except Exception:
+            return None
+
     async def fetch_one_by_user_id(
         self,
         *,
@@ -166,3 +179,81 @@ class SupabaseAdminClient:
         if isinstance(data, list) and data and isinstance(data[0], dict):
             return data[0]
         return None
+
+    async def fetch_list(
+        self,
+        *,
+        table: str,
+        filters: Optional[dict[str, Any]] = None,
+        select: str = "*",
+        order: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0,
+        with_count: bool = False,
+    ) -> tuple[list[dict[str, Any]], Optional[int]]:
+        """Fetch rows from a table with optional exact count.
+
+        Notes:
+        - PostgREST count is returned in Content-Range when Prefer: count=exact is set.
+        """
+        url = f"{self._base_url}/rest/v1/{table}"
+
+        params: dict[str, Any] = {"select": select, "limit": int(limit), "offset": int(offset)}
+        if order:
+            params["order"] = str(order)
+        if filters:
+            params.update({k: str(v) for k, v in filters.items() if v is not None})
+
+        headers = self._headers({"Prefer": "count=exact"} if with_count else None)
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.get(url, headers=headers, params=params)
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status = int(getattr(exc.response, "status_code", 0) or 0) or 502
+            logger.warning("Supabase admin list failed table=%s status=%s", table, status)
+            raise SupabaseAdminError(
+                code="supabase_request_failed",
+                message="Supabase request failed",
+                status_code=status,
+            ) from exc
+        except httpx.HTTPError as exc:
+            logger.warning("Supabase admin list error table=%s error=%s", table, type(exc).__name__)
+            raise SupabaseAdminError(
+                code="supabase_request_error",
+                message="Supabase request error",
+                status_code=502,
+            ) from exc
+
+        total: Optional[int] = None
+        if with_count:
+            total = self._parse_content_range_total(response.headers.get("content-range"))
+
+        try:
+            data = response.json()
+        except ValueError:
+            return [], total
+
+        if not isinstance(data, list):
+            return [], total
+
+        items: list[dict[str, Any]] = [row for row in data if isinstance(row, dict)]
+        return items, total
+
+    async def count_rows(
+        self,
+        *,
+        table: str,
+        filters: Optional[dict[str, Any]] = None,
+    ) -> int:
+        """Count rows using Prefer: count=exact (best-effort)."""
+        _, total = await self.fetch_list(
+            table=table,
+            filters=filters,
+            select="user_id",
+            limit=1,
+            offset=0,
+            with_count=True,
+        )
+        return int(total or 0)
