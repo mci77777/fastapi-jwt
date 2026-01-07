@@ -11,11 +11,13 @@ from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api import api_router
+from app.api.mobile import mobile_router
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import RequestIDMiddleware
 from app.core.policy_gate import PolicyGateMiddleware
 from app.core.rate_limiter import RateLimitMiddleware
 from app.db import SQLiteManager
+from app.repositories.user_repo import UserRepository
 from app.services.ai_config_service import AIConfigService
 from app.services.ai_service import AIService, MessageEventBroker
 from app.services.dashboard_broker import DashboardBroker
@@ -23,6 +25,8 @@ from app.services.log_collector import LogCollector
 from app.services.metrics_collector import MetricsCollector
 from app.services.model_mapping_service import ModelMappingService
 from app.services.monitor_service import EndpointMonitor
+from app.services.entitlement_service import EntitlementService
+from app.services.supabase_admin import SupabaseAdminClient
 from app.services.supabase_keepalive import SupabaseKeepaliveService
 from app.services.sync_service import SyncService
 from app.settings.config import get_settings
@@ -111,6 +115,21 @@ async def lifespan(app: FastAPI):
         model_mapping_service=app.state.model_mapping_service,
     )
 
+    # Supabase Admin access (service role) - used by mobile APIs like /v1/me (best-effort init).
+    app.state.supabase_admin = None
+    app.state.user_repository = None
+    app.state.entitlement_service = None
+    if bool(settings.supabase_service_role_key) and (bool(settings.supabase_url) or bool(settings.supabase_project_id)):
+        try:
+            app.state.supabase_admin = SupabaseAdminClient(settings)
+            app.state.user_repository = UserRepository(app.state.supabase_admin, bundle_ttl_seconds=60)
+            app.state.entitlement_service = EntitlementService(app.state.user_repository, ttl_seconds=60)
+        except Exception:
+            # 缺少配置或初始化失败不阻断启动；具体端点按需返回可诊断错误体。
+            app.state.supabase_admin = None
+            app.state.user_repository = None
+            app.state.entitlement_service = None
+
     # Supabase 保活服务（防止免费层 7 天无活动后暂停）
     app.state.supabase_keepalive = SupabaseKeepaliveService(settings)
     await app.state.supabase_keepalive.start()
@@ -174,4 +193,5 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(api_router, prefix="/api")
+    app.include_router(mobile_router)
     return app

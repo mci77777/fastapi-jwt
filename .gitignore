@@ -32,6 +32,10 @@ db/db.sqlite3-wal
 *.db
 migrations/
 
+# Allow versioned SQL docs under docs/supabase/migrations (no secrets).
+!docs/supabase/migrations/
+!docs/supabase/migrations/**
+
 # ============ 敏感配置文件 - 严格禁止提交 ============
 .env
 .env.*

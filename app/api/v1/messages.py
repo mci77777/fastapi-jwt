@@ -17,6 +17,7 @@ from app.core.middleware import get_current_request_id, reset_current_request_id
 from app.core.sse_guard import check_sse_concurrency, unregister_sse_connection
 from app.db.sqlite_manager import get_sqlite_manager
 from app.services.ai_service import AIMessageInput, AIService, MessageEvent, MessageEventBroker
+from app.services.entitlement_service import EntitlementService
 from app.settings.config import get_settings
 
 router = APIRouter(tags=["messages"])
@@ -81,11 +82,62 @@ class MessageCreateResponse(BaseModel):
     conversation_id: str
 
 
+async def _require_entitlement_for_message(
+    payload: MessageCreateRequest,
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+) -> None:
+    """Entitlement gate for advanced chat features (KISS).
+
+    - Anonymous: always denied for advanced features
+    - Permanent: requires active "pro" entitlement for advanced features
+    """
+    # KISS：当前仅对 “skip_prompt” 做门控（避免影响基础对话链路）。
+    wants_advanced = bool(payload.skip_prompt)
+    if not wants_advanced:
+        return
+
+    request_id = getattr(request.state, "request_id", None) or get_current_request_id() or ""
+
+    if current_user.is_anonymous:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "entitlement_required",
+                "message": "Anonymous user is not allowed to use advanced AI features",
+                "request_id": request_id,
+            },
+        )
+
+    entitlement_service = getattr(request.app.state, "entitlement_service", None)
+    if not isinstance(entitlement_service, EntitlementService):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "entitlement_required",
+                "message": "Pro entitlement is required for advanced AI features",
+                "request_id": request_id,
+            },
+        )
+
+    entitlement = await entitlement_service.resolve(current_user.uid)
+    if not entitlement.is_pro:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "entitlement_required",
+                "message": "Pro entitlement is required for advanced AI features",
+                "request_id": request_id,
+            },
+        )
+
+
 @router.post("/messages", response_model=MessageCreateResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_message(
     payload: MessageCreateRequest,
     request: Request,
     background_tasks: BackgroundTasks,
+    _: None = Depends(_require_entitlement_for_message),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> MessageCreateResponse:
     broker: MessageEventBroker = request.app.state.message_broker

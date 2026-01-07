@@ -1,12 +1,13 @@
 """API契约验证测试。"""
 
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app import app
 from app.auth.jwt_verifier import AuthenticatedUser
+from app.repositories.user_repo import UserRepository
 
 
 class TestAPIContracts:
@@ -46,6 +47,51 @@ class TestAPIContracts:
         required_fields = ["code", "message", "request_id"]
         for field in required_fields:
             assert field in data, f"Response missing required field: {field}"
+
+    def test_me_get_contract_unauthorized(self, client):
+        """测试GET /v1/me 未授权契约。"""
+        response = client.get("/v1/me")
+        assert response.status_code == 401
+
+        data = response.json()
+        required_fields = ["code", "message", "request_id"]
+        for field in required_fields:
+            assert field in data, f"Response missing required field: {field}"
+
+    @patch("app.auth.dependencies.get_jwt_verifier")
+    def test_me_get_contract_success(self, mock_get_verifier, client, mock_auth_user, auth_headers):
+        """测试GET /v1/me 成功响应契约。"""
+        mock_verifier = Mock()
+        mock_verifier.verify_token.return_value = mock_auth_user
+        mock_get_verifier.return_value = mock_verifier
+
+        async def _fetch_one_by_user_id(*, table: str, user_id: str):
+            if table == "user_profiles":
+                return {"display_name": "Test", "last_updated": 0}
+            if table == "user_settings":
+                return {"theme_mode": "system", "ai_memory_enabled": False, "last_updated": 0}
+            if table == "user_entitlements":
+                return {"tier": "free", "flags": {}, "last_updated": 0}
+            return None
+
+        mock_supabase = MagicMock()
+        mock_supabase.fetch_one_by_user_id = AsyncMock(side_effect=_fetch_one_by_user_id)
+        repo = UserRepository(mock_supabase)
+
+        prev_repo = getattr(client.app.state, "user_repository", None)
+        client.app.state.user_repository = repo
+        try:
+            response = client.get("/v1/me", headers=auth_headers)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["uid"] == mock_auth_user.uid
+            assert data["user_type"] == "permanent"
+            assert "server_time" in data
+            assert "profile" in data
+            assert "settings" in data
+            assert "entitlements" in data
+        finally:
+            client.app.state.user_repository = prev_repo
 
     @patch("app.auth.dependencies.get_jwt_verifier")
     def test_messages_post_success_contract(self, mock_get_verifier, client, mock_auth_user, auth_headers):
