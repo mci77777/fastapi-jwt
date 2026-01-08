@@ -251,7 +251,7 @@ async function runMultiUserTest() {
    - 未来需要后端支持多用户注册功能才能实现真正的多用户测试
 
 补充（真实环境建议）：
-- 实际联调请优先使用 Supabase 真实用户 Token（ES256），并配合 Mail API 生成临时邮箱完成注册/验证流程（见 `docs/mail-api.txt`）。
+- 实际联调请优先使用 Supabase 真实用户 Token（ES256），并配合 Mail API 生成临时邮箱完成注册/验证流程（见 `docs/mail-api.md`）。
 
 2. **并发数限制**：建议并发数不超过 20，避免浏览器性能问题
 

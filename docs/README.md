@@ -48,6 +48,7 @@
 | 文档 | 描述 |
 |------|------|
 | [debugging/DEBUGGING_GUIDE.md](./guides/debugging/DEBUGGING_GUIDE.md) | 前端调试完整指南（Chrome DevTools + 实战场景 + 自动化工具） |
+| [mail-api.md](./mail-api.md) | 真实邮箱流测试（Mail API：临时邮箱 + 拉取邮件） |
 
 ---
 

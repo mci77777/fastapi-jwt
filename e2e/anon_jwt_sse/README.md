@@ -5,7 +5,7 @@
 本测试套件实现了端到端的匿名JWT认证到AI消息处理的完整闭环测试，包括：
 
 - 🔐 **匿名JWT获取**：通过Supabase Anonymous获取真实JWT
-- 📧 **真实邮箱流测试**：使用 Mail API 生成临时邮箱并接收邮件验证码/链接（见 `docs/mail-api.txt`）
+- 📧 **真实邮箱流测试**：使用 Mail API 生成临时邮箱并接收邮件验证码/链接（见 `docs/mail-api.md`）
 - 🤖 **Prompt跳过机制**：支持通过 `TEST_SKIP_PROMPT` 环境变量在测试中跳过System Prompt注入，直接测试模型原生响应
 - 🧪 **Mock用户生成**：支持通过 `/llm/tests/create-mail-user` 快速生成测试用户（支持Mock模式）
 - 🌊 **SSE流式调用**：测试AI消息接口的流式响应
@@ -165,7 +165,7 @@ curl -H "Authorization: Bearer TOKEN" http://localhost:9999/api/v1/me
 - [JWT硬化指南](../../docs/JWT_HARDENING_GUIDE.md)
 - [Supabase配置指南](../../docs/SUPABASE_JWT_SETUP.md)
 - [K1交付报告](../../docs/K1_DELIVERY_REPORT.md)
-- [Mail API（真实邮箱流测试）](../../docs/mail-api.txt)
+- [Mail API（真实邮箱流测试）](../../docs/mail-api.md)
 
 ## JWT UI 测试与 Mock 模式
 

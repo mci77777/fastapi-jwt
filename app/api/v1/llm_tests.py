@@ -416,7 +416,7 @@ async def create_mail_user(
                     msg="mail_api_invalid_email",
                     message="mail_api_invalid_email",
                     request_id=request_id,
-                    hint="Mail API 返回的 address 无效；请检查 MAIL_DOMAIN 或 Mail API 配置（见 docs/mail-api.txt）。",
+                    hint="Mail API 返回的 address 无效；请检查 MAIL_DOMAIN 或 Mail API 配置（见 docs/mail-api.md）。",
                 ),
             )
         note_extra["mail_api"] = "ok"
@@ -435,7 +435,7 @@ async def create_mail_user(
                 message="mail_api_error",
                 request_id=request_id,
                 upstream_status=upstream_status,
-                hint="Mail API 请求失败；请检查 MAIL_API_KEY/MAIL_API_BASE_URL 是否正确（见 docs/mail-api.txt）。",
+                hint="Mail API 请求失败；请检查 MAIL_API_KEY/MAIL_API_BASE_URL 是否正确（见 docs/mail-api.md）。",
             ),
         ) from exc
 

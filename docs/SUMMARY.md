@@ -19,6 +19,7 @@
 - `docs/api-contracts/README.md`
 - `docs/ai预期响应结构.md`
 - `docs/e2e-ai-conversation/README.md`
+- `docs/mail-api.md`
 
 ## 架构 / 规范
 - `docs/architecture/README.md`

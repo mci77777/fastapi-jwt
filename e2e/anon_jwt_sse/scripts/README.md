@@ -29,7 +29,7 @@ python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py
 
 实际联调（尤其是需要邮箱验证码/邮件链接的场景）统一使用 Mail API 生成临时邮箱并拉取邮件内容：
 
-- 说明文档：`docs/mail-api.txt`
+- 说明文档：`docs/mail-api.md`
 - 推荐域名示例：`moemail.app`
 
 `run_e2e_enhanced.py` 默认 `--email-mode auto`：当存在 `MAIL_API_KEY` 时会自动切换到 `mailapi`，并在登录失败且提示“邮箱未确认”时自动等待邮件并完成确认后重试登录。
