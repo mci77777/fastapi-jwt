@@ -108,6 +108,23 @@ def _parse_tools_from_tool_md(tool_md: str) -> list[dict[str, Any]]:
 
 ALLOWED_TAGS = {"think", "serp", "thinking", "phase", "title", "final"}
 TAG_RE = re.compile(r"<\s*/?\s*([a-zA-Z]+)(?:\s+[^>]*)?>")
+PHASE_OPEN_RE = re.compile(r'<phase\s+id="(\d+)">')
+PHASE_BLOCK_RE = re.compile(r'(<phase\s+id="(\d+)">)(.*?)(</phase>)', re.DOTALL)
+SERP_QUERIES_BLOCK_RE = re.compile(
+    r"<!--\s*<serp_queries>\s*\n(?P<json>\[.*?\])\s*\n</serp_queries>\s*-->\s*$",
+    re.DOTALL,
+)
+
+
+def _extract_block(text: str, open_tag: str, close_tag: str) -> tuple[str | None, str | None]:
+    start = text.find(open_tag)
+    end = text.rfind(close_tag)
+    if start < 0 or end < 0:
+        return None, "missing_block"
+    start += len(open_tag)
+    if end < start:
+        return None, "invalid_block_order"
+    return text[start:end], None
 
 
 def _validate_thinkingml(reply: str) -> tuple[bool, str]:
@@ -116,19 +133,95 @@ def _validate_thinkingml(reply: str) -> tuple[bool, str]:
         return False, "empty_reply"
     if text == "<<ParsingError>>":
         return False, "parsing_error_marker"
-    if "<thinking>" not in text or "</thinking>" not in text or "<final>" not in text or "</final>" not in text:
-        return False, "missing_required_blocks"
-    if text.find("</thinking>") > text.find("<final>"):
-        return False, "invalid_sequence_thinking_final"
-    if "<phase" not in text or "<title>" not in text:
-        return False, "missing_phase_or_title"
-    if "<!-- <serp_queries>" not in text:
-        return False, "missing_serp_queries_block"
 
+    # 1) 必须块存在且仅 1 次
+    if text.count("<thinking>") != 1 or text.count("</thinking>") != 1:
+        return False, "invalid_thinking_block_count"
+    if text.count("<final>") != 1 or text.count("</final>") != 1:
+        return False, "invalid_final_block_count"
+    if text.count("<serp>") > 1 or text.count("</serp>") > 1:
+        return False, "invalid_serp_block_count"
+    if text.count("<think>") > 1 or text.count("</think>") > 1:
+        return False, "invalid_think_block_count"
+
+    thinking_open = text.find("<thinking>")
+    thinking_close = text.find("</thinking>")
+    final_open = text.find("<final>")
+    final_close = text.find("</final>")
+    if thinking_open < 0 or thinking_close < 0 or final_open < 0 or final_close < 0:
+        return False, "missing_required_blocks"
+    if thinking_open > thinking_close:
+        return False, "invalid_thinking_order"
+    if final_open > final_close:
+        return False, "invalid_final_order"
+
+    # 2) 顺序约束：<serp> 在 <thinking> 之前；</thinking> 后必须立刻出现 <final>（允许空白）
+    if "<serp>" in text:
+        serp_open = text.find("<serp>")
+        if serp_open > thinking_open:
+            return False, "invalid_sequence_serp_thinking"
+
+    if thinking_close + len("</thinking>") > final_open:
+        return False, "invalid_sequence_thinking_final"
+    between = text[thinking_close + len("</thinking>") : final_open]
+    if between.strip():
+        return False, "final_not_immediately_after_thinking"
+
+    # 3) 允许标签白名单（大小写敏感）
     for match in TAG_RE.finditer(text):
         tag = (match.group(1) or "").strip()
-        if tag and tag.lower() not in ALLOWED_TAGS:
+        if tag and tag not in ALLOWED_TAGS:
             return False, f"unexpected_tag:{tag}"
+
+    # 4) <thinking>：phase id 严格递增，从 1 开始；每个 phase 含且仅含 1 个 title
+    thinking_content, err = _extract_block(text, "<thinking>", "</thinking>")
+    if err or thinking_content is None:
+        return False, "missing_thinking_content"
+
+    phase_ids = [int(x) for x in PHASE_OPEN_RE.findall(thinking_content)]
+    if not phase_ids:
+        return False, "missing_phase"
+    if phase_ids[0] != 1:
+        return False, "phase_id_not_start_from_1"
+    for idx in range(1, len(phase_ids)):
+        if phase_ids[idx] != phase_ids[idx - 1] + 1:
+            return False, "phase_id_not_strict_increment"
+
+    phase_blocks = list(PHASE_BLOCK_RE.finditer(thinking_content))
+    if len(phase_blocks) != len(phase_ids):
+        return False, "phase_block_mismatch"
+
+    for m in phase_blocks:
+        block_body = str(m.group(3) or "")
+        if block_body.count("<title>") != 1 or block_body.count("</title>") != 1:
+            return False, "invalid_title_count_in_phase"
+
+    # 5) <final>：末尾必须有 serp_queries 注释块，且 JSON 数组合法
+    final_content, err = _extract_block(text, "<final>", "</final>")
+    if err or final_content is None:
+        return False, "missing_final_content"
+
+    final_stripped = final_content.strip()
+    match = SERP_QUERIES_BLOCK_RE.search(final_stripped)
+    if not match:
+        return False, "missing_or_invalid_serp_queries_block"
+
+    json_text = (match.group("json") or "").strip()
+    try:
+        queries = json.loads(json_text)
+    except Exception:
+        return False, "serp_queries_json_parse_error"
+    if not isinstance(queries, list):
+        return False, "serp_queries_not_array"
+    if len(queries) > 5:
+        return False, "serp_queries_too_many"
+    if len({str(x) for x in queries}) != len(queries):
+        return False, "serp_queries_not_deduped"
+    for q in queries:
+        if not isinstance(q, str):
+            return False, "serp_queries_item_not_string"
+        if len(q) > 80:
+            return False, "serp_queries_item_too_long"
 
     return True, "ok"
 
@@ -274,8 +367,6 @@ async def main() -> int:
 
     from app import app as fastapi_app
 
-    request_id = uuid.uuid4().hex
-
     profile, serp_prompt, tool_prompt = _load_prompt_assets()
     tools_schema = _parse_tools_from_tool_md(tool_prompt)
     profile_version = str(profile.get("version") or "").strip() or "v1"
@@ -284,6 +375,7 @@ async def main() -> int:
         transport = httpx.ASGITransport(app=fastapi_app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             # 1) admin 登录
+            request_id = uuid.uuid4().hex
             login = await client.post(
                 "/api/v1/base/access_token",
                 headers={"X-Request-Id": request_id},
@@ -295,12 +387,12 @@ async def main() -> int:
             if not token:
                 raise RuntimeError("无法从 /base/access_token 获取 access_token（请检查本地 admin 密码）")
 
-            auth_headers = {"Authorization": f"Bearer {token}", "X-Request-Id": request_id}
+            auth_headers_base = {"Authorization": f"Bearer {token}"}
 
             # 2) 写入并激活 prompts（system + tools）
             system_created = await client.post(
                 "/api/v1/llm/prompts",
-                headers=auth_headers,
+                headers={**auth_headers_base, "X-Request-Id": request_id},
                 json={
                     "name": "standard_serp_v2_system",
                     "version": profile_version,
@@ -318,7 +410,7 @@ async def main() -> int:
 
             tools_created = await client.post(
                 "/api/v1/llm/prompts",
-                headers=auth_headers,
+                headers={**auth_headers_base, "X-Request-Id": request_id},
                 json={
                     "name": "standard_serp_v2_tools",
                     "version": profile_version,
@@ -335,24 +427,36 @@ async def main() -> int:
             if not tools_id:
                 raise RuntimeError("创建 tools prompt 失败（缺少 id）")
 
-            activated_1 = await client.post(f"/api/v1/llm/prompts/{system_id}/activate", headers=auth_headers)
+            activated_1 = await client.post(
+                f"/api/v1/llm/prompts/{system_id}/activate", headers={**auth_headers_base, "X-Request-Id": request_id}
+            )
             activated_1.raise_for_status()
-            activated_2 = await client.post(f"/api/v1/llm/prompts/{tools_id}/activate", headers=auth_headers)
+            activated_2 = await client.post(
+                f"/api/v1/llm/prompts/{tools_id}/activate", headers={**auth_headers_base, "X-Request-Id": request_id}
+            )
             activated_2.raise_for_status()
 
-            # 3) 获取模型白名单（SSOT），选第一个 name 作为 model
-            models = await client.get("/api/v1/llm/models?view=mapped", headers=auth_headers)
+            # 3) 获取模型白名单（SSOT），逐个 name 回归
+            models = await client.get("/api/v1/llm/models?view=mapped", headers={**auth_headers_base, "X-Request-Id": request_id})
             models.raise_for_status()
             models_body = models.json()
             model_list = models_body.get("data") if isinstance(models_body, dict) else None
             if not isinstance(model_list, list) or not model_list:
                 raise RuntimeError("模型白名单为空（请检查 ALLOW_TEST_AI_ENDPOINTS / AI_MODEL / AI_API_KEY）")
-            model_key = str((model_list[0] or {}).get("name") or "").strip()
-            if not model_key:
+            model_keys: list[str] = []
+            for item in model_list:
+                if not isinstance(item, dict):
+                    continue
+                key = str(item.get("name") or "").strip()
+                if key and key not in model_keys:
+                    model_keys.append(key)
+            if not model_keys:
                 raise RuntimeError("模型白名单缺少 data[].name")
 
             # 4) 发送消息 + 消费 SSE（mock 上游返回符合结构的 ThinkingML）
             reply = _build_sample_reply()
+
+            results: list[dict[str, Any]] = []
 
             with patch("app.services.ai_service.httpx.AsyncClient") as mock_httpx:
                 _mock_httpx_stream_json(
@@ -361,51 +465,95 @@ async def main() -> int:
                     headers={"x-request-id": "upstream-mock"},
                 )
 
-                created = await client.post(
-                    "/api/v1/messages",
-                    headers={**auth_headers, "Content-Type": "application/json"},
-                    json={
-                        "model": model_key,
-                        "text": "给我一份三分化训练方案（新手友好）。",
-                        "metadata": {"save_history": False, "client": "local_mock_e2e"},
-                        "tool_choice": "auto",
-                    },
+                for idx, model_key in enumerate(model_keys, start=1):
+                    model_request_id = uuid.uuid4().hex
+                    auth_headers = {**auth_headers_base, "X-Request-Id": model_request_id}
+
+                    try:
+                        created = await client.post(
+                            "/api/v1/messages",
+                            headers={**auth_headers, "Content-Type": "application/json"},
+                            json={
+                                "model": model_key,
+                                "text": "给我一份三分化训练方案（新手友好）。",
+                                "metadata": {"save_history": False, "client": "local_mock_e2e"},
+                                "tool_choice": "auto",
+                            },
+                        )
+                        created.raise_for_status()
+                        created_body = created.json()
+                        message_id = str(created_body.get("message_id") or "").strip()
+                        conversation_id = str(created_body.get("conversation_id") or "").strip()
+                        if not message_id or not conversation_id:
+                            raise RuntimeError("/messages 响应缺少 message_id/conversation_id")
+
+                        events, reply_accum = await _collect_sse_events(
+                            client,
+                            f"/api/v1/messages/{message_id}/events?conversation_id={conversation_id}",
+                            headers={**auth_headers, "Accept": "text/event-stream"},
+                        )
+
+                        ok, reason = _validate_thinkingml(reply_accum)
+
+                        # 关键断言：prompt 注入来自 assets/prompts（只需验证 1 次）
+                        if idx == 1:
+                            call_args = mock_httpx.return_value.__aenter__.return_value.stream.call_args
+                            upstream_payload = call_args[1]["json"] if call_args else {}
+                            upstream_messages = (
+                                upstream_payload.get("messages") if isinstance(upstream_payload, dict) else None
+                            )
+                            system_message = (
+                                upstream_messages[0] if isinstance(upstream_messages, list) and upstream_messages else {}
+                            )
+                            system_content = (
+                                str(system_message.get("content") or "") if isinstance(system_message, dict) else ""
+                            )
+
+                            assert "STRICT TAG SPECIFICATION" in system_content
+                            assert "GymBro ToolCall 工具指令集" in system_content
+                            assert isinstance(upstream_payload.get("tools"), list) and upstream_payload.get("tools")
+                            assert upstream_payload.get("tool_choice") == "auto"
+
+                        event_names = [e.get("event") for e in events if isinstance(e, dict)]
+                        results.append(
+                            {
+                                "model": model_key,
+                                "request_id": model_request_id,
+                                "message_id": message_id,
+                                "events": event_names,
+                                "reply_len": len(reply_accum),
+                                "ok": ok,
+                                "reason": reason,
+                            }
+                        )
+                    except Exception as exc:
+                        results.append(
+                            {
+                                "model": model_key,
+                                "request_id": model_request_id,
+                                "message_id": None,
+                                "events": [],
+                                "reply_len": 0,
+                                "ok": False,
+                                "reason": f"exception:{type(exc).__name__}",
+                            }
+                        )
+
+            passed = [r for r in results if r.get("ok")]
+            failed = [r for r in results if not r.get("ok")]
+
+            for r in results:
+                status = "PASS" if r.get("ok") else "FAIL"
+                print(
+                    f"{status} model={r.get('model')} request_id={r.get('request_id')} message_id={r.get('message_id')} reply_len={r.get('reply_len')} reason={r.get('reason')}"
                 )
-                created.raise_for_status()
-                created_body = created.json()
-                message_id = str(created_body.get("message_id") or "").strip()
-                conversation_id = str(created_body.get("conversation_id") or "").strip()
-                if not message_id or not conversation_id:
-                    raise RuntimeError("/messages 响应缺少 message_id/conversation_id")
 
-                events, reply_accum = await _collect_sse_events(
-                    client,
-                    f"/api/v1/messages/{message_id}/events?conversation_id={conversation_id}",
-                    headers={**auth_headers, "Accept": "text/event-stream"},
-                )
+            print(f"SUMMARY total={len(results)} passed={len(passed)} failed={len(failed)}")
+            if failed:
+                failed_models = ",".join([str(r.get("model")) for r in failed])
+                print(f"FAILED_MODELS {failed_models}")
 
-                ok, reason = _validate_thinkingml(reply_accum)
-
-                call_args = mock_httpx.return_value.__aenter__.return_value.stream.call_args
-                upstream_payload = call_args[1]["json"] if call_args else {}
-                upstream_messages = upstream_payload.get("messages") if isinstance(upstream_payload, dict) else None
-                system_message = upstream_messages[0] if isinstance(upstream_messages, list) and upstream_messages else {}
-                system_content = str(system_message.get("content") or "") if isinstance(system_message, dict) else ""
-
-                # 关键断言：prompt 注入来自 assets/prompts
-                assert "STRICT TAG SPECIFICATION" in system_content
-                assert "GymBro ToolCall 工具指令集" in system_content
-
-                # 关键断言：tool schema 来自 tool.md（解析后注入 tools_json）
-                assert isinstance(upstream_payload.get("tools"), list) and upstream_payload.get("tools")
-                assert upstream_payload.get("tool_choice") == "auto"
-
-            # 输出摘要（避免泄露 token / prompt 原文）
-            event_names = [e.get("event") for e in events if isinstance(e, dict)]
-            print(f"OK request_id={request_id} model={model_key} message_id={message_id} events={event_names[:8]}")
-            print(f"OK reply_len={len(reply_accum)} validate={ok} reason={reason}")
-
-            return 0 if ok else 3
+            return 0 if not failed else 3
 
 
 if __name__ == "__main__":
