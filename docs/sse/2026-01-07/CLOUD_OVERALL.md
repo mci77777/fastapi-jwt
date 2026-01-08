@@ -94,3 +94,9 @@ Cloud 不负责：
 
 本地可复现（mock 上游，不出网）：
 - `.venv/bin/python scripts/monitoring/local_mock_ai_conversation_e2e.py`
+
+真实上游 E2E（xai / deepseek，多轮可配置）：
+- `.venv/bin/python scripts/monitoring/real_ai_conversation_e2e.py --models xai deepseek --runs 10 --turns 3 --tool-choice ''`
+
+真实用户 JWT E2E（Supabase，含 JWT 负例 + 结构校验）：
+- `.venv/bin/python scripts/monitoring/real_user_ai_conversation_e2e.py --auth-mode signup --models xai deepseek --runs 1 --turns 1 --tool-choice ''`

@@ -42,10 +42,12 @@ mindmap
     E2E Baseline
       tests/test_request_id_ssot_e2e.py
       scripts/monitoring/real_user_sse_e2e.py
+      scripts/monitoring/real_ai_conversation_e2e.py
+      scripts/monitoring/real_user_ai_conversation_e2e.py
       e2e/anon_jwt_sse
+      e2e/real_user_ai_conversation
     Coordination
       对齐事件命名/订阅方式
       对齐终止条件与重连策略
       对齐网关重定向/缓冲
 ```
-

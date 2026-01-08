@@ -148,6 +148,8 @@ Web 测试页（参考实现，用于对账与复现）：
 
 - 合约/解析：`tests/test_request_id_ssot_e2e.py`
 - 真用户：`scripts/monitoring/real_user_sse_e2e.py`（需环境变量）
+- 真用户 + 结构校验：`scripts/monitoring/real_user_ai_conversation_e2e.py`（Supabase + ThinkingML）
+- 真实上游 + 结构校验：`scripts/monitoring/real_ai_conversation_e2e.py`（xai/deepseek）
 - 匿名套件：`e2e/anon_jwt_sse/README.md`
 
 ---
@@ -159,4 +161,3 @@ Web 测试页（参考实现，用于对账与复现）：
 - 终止条件：以 `completed` 结束还是以连接关闭结束？是否允许“晚订阅只拿到 completed/error”？
 - 网关行为：是否存在 `/messages` 相关重定向或缓冲（需验证 `proxy_buffering off` 等是否生效）？
 - 心跳/超时：`SSE_HEARTBEAT_SECONDS` 与客户端超时策略是否匹配？
-

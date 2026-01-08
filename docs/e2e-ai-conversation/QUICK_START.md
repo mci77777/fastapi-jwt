@@ -180,6 +180,26 @@ Open http://localhost:3101/dashboard
 - 若出现 429（IP QPS 限流）：加大 `--throttle-seconds`（例如 `0.6`），或检查 `RATE_LIMIT_PER_IP_QPS` / `RATE_LIMIT_ENABLED` 配置。
 - 若出现结构失败：查看脚本输出的 `artifacts` 目录失败 JSON（含 `request_id/endpoint_id/resolved_model/reason`，可用于对账与复盘）。
 
+### Scenario 0.2: Real User JWT E2E（Supabase｜负例 + 结构校验）
+
+用途：用**真实用户 JWT** 走完整链路（含 JWT 负例），并对拼接后的 reply 做 ThinkingML 结构校验（SSOT：`docs/ai预期响应结构.md`）。
+
+前置条件（二选一）：
+- **推荐**：提供 `SUPABASE_URL` + `SUPABASE_ANON_KEY` + `SUPABASE_SERVICE_ROLE_KEY`（用于 `--auth-mode signup` 创建临时用户）；或
+- 已有真实用户账号：设置 `E2E_USER_EMAIL` / `E2E_USER_PASSWORD`（用于 `--auth-mode password`）。
+
+运行（推荐 signup，避免依赖固定账号）：
+```bash
+.venv/bin/python scripts/monitoring/real_user_ai_conversation_e2e.py --auth-mode signup --models xai deepseek --runs 1 --turns 1 --tool-choice ''
+```
+
+判定标准：
+- `SUMMARY_JWT ... failed=0`
+- `SUMMARY ... failed=0` 且 exit=0
+
+产物：
+- 失败时会写入 `e2e/real_user_ai_conversation/artifacts/`（默认已 gitignore）。
+
 ### Scenario 1: Model Selection
 ```bash
 # Get whitelist (SSOT)

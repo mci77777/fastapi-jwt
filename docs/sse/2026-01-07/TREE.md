@@ -73,10 +73,12 @@ tests/
 
 scripts/monitoring/
   real_user_sse_e2e.py            # 真实用户：Supabase 登录 → /messages → SSE
+  real_user_ai_conversation_e2e.py # 真实用户：Supabase 登录/注册 → /messages → SSE → ThinkingML 结构校验
 
 e2e/
   anon_jwt_sse/README.md          # 匿名 JWT → SSE → policy gate / rate limit 校验套件
   real_user_sse/README.md         # 真用户 SSE E2E 入口与产物说明
+  real_user_ai_conversation/      # 真用户 + 结构校验产物（默认 artifacts 已 gitignore）
 ```
 
 ---
@@ -88,4 +90,3 @@ docs/api-contracts/
   api_gymbro_cloud_app_min_contract.md
   api_gymbro_cloud_conversation_min_contract.md
 ```
-
