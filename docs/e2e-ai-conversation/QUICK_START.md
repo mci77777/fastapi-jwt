@@ -145,6 +145,18 @@ Open http://localhost:3101/dashboard
 
 ## 🧪 Test Scenarios
 
+### Scenario 0: Mapped Models（SSOT）结构回归（ThinkingML）
+
+用途：用「真实 prompt 组装 + SSE 拼接」验证 **每个 mapped model** 的最终 reply 是否符合 `docs/ai预期响应结构.md`（Strict-XML / ThinkingML）。
+
+特点：mock 上游（不出网），但**完整走**：admin JWT → prompt 注入（`assets/prompts/*`）→ `/api/v1/llm/models?view=mapped`（SSOT）→ `/api/v1/messages` → SSE `/events` → reply 拼接 → 结构校验。
+
+```bash
+.venv/bin/python scripts/monitoring/local_mock_ai_conversation_e2e.py
+```
+
+判定标准：脚本逐行输出 `PASS/FAIL model=... request_id=... reason=...`，最后 `SUMMARY ... failed=0` 且 exit=0 为通过。
+
 ### Scenario 1: Model Selection
 ```bash
 # Get whitelist (SSOT)
