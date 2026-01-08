@@ -34,6 +34,36 @@ _THINKING_OPEN = "<thinking>"
 _THINKING_CLOSE = "</thinking>"
 _FINAL_OPEN = "<final>"
 _FINAL_CLOSE = "</final>"
+_SERP_OPEN = "<serp>"
+_SERP_CLOSE = "</serp>"
+_TITLE_OPEN = "<title>"
+_TITLE_CLOSE = "</title>"
+_TITLE_ZH_OPEN = "<标题>"
+_TITLE_ZH_CLOSE = "</标题>"
+_PHASE_1_OPEN = '<phase id="1">'
+_PHASE_2_OPEN = '<phase id="2">'
+_PHASE_CLOSE = "</phase>"
+_B_OPEN = "<b>"
+_B_CLOSE = "</b>"
+_BR_TAGS = ("<br>", "<br/>", "<br />")
+_STREAM_SANITIZE_TAGS = (
+    _THINKING_OPEN,
+    _THINKING_CLOSE,
+    _FINAL_OPEN,
+    _FINAL_CLOSE,
+    _SERP_OPEN,
+    _SERP_CLOSE,
+    _PHASE_1_OPEN,
+    _PHASE_2_OPEN,
+    _PHASE_CLOSE,
+    _TITLE_OPEN,
+    _TITLE_CLOSE,
+    _TITLE_ZH_OPEN,
+    _TITLE_ZH_CLOSE,
+    _B_OPEN,
+    _B_CLOSE,
+    *_BR_TAGS,
+)
 
 
 def _escape_xml_tag_literal(text: str, *, tag: str) -> str:
@@ -62,6 +92,9 @@ def _sanitize_thinkingml_reply(reply: str) -> str:
     # 仅在 thinking 内部转义 final 标签字面量（不影响真实 <final> 块）
     inner_start = thinking_start + len(_THINKING_OPEN)
     inner = text[inner_start:thinking_end]
+    inner = inner.replace(_TITLE_ZH_OPEN, _TITLE_OPEN).replace(_TITLE_ZH_CLOSE, _TITLE_CLOSE)
+    inner = _escape_xml_tag_literal(inner, tag=_THINKING_OPEN)
+    inner = _escape_xml_tag_literal(inner, tag=_THINKING_CLOSE)
     inner = _escape_xml_tag_literal(inner, tag=_FINAL_OPEN)
     inner = _escape_xml_tag_literal(inner, tag=_FINAL_CLOSE)
 
@@ -114,6 +147,17 @@ class MessageChannelMeta:
     terminal_event: Optional[MessageEvent] = None
     delta_seq: int = 0
 
+    # ThinkingML 运行时最小纠错：用于流式阶段把 <thinking> 内出现的 <final>/<\final> 字面量转义为纯文本。
+    thinkingml_inside_thinking: bool = False
+    thinkingml_seen_thinking_open: bool = False
+    thinkingml_pending: str = ""
+    thinkingml_literal_thinking_window: int = 0
+    thinkingml_phase_id: int | None = None
+    thinkingml_phase_has_title: bool = False
+    thinkingml_phase_title_closed: bool = False
+    thinkingml_final_seen: bool = False
+    thinkingml_inside_final: bool = False
+
 
 class MessageEventBroker:
     """管理消息事件队列，支持 SSE 订阅。"""
@@ -146,6 +190,185 @@ class MessageEventBroker:
     def get_meta(self, message_id: str) -> Optional[MessageChannelMeta]:
         return self._meta.get(message_id)
 
+    def _sanitize_thinkingml_delta(self, meta: MessageChannelMeta, delta: str) -> str:
+        """对单次 delta 做流式最小纠错（不改变拼接后的全文语义）。
+
+        目标：避免 <thinking> 内出现 <final>/<\final> 字面量导致结构非法（SSOT：docs/ai预期响应结构.md）。
+
+        说明：该实现会在 chunk 边界做少量缓冲（最多 9 个字符），并在 completed/error 前自动 flush。
+        """
+
+        if not delta:
+            return delta
+
+        out: list[str] = []
+        pending = meta.thinkingml_pending
+        literal_window = int(getattr(meta, "thinkingml_literal_thinking_window", 0) or 0)
+
+        def is_prefix(text: str) -> bool:
+            return any(tag.startswith(text) for tag in _STREAM_SANITIZE_TAGS)
+
+        def emit(text: str) -> None:
+            nonlocal literal_window
+            if not text:
+                return
+            out.append(text)
+            if literal_window > 0:
+                literal_window = max(0, literal_window - len(text))
+
+        for ch in delta:
+            pending += ch
+            while pending and not is_prefix(pending):
+                emit(pending[0])
+                pending = pending[1:]
+
+            if pending in _STREAM_SANITIZE_TAGS:
+                tag = pending
+                pending = ""
+                if tag == _THINKING_OPEN:
+                    # 禁止在正文里出现 "<thinking>" 字面量（会导致块计数错误）；嵌套/重复出现时转义为纯文本。
+                    if meta.thinkingml_inside_thinking or meta.thinkingml_seen_thinking_open:
+                        emit("&lt;thinking&gt;")
+                        literal_window = max(literal_window, 80)
+                    else:
+                        meta.thinkingml_seen_thinking_open = True
+                        meta.thinkingml_inside_thinking = True
+                        meta.thinkingml_phase_id = None
+                        meta.thinkingml_phase_has_title = False
+                        meta.thinkingml_phase_title_closed = False
+                        emit(tag)
+                elif tag == _THINKING_CLOSE:
+                    if not meta.thinkingml_inside_thinking:
+                        emit("&lt;/thinking&gt;")
+                        continue
+
+                    # 若模型在 <thinking> 文本内输出了 "&lt;thinking&gt;... </thinking>" 示例，则转义该 </thinking>，避免块计数错误。
+                    if literal_window > 0:
+                        emit("&lt;/thinking&gt;")
+                        literal_window = 0
+                        continue
+
+                    # KISS：当模型漏写 </phase> / <title> 时，确保 thinking 内部至少能闭合 2 个 phase 并满足校验器。
+                    phase_id = meta.thinkingml_phase_id
+                    if meta.thinkingml_inside_thinking and phase_id is not None:
+                        if meta.thinkingml_phase_has_title and not meta.thinkingml_phase_title_closed:
+                            emit(_TITLE_CLOSE)
+                            meta.thinkingml_phase_title_closed = True
+                        if not meta.thinkingml_phase_has_title:
+                            emit(f"{_TITLE_OPEN}阶段{phase_id}{_TITLE_CLOSE}")
+                            meta.thinkingml_phase_has_title = True
+                            meta.thinkingml_phase_title_closed = True
+                        emit(_PHASE_CLOSE)
+                        meta.thinkingml_phase_id = None
+                        meta.thinkingml_phase_has_title = False
+                        meta.thinkingml_phase_title_closed = False
+                    meta.thinkingml_inside_thinking = False
+                    emit(tag)
+                elif tag == _FINAL_OPEN:
+                    if meta.thinkingml_inside_thinking:
+                        emit("&lt;final&gt;")
+                    elif not meta.thinkingml_final_seen:
+                        meta.thinkingml_final_seen = True
+                        meta.thinkingml_inside_final = True
+                        emit(tag)
+                    else:
+                        emit("&lt;final&gt;")
+                elif tag == _FINAL_CLOSE:
+                    if meta.thinkingml_inside_thinking:
+                        emit("&lt;/final&gt;")
+                    elif meta.thinkingml_inside_final:
+                        meta.thinkingml_inside_final = False
+                        emit(tag)
+                    else:
+                        emit("&lt;/final&gt;")
+                elif tag == _SERP_OPEN:
+                    # 约束：<serp> 只能出现在 <thinking> 之前；其余位置一律转义为纯文本。
+                    emit("&lt;serp&gt;" if meta.thinkingml_seen_thinking_open or meta.thinkingml_final_seen else tag)
+                elif tag == _SERP_CLOSE:
+                    emit("&lt;/serp&gt;" if meta.thinkingml_seen_thinking_open or meta.thinkingml_final_seen else tag)
+                elif tag == _PHASE_1_OPEN:
+                    meta.thinkingml_phase_id = 1
+                    meta.thinkingml_phase_has_title = False
+                    meta.thinkingml_phase_title_closed = False
+                    emit(tag)
+                elif tag == _PHASE_2_OPEN:
+                    # 自动闭合 phase 1（防止出现 <phase id="1"><phase id="2"> 的嵌套/缺失闭合，导致 phase_block_mismatch）。
+                    if meta.thinkingml_inside_thinking and meta.thinkingml_phase_id == 1:
+                        if meta.thinkingml_phase_has_title and not meta.thinkingml_phase_title_closed:
+                            emit(_TITLE_CLOSE)
+                            meta.thinkingml_phase_title_closed = True
+                        if not meta.thinkingml_phase_has_title:
+                            emit(f"{_TITLE_OPEN}阶段1{_TITLE_CLOSE}")
+                            meta.thinkingml_phase_has_title = True
+                            meta.thinkingml_phase_title_closed = True
+                        emit(_PHASE_CLOSE)
+                    meta.thinkingml_phase_id = 2
+                    meta.thinkingml_phase_has_title = False
+                    meta.thinkingml_phase_title_closed = False
+                    emit(tag)
+                elif tag == _PHASE_CLOSE:
+                    phase_id = meta.thinkingml_phase_id
+                    if meta.thinkingml_inside_thinking and phase_id is not None:
+                        if meta.thinkingml_phase_has_title and not meta.thinkingml_phase_title_closed:
+                            emit(_TITLE_CLOSE)
+                            meta.thinkingml_phase_title_closed = True
+                        if not meta.thinkingml_phase_has_title:
+                            emit(f"{_TITLE_OPEN}阶段{phase_id}{_TITLE_CLOSE}")
+                            meta.thinkingml_phase_has_title = True
+                            meta.thinkingml_phase_title_closed = True
+                    meta.thinkingml_phase_id = None
+                    meta.thinkingml_phase_has_title = False
+                    meta.thinkingml_phase_title_closed = False
+                    emit(tag)
+                elif tag == _TITLE_OPEN:
+                    if meta.thinkingml_phase_id is not None:
+                        if meta.thinkingml_phase_has_title:
+                            emit("&lt;title&gt;")
+                        else:
+                            meta.thinkingml_phase_has_title = True
+                            meta.thinkingml_phase_title_closed = False
+                            emit(tag)
+                    else:
+                        emit(tag)
+                elif tag == _TITLE_CLOSE:
+                    if meta.thinkingml_phase_id is not None:
+                        if meta.thinkingml_phase_has_title and not meta.thinkingml_phase_title_closed:
+                            meta.thinkingml_phase_title_closed = True
+                            emit(tag)
+                        else:
+                            emit("&lt;/title&gt;")
+                    else:
+                        emit(tag)
+                elif tag == _TITLE_ZH_OPEN:
+                    if meta.thinkingml_phase_id is not None:
+                        if meta.thinkingml_phase_has_title:
+                            emit("&lt;title&gt;")
+                        else:
+                            meta.thinkingml_phase_has_title = True
+                            meta.thinkingml_phase_title_closed = False
+                            emit(_TITLE_OPEN)
+                    else:
+                        emit(_TITLE_OPEN)
+                elif tag == _TITLE_ZH_CLOSE:
+                    if meta.thinkingml_phase_id is not None:
+                        if meta.thinkingml_phase_has_title and not meta.thinkingml_phase_title_closed:
+                            meta.thinkingml_phase_title_closed = True
+                            emit(_TITLE_CLOSE)
+                        else:
+                            emit("&lt;/title&gt;")
+                    else:
+                        emit(_TITLE_CLOSE)
+                elif tag in {_B_OPEN, _B_CLOSE}:
+                    emit("**")
+                elif tag in _BR_TAGS:
+                    emit("\n")
+                else:  # pragma: no cover
+                    emit(tag)
+
+        meta.thinkingml_pending = pending
+        meta.thinkingml_literal_thinking_window = literal_window
+        return "".join(out)
+
     async def publish(self, message_id: str, event: MessageEvent) -> None:
         queue = self._channels.get(message_id)
         if queue:
@@ -157,8 +380,32 @@ class MessageEventBroker:
                 if request_id:
                     event.data.setdefault("request_id", request_id)
                 if event.event == "content_delta":
+                    # ThinkingML 流式最小纠错：保证“拼接后的 reply”也符合结构契约。
+                    delta = event.data.get("delta")
+                    if isinstance(delta, str) and delta:
+                        fixed = self._sanitize_thinkingml_delta(meta, delta)
+                        event.data["delta"] = fixed
+                        if not fixed:
+                            # 本次 chunk 仅用于跨边界识别标签前缀，不对外发送空 delta。
+                            return
                     meta.delta_seq += 1
                     event.data.setdefault("seq", meta.delta_seq)
+                elif event.event in {"completed", "error"}:
+                    # flush：输出最后残留的前缀（最多 9 个字符），避免拼接后丢失。
+                    pending = meta.thinkingml_pending
+                    if pending:
+                        meta.thinkingml_pending = ""
+                        meta.delta_seq += 1
+                        flush_event = MessageEvent(
+                            event="content_delta",
+                            data={
+                                "message_id": message_id,
+                                "request_id": request_id or "",
+                                "seq": meta.delta_seq,
+                                "delta": pending,
+                            },
+                        )
+                        await queue.put(flush_event)
             if meta and event.event in {"completed", "error"}:
                 meta.terminal_event = event
             await queue.put(event)

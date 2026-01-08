@@ -73,6 +73,12 @@ def _parse_args() -> argparse.Namespace:
         help="OpenAI tool_choice：auto/none/required。默认 none（避免后端 tool_calls 未实现导致结构不稳定）。",
     )
     parser.add_argument("--temperature", type=float, default=None)
+    parser.add_argument(
+        "--throttle-seconds",
+        type=float,
+        default=float(os.getenv("E2E_THROTTLE_SECONDS", "0.35")),
+        help="为避免 IP QPS 限流，对 E2E 初始化请求做节流（单位：秒）。",
+    )
     parser.add_argument("--stream-timeout", type=float, default=float(os.getenv("E2E_STREAM_TIMEOUT", "180")))
     parser.add_argument("--max-events", type=int, default=_as_int(os.getenv("E2E_MAX_EVENTS", 4000), 4000))
     parser.add_argument("--artifacts-dir", default=os.getenv("E2E_ARTIFACTS_DIR", "e2e/real_ai_conversation/artifacts"))
@@ -119,6 +125,7 @@ async def _ensure_prompt(
     category: str,
     description: str,
     tools_json: Any | None,
+    throttle_seconds: float,
     verbose: bool,
 ) -> int:
     request_id = uuid.uuid4().hex
@@ -129,6 +136,8 @@ async def _ensure_prompt(
         timeout=30.0,
     )
     resp.raise_for_status()
+    if throttle_seconds > 0:
+        await asyncio.sleep(throttle_seconds)
     items = _unwrap_data(resp.json()) or []
 
     candidates: list[dict[str, Any]] = []
@@ -164,6 +173,8 @@ async def _ensure_prompt(
             timeout=30.0,
         )
         updated.raise_for_status()
+        if throttle_seconds > 0:
+            await asyncio.sleep(throttle_seconds)
         _print(f"[prompt] updated id={prompt_id} request_id={request_id}", verbose=verbose)
     else:
         request_id = uuid.uuid4().hex
@@ -174,6 +185,8 @@ async def _ensure_prompt(
             timeout=30.0,
         )
         created.raise_for_status()
+        if throttle_seconds > 0:
+            await asyncio.sleep(throttle_seconds)
         created_data = _unwrap_data(created.json()) or {}
         prompt_id = _as_int((created_data or {}).get("id"), 0)
         if not prompt_id:
@@ -187,6 +200,8 @@ async def _ensure_prompt(
         timeout=30.0,
     )
     activated.raise_for_status()
+    if throttle_seconds > 0:
+        await asyncio.sleep(throttle_seconds)
     _print(f"[prompt] activated id={prompt_id} request_id={request_id}", verbose=verbose)
     return int(prompt_id)
 
@@ -511,6 +526,7 @@ async def main() -> int:
                 category="ssot",
                 description="Strict XML / ThinkingML v4.5 system prompt (serp)",
                 tools_json=None,
+                throttle_seconds=float(args.throttle_seconds),
                 verbose=args.verbose,
             )
             await _ensure_prompt(
@@ -523,8 +539,15 @@ async def main() -> int:
                 category="ssot",
                 description="ToolCall patch (does not change Strict XML output protocol)",
                 tools_json=tools_schema,
+                throttle_seconds=float(args.throttle_seconds),
                 verbose=args.verbose,
             )
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            body = (exc.response.text or "") if exc.response is not None else ""
+            body = body[:400]
+            print(f"FAIL prompt_activate status={status} body={body}")
+            return 3
         except Exception as exc:
             print(f"FAIL prompt_activate reason={type(exc).__name__}")
             return 3

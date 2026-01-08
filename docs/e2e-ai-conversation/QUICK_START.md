@@ -157,6 +157,29 @@ Open http://localhost:3101/dashboard
 
 判定标准：脚本逐行输出 `PASS/FAIL model=... request_id=... reason=...`，最后 `SUMMARY ... failed=0` 且 exit=0 为通过。
 
+### Scenario 0.1: Real Upstream E2E（xai / deepseek 多轮对话）
+
+用途：对接**真实上游**与真实 `/events` 流，验证 prompt SSOT（`assets/prompts/*`）在多轮对话下仍能产出严格 ThinkingML 结构。
+
+前置条件：
+- 已配置并启用 `mapping=xai` / `mapping=deepseek` 的 endpoint + api_key（服务端路由 SSOT：`/api/v1/llm/models?view=mapped`）。
+- 服务已启动且健康：`curl -fsS http://127.0.0.1:9999/api/v1/healthz` 返回 `{"status":"ok",...}`。
+
+运行（推荐：不下发 `tool_choice`，避免上游 tool_calls 不支持导致不稳定）：
+```bash
+.venv/bin/python scripts/monitoring/real_ai_conversation_e2e.py \
+  --models xai deepseek \
+  --runs 10 \
+  --turns 3 \
+  --tool-choice ''
+```
+
+判定标准：逐行输出 `PASS ... reason=ok`，最后 `SUMMARY total=30 passed=30 failed=0` 且 exit=0。
+
+排障提示：
+- 若出现 429（IP QPS 限流）：加大 `--throttle-seconds`（例如 `0.6`），或检查 `RATE_LIMIT_PER_IP_QPS` / `RATE_LIMIT_ENABLED` 配置。
+- 若出现结构失败：查看脚本输出的 `artifacts` 目录失败 JSON（含 `request_id/endpoint_id/resolved_model/reason`，可用于对账与复盘）。
+
 ### Scenario 1: Model Selection
 ```bash
 # Get whitelist (SSOT)

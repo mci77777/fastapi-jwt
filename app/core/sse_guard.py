@@ -182,18 +182,18 @@ class SSEConcurrencyGuard:
 
     async def force_disconnect_user(self, user_id: str) -> int:
         """强制断开用户的所有连接。"""
-        async with self._lock:
-            connection_ids = self.user_connections.get(user_id, set()).copy()
-            for connection_id in connection_ids:
-                await self.unregister_connection(connection_id)
+        # 注意：unregister_connection 自身会加锁；这里先取快照再逐个注销，避免锁重入死锁。
+        connection_ids = await self.get_user_connections(user_id)
+        for connection_id in connection_ids:
+            await self.unregister_connection(connection_id)
 
-            logger.warning(
-                "强制断开用户连接 user_id=%s count=%d request_id=%s",
-                user_id,
-                len(connection_ids),
-                get_current_request_id(),
-            )
-            return len(connection_ids)
+        logger.warning(
+            "强制断开用户连接 user_id=%s count=%d request_id=%s",
+            user_id,
+            len(connection_ids),
+            get_current_request_id(),
+        )
+        return len(connection_ids)
 
     async def get_stats(self) -> Dict:
         """获取统计信息。"""
@@ -214,26 +214,27 @@ class SSEConcurrencyGuard:
 
     async def cleanup_stale_connections(self, max_age_seconds: int = 3600) -> int:
         """清理过期连接。"""
+        # 注意：unregister_connection 自身会加锁；这里先在锁内取快照，再逐个注销，避免锁重入死锁。
         async with self._lock:
             now = time.time()
-            stale_connections = []
+            stale_connections = [
+                connection_id
+                for connection_id, info in self.active_connections.items()
+                if now - info.start_time > max_age_seconds
+            ]
 
-            for connection_id, info in self.active_connections.items():
-                if now - info.start_time > max_age_seconds:
-                    stale_connections.append(connection_id)
+        for connection_id in stale_connections:
+            await self.unregister_connection(connection_id)
 
-            for connection_id in stale_connections:
-                await self.unregister_connection(connection_id)
+        if stale_connections:
+            logger.info(
+                "清理过期SSE连接 count=%d max_age=%ds request_id=%s",
+                len(stale_connections),
+                max_age_seconds,
+                get_current_request_id(),
+            )
 
-            if stale_connections:
-                logger.info(
-                    "清理过期SSE连接 count=%d max_age=%ds request_id=%s",
-                    len(stale_connections),
-                    max_age_seconds,
-                    get_current_request_id(),
-                )
-
-            return len(stale_connections)
+        return len(stale_connections)
 
 
 # 全局SSE守卫实例
