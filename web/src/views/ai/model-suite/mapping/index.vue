@@ -32,67 +32,99 @@ const dialog = useDialog()
 
 const modalVisible = ref(false)
 const isEdit = ref(false)
-const formRef = ref(null)
-const formModel = reactive({
-  scope_type: 'prompt',
-  scope_key: '',
-  name: '',
-  default_model: null,
-  candidates: [],
-  metadata: {},
+	const formRef = ref(null)
+	const formModel = reactive({
+	  scope_type: 'mapping',
+	  scope_key: '',
+	  name: '',
+	  default_model: null,
+	  candidates: [],
+	  metadata: {},
 })
 const endpointSelection = ref(null)
 
-const scopeOptions = [
-  { label: 'Prompt', value: 'prompt' },
-  { label: '模块', value: 'module' },
-  { label: '租户', value: 'tenant' },
-]
+	const scopeOptions = [
+	  { label: 'Prompt', value: 'prompt' },
+	  { label: '模块', value: 'module' },
+	  { label: '映射名', value: 'mapping' },
+	]
 
-const endpointOptions = computed(() => store.endpointOptions)
-const modelOptions = computed(() =>
-  store.modelCandidates.map((name) => ({ label: name, value: name }))
-)
-const promptOptions = computed(() =>
-  prompts.value.map((item) => ({ label: item.name, value: String(item.id), raw: item }))
-)
+	const endpointOptions = computed(() => store.endpointOptions)
+	const endpointLabelById = computed(() => {
+	  const map = new Map()
+	  ;(models.value || []).forEach((endpoint) => {
+	    if (!endpoint) return
+	    map.set(
+	      endpoint.id,
+	      endpoint.name || endpoint.model || endpoint.base_url || String(endpoint.id)
+	    )
+	  })
+	  return map
+	})
+	const modelOptions = computed(() =>
+	  store.modelCandidates.map((name) => ({ label: name, value: name }))
+	)
+	const promptOptions = computed(() =>
+	  prompts.value.map((item) => ({ label: item.name, value: String(item.id), raw: item }))
+	)
+	const scopeLabelMap = computed(() => {
+	  const map = new Map()
+	  scopeOptions.forEach((opt) => map.set(opt.value, opt.label))
+	  return map
+	})
 
-watch(
-  () => formModel.scope_type,
-  (scope) => {
+	function scopeLabel(scopeType) {
+	  return scopeLabelMap.value.get(scopeType) || scopeType
+	}
+
+	function preferredEndpointId(record) {
+	  const meta = record?.metadata || {}
+	  return meta.preferred_endpoint_id ?? meta.endpoint_id ?? meta.endpointId ?? null
+	}
+
+	function endpointLabel(record) {
+	  const id = preferredEndpointId(record)
+	  if (!id) return '--'
+	  return endpointLabelById.value.get(id) || String(id)
+	}
+
+	watch(
+	  () => formModel.scope_type,
+	  (scope) => {
     if (scope === 'prompt') {
       formModel.metadata = { type: 'prompt' }
     }
   }
 )
 
-function openCreate() {
-  Object.assign(formModel, {
-    scope_type: 'prompt',
-    scope_key: '',
-    name: '',
-    default_model: null,
-    candidates: [],
-    metadata: {},
-  })
-  endpointSelection.value = null
-  isEdit.value = false
-  modalVisible.value = true
-}
+	function openCreate() {
+	  Object.assign(formModel, {
+	    scope_type: 'mapping',
+	    scope_key: '',
+	    name: '',
+	    default_model: null,
+	    candidates: [],
+	    metadata: {},
+	  })
+	  endpointSelection.value = null
+	  isEdit.value = false
+	  modalVisible.value = true
+	}
 
-function openEdit(record) {
-  Object.assign(formModel, {
-    scope_type: record.scope_type,
-    scope_key: record.scope_key,
-    name: record.name,
-    default_model: record.default_model,
-    candidates: [...(record.candidates || [])],
-    metadata: record.metadata || {},
-  })
-  endpointSelection.value = null
-  isEdit.value = true
-  modalVisible.value = true
-}
+	function openEdit(record) {
+	  const preferred = preferredEndpointId(record)
+	  Object.assign(formModel, {
+	    scope_type: record.scope_type,
+	    scope_key: record.scope_key,
+	    name: record.name,
+	    default_model: record.default_model,
+	    candidates: [...(record.candidates || [])],
+	    metadata: record.metadata || {},
+	  })
+	  endpointSelection.value = preferred || null
+	  isEdit.value = true
+	  modalVisible.value = true
+	}
 
 function handlePromptChange(value) {
   const option = promptOptions.value.find((item) => item.value === value)
@@ -122,12 +154,14 @@ function ensureDefaultInCandidates(value) {
   }
 }
 
-function handleEndpointPick(value) {
-  endpointSelection.value = value
-  const endpoint = models.value.find((item) => item.id === value)
-  if (!endpoint) return
-  const candidateSet = new Set(formModel.candidates)
-  if (Array.isArray(endpoint.model_list) && endpoint.model_list.length) {
+	function handleEndpointPick(value) {
+	  endpointSelection.value = value
+	  if (value) formModel.metadata = { ...(formModel.metadata || {}), preferred_endpoint_id: value }
+	  else if (formModel.metadata) delete formModel.metadata.preferred_endpoint_id
+	  const endpoint = models.value.find((item) => item.id === value)
+	  if (!endpoint) return
+	  const candidateSet = new Set(formModel.candidates)
+	  if (Array.isArray(endpoint.model_list) && endpoint.model_list.length) {
     endpoint.model_list.forEach((model) => {
       if (model) candidateSet.add(model)
     })
@@ -185,11 +219,12 @@ function handleDeleteMapping(record) {
   })
 }
 
-onMounted(() => {
-  store.loadModels()
-  store.loadPrompts()
-  store.loadMappings()
-})
+	onMounted(() => {
+	  store.loadModels()
+	  store.loadBlockedModels()
+	  store.loadPrompts()
+	  store.loadMappings()
+	})
 </script>
 
 <template>
@@ -199,31 +234,33 @@ onMounted(() => {
         <NButton type="primary" @click="openCreate">新增映射</NButton>
         <NButton secondary :loading="mappingsLoading" @click="store.loadMappings()">刷新</NButton>
       </NSpace>
-      <NTable :loading="mappingsLoading" :single-line="false" class="mt-4" size="small" striped>
-        <thead>
-          <tr>
-            <th style="width: 160px">业务域</th>
-            <th style="width: 200px">对象</th>
-            <th style="width: 200px">默认模型</th>
-            <th>候选模型</th>
-            <th style="width: 180px">更新时间</th>
-            <th style="width: 180px">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="!mappings.length">
-            <td colspan="6" class="py-6 text-center text-gray-500">
-              <NEmpty description="暂无映射数据" size="small" />
-            </td>
-          </tr>
-          <tr v-for="item in mappings" :key="item.id">
-            <td>
-              <NTag type="info" size="small" :bordered="false">{{ item.scope_type }}</NTag>
-            </td>
-            <td>{{ item.name || item.scope_key }}</td>
-            <td>{{ item.default_model || '--' }}</td>
-            <td>
-              <template v-if="item.candidates && item.candidates.length">
+	      <NTable :loading="mappingsLoading" :single-line="false" class="mt-4" size="small" striped>
+	        <thead>
+	          <tr>
+	            <th style="width: 160px">业务域</th>
+	            <th style="width: 200px">对象</th>
+	            <th style="width: 220px">API</th>
+	            <th style="width: 200px">默认模型</th>
+	            <th>候选模型</th>
+	            <th style="width: 180px">更新时间</th>
+	            <th style="width: 180px">操作</th>
+	          </tr>
+	        </thead>
+	        <tbody>
+	          <tr v-if="!mappings.length">
+	            <td colspan="7" class="py-6 text-center text-gray-500">
+	              <NEmpty description="暂无映射数据" size="small" />
+	            </td>
+	          </tr>
+	          <tr v-for="item in mappings" :key="item.id">
+	            <td>
+	              <NTag type="info" size="small" :bordered="false">{{ scopeLabel(item.scope_type) }}</NTag>
+	            </td>
+	            <td>{{ item.name || item.scope_key }}</td>
+	            <td>{{ endpointLabel(item) }}</td>
+	            <td>{{ item.default_model || '--' }}</td>
+	            <td>
+	              <template v-if="item.candidates && item.candidates.length">
                 <div v-if="item.candidates.length <= 3">
                   <NSpace wrap>
                     <NTag
@@ -303,27 +340,27 @@ onMounted(() => {
             @update:value="handlePromptChange"
           />
         </NFormItem>
-        <NFormItem v-else label="业务键" path="scope_key">
-          <NInput
-            v-model:value="formModel.scope_key"
-            placeholder="请输入唯一键"
-            style="width: 100%"
-          />
-        </NFormItem>
+	        <NFormItem v-else label="业务键" path="scope_key">
+	          <NInput
+	            v-model:value="formModel.scope_key"
+	            placeholder="映射名（客户端 model）：例如 xai / deepseek / gpt-5"
+	            style="width: 100%"
+	          />
+	        </NFormItem>
         <NFormItem label="名称" path="name">
           <NInput v-model:value="formModel.name" placeholder="显示名称" style="width: 100%" />
         </NFormItem>
-        <NFormItem label="候选来源">
-          <NSelect
-            v-model:value="endpointSelection"
-            :options="endpointOptions"
-            placeholder="可选：选择端点快速导入候选模型"
-            filterable
-            clearable
-            style="width: 100%"
-            @update:value="handleEndpointPick"
-          />
-        </NFormItem>
+	        <NFormItem label="绑定 API（可选）">
+	          <NSelect
+	            v-model:value="endpointSelection"
+	            :options="endpointOptions"
+	            placeholder="选择端点：用于路由偏好 & 快速导入候选模型"
+	            filterable
+	            clearable
+	            style="width: 100%"
+	            @update:value="handleEndpointPick"
+	          />
+	        </NFormItem>
         <NFormItem label="默认模型" path="default_model">
           <NSelect
             v-model:value="formModel.default_model"

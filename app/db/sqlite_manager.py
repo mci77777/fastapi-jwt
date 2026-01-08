@@ -203,6 +203,23 @@ CREATE INDEX IF NOT EXISTS idx_llm_test_users_kind ON llm_test_users(kind);
 CREATE INDEX IF NOT EXISTS idx_llm_test_users_label ON llm_test_users(label);
 CREATE INDEX IF NOT EXISTS idx_llm_test_users_created_at ON llm_test_users(created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_test_users_email ON llm_test_users(email);
+
+-- LLM Model Mappings（本地 SSOT：Dashboard 配置；支持 legacy JSON 一次性导入）
+CREATE TABLE IF NOT EXISTS llm_model_mappings (
+    id TEXT PRIMARY KEY,              -- 形如 mapping:xai / global:global
+    scope_type TEXT NOT NULL,
+    scope_key TEXT NOT NULL,
+    name TEXT,
+    default_model TEXT,
+    candidates_json TEXT,
+    is_active INTEGER DEFAULT 1,
+    updated_at TEXT,
+    metadata_json TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_model_mappings_scope ON llm_model_mappings(scope_type, scope_key);
+CREATE INDEX IF NOT EXISTS idx_llm_model_mappings_updated_at ON llm_model_mappings(updated_at DESC);
 """
 
 

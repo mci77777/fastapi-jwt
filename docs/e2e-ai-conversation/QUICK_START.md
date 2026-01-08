@@ -36,7 +36,7 @@ curl -s "http://localhost:9999/api/v1/llm/models?view=mapped" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
-Pick `data[].name` (example: `global:xai`) and use it as the `model` field.
+Pick `data[].name` (example: `xai`) and use it as the `model` field.
 
 ### 4. Send AI Conversation Request
 
@@ -47,7 +47,7 @@ curl -X POST http://localhost:9999/api/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "text": "What is the best workout for beginners?",
-    "model": "global:xai",
+    "model": "xai",
     "metadata": {
       "save_history": true
     }
@@ -166,7 +166,7 @@ GET /api/v1/llm/models
 POST /api/v1/messages
 {
   "text": "Hello",
-  "model": "global:xai"
+  "model": "xai"
 }
 # Expected: routes to provider+endpoint and emits status:routed for audit
 ```

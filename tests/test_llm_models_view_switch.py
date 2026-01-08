@@ -34,7 +34,7 @@ def test_llm_models_default_view_is_mapped_and_endpoints_view_still_works(mock_g
         "/api/v1/llm/model-groups",
         headers=headers,
         json={
-            "scope_type": "tenant",
+            "scope_type": "mapping",
             "scope_key": app_key,
             "name": app_key,
             "default_model": "gpt-4o-mini",
@@ -82,4 +82,4 @@ def test_llm_models_default_view_is_mapped_and_endpoints_view_still_works(mock_g
     assert endpoint_items, "expected at least one endpoint (seeded from env or created by tests)"
     assert "id" in endpoint_items[0]
 
-    client.delete(f"/api/v1/llm/model-groups/tenant:{app_key}", headers=headers)
+    client.delete(f"/api/v1/llm/model-groups/mapping:{app_key}", headers=headers)

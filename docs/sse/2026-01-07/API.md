@@ -39,7 +39,7 @@ SSOT：详细契约以仓库内文档为准，避免复制漂移：
 Server 模式（默认，服务端注入默认 prompt）：
 ```json
 {
-  "model": "global:xai",
+  "model": "xai",
   "text": "hello",
   "conversation_id": null,
   "metadata": { "client": "app" },
@@ -50,7 +50,7 @@ Server 模式（默认，服务端注入默认 prompt）：
 Passthrough 模式（客户端完全控制 messages/system/tools）：
 ```json
 {
-  "model": "global:xai",
+  "model": "xai",
   "skip_prompt": true,
   "messages": [
     { "role": "system", "content": "<redacted>" },
@@ -70,7 +70,7 @@ Passthrough 模式（客户端完全控制 messages/system/tools）：
 示例（OpenAI Chat Completions）：
 ```json
 {
-  "model": "global:xai",
+  "model": "xai",
   "dialect": "openai.chat_completions",
   "payload": {
     "messages": [{ "role": "user", "content": "hello" }],

@@ -93,7 +93,7 @@ class TestAppModelsMicroE2E:
         request_id_sse = "rid-app-sse"
 
         created_endpoint_id = None
-        mapping_id = "tenant:xai"
+        mapping_id = "mapping:xai"
 
         with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
             mock_verifier = MagicMock()
@@ -116,7 +116,7 @@ class TestAppModelsMicroE2E:
 
                 await fastapi_app.state.model_mapping_service.upsert_mapping(
                     {
-                        "scope_type": "tenant",
+                        "scope_type": "mapping",
                         "scope_key": "xai",
                         "name": "xai",
                         "default_model": "grok-4",

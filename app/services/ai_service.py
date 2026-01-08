@@ -25,7 +25,7 @@ from app.services.ai_url import build_resolved_endpoints, normalize_ai_base_url
 from app.services.llm_model_registry import LlmModelRegistry
 from app.services.providers import get_provider_adapter
 from app.services.upstream_auth import is_retryable_auth_error, iter_auth_headers, should_send_x_api_key
-from app.services.model_mapping_service import ModelMappingService
+from app.services.model_mapping_service import ModelMappingService, normalize_mapping_id
 from app.settings.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -259,7 +259,7 @@ class AIService:
                     # 允许存在多个 global 映射（如 global:xai / global:gpt），客户端用 id 作为稳定 key
                     pass
                 else:
-                    # 其他 scope（tenant/module/...）默认同样纳入白名单（user scope 仍需 user_id 精确匹配）
+                    # 其他 scope（mapping/module/...）默认同样纳入白名单（user scope 仍需 user_id 精确匹配）
                     pass
 
                 is_active = bool(mapping.get("is_active", True))
@@ -411,8 +411,8 @@ class AIService:
             if non_test:
                 candidates = non_test
 
-        # App 业务 key：优先 tenant，其次 global（兼容既有映射存量与命名）
-        scope_priority = ("tenant", "global")
+        # App 业务 key：优先 mapping，其次 global（tenant 作为 legacy alias 由 ModelMappingService 归一化）
+        scope_priority = ("mapping", "global")
 
         # 保持首次出现顺序，避免 UI 列表漂移
         seen_keys: set[str] = set()
@@ -451,7 +451,7 @@ class AIService:
             selected_candidates: list[str] = []
             selected_blocked: list[str] = []
 
-            # 逐个映射尝试：同一 key 在多个 scope 下可能存在（如 tenant:xai 与 global:xai）
+            # 逐个映射尝试：同一 key 在多个 scope 下可能存在（如 mapping:xai 与 global:xai）
             for mapping in candidates_mappings:
                 default_model, routable, blocked_candidates = _pick_routable_candidates_from_mapping(
                     mapping,
@@ -504,12 +504,14 @@ class AIService:
 
         # 兼容：既允许 legacy mapping_id（如 global:global），也允许 App 业务 key（如 xai）
         if ":" in name:
+            normalized = normalize_mapping_id(name)
+            acceptable = {name, normalized}
             whitelist = await self.list_model_whitelist(
                 user_id=user_id,
                 include_inactive=False,
                 include_debug_fields=False,
             )
-            return any(item.get("name") == name for item in whitelist)
+            return any(item.get("name") in acceptable for item in whitelist)
 
         app_scopes = await self.list_app_model_scopes(include_inactive=False, include_debug_fields=False)
         return any(item.get("name") == name for item in app_scopes)
@@ -1208,14 +1210,16 @@ class AIService:
         raw_model = openai_req.get("model")
         resolved_model: Optional[str] = None
         mapping_hit = False
+        mapping_preferred_endpoint_id: Optional[int] = None
         if isinstance(raw_model, str) and raw_model.strip():
             raw_str = raw_model.strip()
             resolved_model = raw_str
             if self._model_mapping_service is not None:
-                # legacy：mapping_id（如 global:global / tenant:xxx）
+                # legacy：mapping_id（如 global:global / tenant:xxx；tenant 作为 mapping 的历史别名）
                 if ":" in raw_str:
                     resolved = await self._model_mapping_service.resolve_model_key(raw_str)
                     mapping_hit = bool(resolved.get("hit"))
+                    mapping_preferred_endpoint_id = _parse_optional_int(resolved.get("preferred_endpoint_id"))
                     candidate = resolved.get("resolved_model")
                     if isinstance(candidate, str) and candidate.strip():
                         resolved_model = candidate.strip()
@@ -1229,8 +1233,8 @@ class AIService:
                         mappings = []
                     blocked = set(await self._model_mapping_service.list_blocked_models())
 
-                    # 优先 tenant，其次 global；若某个映射无可路由候选则继续回退
-                    scope_priority = ("tenant", "global")
+                    # 优先 mapping，其次 global；若某个映射无可路由候选则继续回退
+                    scope_priority = ("mapping", "global")
                     candidates_mappings = [
                         m
                         for m in mappings
@@ -1250,6 +1254,7 @@ class AIService:
 
                     hit_any_mapping = bool(candidates_mappings)
                     selected = None
+                    selected_mapping: dict[str, Any] | None = None
                     for mapping in candidates_mappings:
                         default_model, routable, _ = _pick_routable_candidates_from_mapping(
                             mapping,
@@ -1260,13 +1265,28 @@ class AIService:
                             continue
                         selected = default_model or (routable[0] if routable else None)
                         if selected:
+                            selected_mapping = mapping
                             break
                     if hit_any_mapping:
                         mapping_hit = True
                         resolved_model = selected
+                        meta = selected_mapping.get("metadata") if isinstance(selected_mapping, dict) else None
+                        if isinstance(meta, dict):
+                            mapping_preferred_endpoint_id = _parse_optional_int(
+                                meta.get("preferred_endpoint_id") or meta.get("endpoint_id") or meta.get("endpointId")
+                            )
 
         default_endpoint = next((item for item in candidates if item.get("is_default")), candidates[0])
         selected_endpoint = default_endpoint
+
+        soft_preferred_endpoint_id = mapping_preferred_endpoint_id if preferred_endpoint_id is None else None
+        if isinstance(soft_preferred_endpoint_id, int):
+            preferred = next(
+                (item for item in candidates if _parse_optional_int(item.get("id")) == soft_preferred_endpoint_id),
+                None,
+            )
+            if preferred is not None:
+                selected_endpoint = preferred
         if isinstance(preferred_endpoint_id, int):
             preferred = next(
                 (item for item in candidates if _parse_optional_int(item.get("id")) == preferred_endpoint_id),
@@ -1280,7 +1300,10 @@ class AIService:
             by_list = next((item for item in candidates if _endpoint_supports_model(item, resolved_model)), None)
             # 仅在未显式指定 endpoint 时，才按 model_list 进行“自动切换端点”。
             if preferred_endpoint_id is None:
-                selected_endpoint = by_list or selected_endpoint
+                if isinstance(soft_preferred_endpoint_id, int) and _endpoint_supports_model(selected_endpoint, resolved_model):
+                    pass
+                else:
+                    selected_endpoint = by_list or selected_endpoint
             else:
                 # 指定 endpoint 时：若该 endpoint 有显式 model_list，则做最小校验（避免误以为生效）。
                 # 但当用户传入的是“映射模型 key”时，最终真实模型可能无法通过 /v1/models 枚举到；

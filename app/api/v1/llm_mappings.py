@@ -20,11 +20,16 @@ class ModelMappingPayload(BaseModel):
     业务域类型说明：
     - user: 普通用户（默认）- 只能访问基础模型（如 GPT-3.5）
     - premium_user: 高级用户 - 可访问高级模型（如 GPT-4、Claude-3）
-    - tenant: 租户级 - 租户内共享配置
+    - mapping: 映射名（App/Web 业务 key）- 用于把“客户端可发送的 model”路由到真实上游模型
     - global: 全局 - 系统级配置
+
+    兼容：tenant 作为 mapping 的历史别名，后端会在写入/解析时做归一化。
     """
 
-    scope_type: str = Field(default="user", description="业务域类型：user/premium_user/tenant/global")
+    scope_type: str = Field(
+        default="user",
+        description="业务域类型：user/premium_user/mapping/global（prompt/module 也可用于内部映射）",
+    )
     scope_key: str = Field(..., description="业务域唯一标识")
     name: Optional[str] = Field(None, description="业务域名称")
     default_model: Optional[str] = Field(None, description="默认模型")

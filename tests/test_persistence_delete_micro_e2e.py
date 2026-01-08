@@ -110,7 +110,7 @@ def test_persistence_and_delete_do_not_rebounce_after_restart(tmp_path: Path) ->
                 mappings = client.get("/api/v1/llm/model-groups", headers=user_headers)
                 assert mappings.status_code == 200
                 mapping_items = mappings.json().get("data") or []
-                assert any(item.get("id") == "tenant:xai" for item in mapping_items)
+                assert any(item.get("id") == "mapping:xai" for item in mapping_items)
 
                 created = client.post(
                     "/api/v1/llm/models",
@@ -139,9 +139,9 @@ def test_persistence_and_delete_do_not_rebounce_after_restart(tmp_path: Path) ->
                 mappings = client.get("/api/v1/llm/model-groups", headers=user_headers)
                 assert mappings.status_code == 200
                 mapping_items = mappings.json().get("data") or []
-                assert any(item.get("id") == "tenant:xai" for item in mapping_items)
+                assert any(item.get("id") == "mapping:xai" for item in mapping_items)
 
-                deleted_mapping = client.delete("/api/v1/llm/model-groups/tenant:xai", headers=admin_headers)
+                deleted_mapping = client.delete("/api/v1/llm/model-groups/mapping:xai", headers=admin_headers)
                 assert deleted_mapping.status_code == 200
                 assert (deleted_mapping.json().get("data") or {}).get("deleted") is True
 

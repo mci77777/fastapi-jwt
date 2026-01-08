@@ -7,15 +7,15 @@
 ## 概览
 - **后端重构**：`app/api/v1/llm.py` 拆分为 `llm_models.py` / `llm_prompts.py` / `llm_mappings.py` / `llm_tests.py`，共用 `llm_common`。
 - **服务层**：
-  - `ModelMappingService`：复用 `ai_prompts.tools_json` 与 `AI_RUNTIME_STORAGE_DIR/model_mappings.json` 维护映射（endpoints→mapping→models）。
+  - `ModelMappingService`：复用 `ai_prompts.tools_json` + SQLite(`llm_model_mappings`) 维护映射（endpoints→mapping→models）；并支持 legacy `AI_RUNTIME_STORAGE_DIR/model_mappings.json` 一次性导入。
   - `AIConfigService`：使用本地/远端备份目录 `AI_RUNTIME_STORAGE_DIR/backups/`（保留 `*-latest.json` + 最近 3 个时间戳归档），推送/拉取前自动快照，并支持覆盖写入与缺失项删除开关。
-- **SQLite**：仍只使用现有表；映射信息写入 JSON 字段；运行态配置落盘在 `data/` volume（或 `AI_RUNTIME_STORAGE_DIR`）。
+- **SQLite**：新增 `llm_model_mappings` 表作为本地映射 SSOT；运行态配置落盘在 `data/` volume（或 `AI_RUNTIME_STORAGE_DIR`）。
 - **前端**：`web/src/views/ai/model-suite/` 以“模型映射”为默认入口；JWT 测试页面复用 `/messages`+SSE 做闭环验证。
 
 ## API 变更
 | 路径 | 方法 | 描述 |
 | --- | --- | --- |
-| `/llm/model-groups` | GET/POST | 查询或保存模型映射（scope_type: prompt/module/tenant）。|
+| `/llm/model-groups` | GET/POST | 查询或保存模型映射（scope_type: prompt/module/mapping；tenant 为 legacy alias）。|
 | `/llm/model-groups/{id}/activate` | POST | 切换映射默认模型。|
 | `/llm/models/sync` | POST | 批量同步端点，支持覆盖、删除缺失控制。|
 | `/messages` | POST | 创建消息（model=映射名），返回 `message_id` + `conversation_id`（202）。|
@@ -27,7 +27,7 @@
 
 ## 运行时依赖
 - FastAPI lifespan 中新增：
-  - `app.state.model_mapping_service`（目录：`AI_RUNTIME_STORAGE_DIR/model_mappings.json`）
+  - `app.state.model_mapping_service`（SSOT：SQLite `llm_model_mappings`；legacy：`AI_RUNTIME_STORAGE_DIR/model_mappings.json` 一次性导入）
 - `AI_RUNTIME_STORAGE_DIR` 保证目录存在；`AI_RUNTIME_STORAGE_DIR/backups/` 使用 `name-latest.json` + `name-YYYYMMDDTHHMMSSZ.json` 形式存放最近 3 次快照，便于回滚。
 
 ## 前端结构

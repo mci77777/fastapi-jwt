@@ -13,17 +13,17 @@ def test_llm_app_models_returns_mapping_keys(client) -> None:
             return user
 
     mappings = [
-        # App 业务 key（当前 SSOT）：tenant/global 的 scope_key（例如 xai / deepseek / gpt-5）
+        # App 业务 key（当前 SSOT）：mapping/global 的 scope_key（例如 xai / deepseek / gpt-5）
         {
-            "id": "tenant:xai",
-            "scope_type": "tenant",
+            "id": "mapping:xai",
+            "scope_type": "mapping",
             "scope_key": "xai",
             "name": "XAI",
             "default_model": "gpt-4o-mini",
             "candidates": ["gpt-4o-mini"],
             "is_active": True,
             "updated_at": "2026-01-03T00:00:00+00:00",
-            "source": "fallback",
+            "source": "sqlite",
             "metadata": {},
         },
         {
@@ -35,10 +35,10 @@ def test_llm_app_models_returns_mapping_keys(client) -> None:
             "candidates": ["gpt-4o-mini"],
             "is_active": True,
             "updated_at": "2026-01-03T00:00:00+00:00",
-            "source": "fallback",
+            "source": "sqlite",
             "metadata": {},
         },
-        # 不应返回：非 tenant/global
+        # 不应返回：非 mapping/global
         {
             "id": "user:user-123",
             "scope_type": "user",
@@ -48,7 +48,7 @@ def test_llm_app_models_returns_mapping_keys(client) -> None:
             "candidates": ["gpt-4o-mini"],
             "is_active": True,
             "updated_at": "2026-01-03T00:00:00+00:00",
-            "source": "fallback",
+            "source": "sqlite",
             "metadata": {},
         },
     ]
@@ -79,8 +79,8 @@ def test_llm_app_models_filters_embedding_candidates(client) -> None:
 
     mappings = [
         {
-            "id": "tenant:xai",
-            "scope_type": "tenant",
+            "id": "mapping:xai",
+            "scope_type": "mapping",
             "scope_key": "xai",
             "name": "XAI",
             # embeddings-only 默认值不应落到 App scopes
@@ -88,7 +88,7 @@ def test_llm_app_models_filters_embedding_candidates(client) -> None:
             "candidates": ["text-embedding-3-large", "gpt-4o-mini"],
             "is_active": True,
             "updated_at": "2026-01-03T00:00:00+00:00",
-            "source": "fallback",
+            "source": "sqlite",
             "metadata": {},
         }
     ]

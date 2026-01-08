@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from app.db import SQLiteManager
 from app.services.model_mapping_service import ModelMappingService
 
 
@@ -40,11 +41,17 @@ def anyio_backend():
     return "asyncio"
 
 
+async def _new_service(tmp_path: Path) -> tuple[ModelMappingService, FakeAIConfigService, SQLiteManager]:
+    ai_service = FakeAIConfigService()
+    db = SQLiteManager(tmp_path / "db.sqlite3")
+    await db.init()
+    return ModelMappingService(ai_service, db, tmp_path), ai_service, db
+
+
 @pytest.mark.anyio("asyncio")
 async def test_list_mappings(tmp_path: Path) -> None:
     """测试映射列表查询功能"""
-    ai_service = FakeAIConfigService()
-    service = ModelMappingService(ai_service, tmp_path)
+    service, ai_service, _db = await _new_service(tmp_path)
 
     # 创建 prompt 映射
     await service.upsert_mapping(
@@ -88,14 +95,13 @@ async def test_list_mappings(tmp_path: Path) -> None:
     assert len(chat_items) == 1
     assert chat_items[0]["scope_type"] == "module"
     assert chat_items[0]["scope_key"] == "chat"
-    assert chat_items[0]["source"] == "fallback"
+    assert chat_items[0]["source"] == "sqlite"
 
 
 @pytest.mark.anyio("asyncio")
 async def test_upsert_mapping(tmp_path: Path) -> None:
     """测试映射创建和更新功能"""
-    ai_service = FakeAIConfigService()
-    service = ModelMappingService(ai_service, tmp_path)
+    service, ai_service, db = await _new_service(tmp_path)
 
     # 测试创建 prompt 映射
     result = await service.upsert_mapping(
@@ -155,15 +161,15 @@ async def test_upsert_mapping(tmp_path: Path) -> None:
     )
 
     assert fallback_result["scope_type"] == "module"
-    assert fallback_result["source"] == "fallback"
-    assert (tmp_path / "model_mappings.json").exists()
+    assert fallback_result["source"] == "sqlite"
+    stored = await db.fetchone("SELECT id FROM llm_model_mappings WHERE id = ?", ("module:chat",))
+    assert stored and stored.get("id") == "module:chat"
 
 
 @pytest.mark.anyio("asyncio")
 async def test_activate_default(tmp_path: Path) -> None:
     """测试激活默认模型功能"""
-    ai_service = FakeAIConfigService()
-    service = ModelMappingService(ai_service, tmp_path)
+    service, ai_service, _db = await _new_service(tmp_path)
 
     # 创建映射
     await service.upsert_mapping(
@@ -199,8 +205,7 @@ async def test_activate_default(tmp_path: Path) -> None:
 
 @pytest.mark.anyio("asyncio")
 async def test_prompt_mapping_roundtrip(tmp_path: Path) -> None:
-    ai_service = FakeAIConfigService()
-    service = ModelMappingService(ai_service, tmp_path)
+    service, ai_service, _db = await _new_service(tmp_path)
 
     result = await service.upsert_mapping(
         {
@@ -228,8 +233,7 @@ async def test_prompt_mapping_roundtrip(tmp_path: Path) -> None:
 
 @pytest.mark.anyio("asyncio")
 async def test_fallback_mapping(tmp_path: Path) -> None:
-    ai_service = FakeAIConfigService()
-    service = ModelMappingService(ai_service, tmp_path)
+    service, ai_service, db = await _new_service(tmp_path)
 
     payload = {
         "scope_type": "module",
@@ -245,14 +249,14 @@ async def test_fallback_mapping(tmp_path: Path) -> None:
     items = await service.list_mappings(scope_type="module")
     assert len(items) == 1
     assert items[0]["scope_key"] == "chat"
-    assert items[0]["source"] == "fallback"
-    assert (tmp_path / "model_mappings.json").exists()
+    assert items[0]["source"] == "sqlite"
+    stored = await db.fetchone("SELECT id FROM llm_model_mappings WHERE id = ?", ("module:chat",))
+    assert stored and stored.get("id") == "module:chat"
 
 
 @pytest.mark.anyio("asyncio")
 async def test_resolve_model_key_skips_blocked(tmp_path: Path) -> None:
-    ai_service = FakeAIConfigService()
-    service = ModelMappingService(ai_service, tmp_path)
+    service, _ai_service, _db = await _new_service(tmp_path)
 
     await service.upsert_mapping(
         {

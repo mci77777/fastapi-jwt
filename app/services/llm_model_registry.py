@@ -131,15 +131,17 @@ class LlmModelRegistry:
         raw_model = openai_req.get("model")
         resolved_model: Optional[str] = None
         mapping_hit = False
+        mapping_preferred_endpoint_id: Optional[int] = None
 
         if isinstance(raw_model, str) and raw_model.strip():
             raw_str = raw_model.strip()
             resolved_model = raw_str
 
-            # legacy：mapping_id（如 global:global / tenant:xxx）
+            # legacy：mapping_id（如 global:global / tenant:xxx；tenant 作为 mapping 的历史别名）
             if ":" in raw_str:
                 resolved = await self._model_mapping_service.resolve_model_key(raw_str)
                 mapping_hit = bool(resolved.get("hit"))
+                mapping_preferred_endpoint_id = parse_optional_int(resolved.get("preferred_endpoint_id"))
                 candidate = resolved.get("resolved_model")
                 if isinstance(candidate, str) and candidate.strip():
                     resolved_model = candidate.strip()
@@ -153,7 +155,7 @@ class LlmModelRegistry:
                     mappings = []
                 blocked = set(await self._model_mapping_service.list_blocked_models())
 
-                scope_priority = ("tenant", "global")
+                scope_priority = ("mapping", "global")
                 candidates_mappings = [
                     m
                     for m in mappings
@@ -173,6 +175,7 @@ class LlmModelRegistry:
 
                 hit_any_mapping = bool(candidates_mappings)
                 selected = None
+                selected_mapping: dict[str, Any] | None = None
                 for mapping in candidates_mappings:
                     default_model, routable, _ = pick_routable_candidates_from_mapping(
                         mapping,
@@ -183,13 +186,28 @@ class LlmModelRegistry:
                         continue
                     selected = default_model or (routable[0] if routable else None)
                     if selected:
+                        selected_mapping = mapping
                         break
                 if hit_any_mapping:
                     mapping_hit = True
                     resolved_model = selected
+                    meta = selected_mapping.get("metadata") if isinstance(selected_mapping, dict) else None
+                    if isinstance(meta, dict):
+                        mapping_preferred_endpoint_id = parse_optional_int(
+                            meta.get("preferred_endpoint_id") or meta.get("endpoint_id") or meta.get("endpointId")
+                        )
 
         default_endpoint = next((item for item in candidates if item.get("is_default")), candidates[0])
         selected_endpoint = default_endpoint
+
+        soft_preferred_endpoint_id = mapping_preferred_endpoint_id if preferred_endpoint_id is None else None
+        if isinstance(soft_preferred_endpoint_id, int):
+            preferred = next(
+                (item for item in candidates if parse_optional_int(item.get("id")) == soft_preferred_endpoint_id),
+                None,
+            )
+            if preferred is not None:
+                selected_endpoint = preferred
 
         if isinstance(preferred_endpoint_id, int):
             preferred = next(
@@ -203,7 +221,10 @@ class LlmModelRegistry:
         if isinstance(resolved_model, str) and resolved_model.strip():
             by_list = next((item for item in candidates if endpoint_supports_model(item, resolved_model)), None)
             if preferred_endpoint_id is None:
-                selected_endpoint = by_list or selected_endpoint
+                if isinstance(soft_preferred_endpoint_id, int) and endpoint_supports_model(selected_endpoint, resolved_model):
+                    pass
+                else:
+                    selected_endpoint = by_list or selected_endpoint
             else:
                 model_list = selected_endpoint.get("model_list")
                 if (

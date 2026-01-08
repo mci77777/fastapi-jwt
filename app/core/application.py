@@ -93,6 +93,7 @@ async def lifespan(app: FastAPI):
             pass
     app.state.model_mapping_service = ModelMappingService(
         app.state.ai_config_service,
+        sqlite_manager,
         storage_dir,
         auto_seed_enabled=bool(getattr(settings, "allow_test_ai_endpoints", False)),
     )
