@@ -4,10 +4,10 @@
 # Quick Start
 # 调试文档
 ```
-D:\GymBro\vue-fastapi-admin\docs\archive\dashboard-refactor\ARCHITECTURE_OVERVIEW.md
-D:\GymBro\vue-fastapi-admin\docs\archive\dashboard-refactor\CODE_REVIEW_AND_GAP_ANALYSIS.md
-D:\GymBro\vue-fastapi-admin\docs\archive\dashboard-refactor\IMPLEMENTATION_PLAN.md
-D:\GymBro\vue-fastapi-admin\docs\archive\dashboard-refactor\IMPLEMENTATION_SPEC.md
+docs/archive/dashboard-refactor/ARCHITECTURE_OVERVIEW.md
+docs/archive/dashboard-refactor/CODE_REVIEW_AND_GAP_ANALYSIS.md
+docs/archive/dashboard-refactor/IMPLEMENTATION_PLAN.md
+docs/archive/dashboard-refactor/IMPLEMENTATION_SPEC.md
 ```
 
 ## Start Development Environment

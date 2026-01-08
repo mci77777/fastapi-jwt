@@ -41,8 +41,11 @@ tests/
 # 使用 make 命令（推荐）
 make test
 
-# 或直接使用 pytest
-$env:PYTHONPATH="D:\GymBro\vue-fastapi-admin"
+# 或直接使用 pytest（从仓库根目录执行）
+PYTHONPATH=. pytest tests/ -v
+
+# PowerShell（Windows）
+$env:PYTHONPATH = (Get-Location).Path
 pytest tests/ -v
 ```
 

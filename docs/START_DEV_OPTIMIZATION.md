@@ -153,7 +153,7 @@ Write-Host "[Frontend] Process started (PID: 67890)" -ForegroundColor Green
 [Step 5/5] Starting frontend...
   URL: http://localhost:3101
 [Frontend] Command: Write-Host 'Starting frontend server...' -ForegroundColor Cyan; pnpm dev
-[Frontend] Working Directory: D:\GymBro\vue-fastapi-admin\web
+[Frontend] Working Directory: <repo-root>/web
 [Frontend] Process started (PID: 67890)
 [Frontend] Service is ready on port 3101! (attempt 10/30)
 

@@ -74,7 +74,7 @@ X:/GymBro
 
 ### FastAPI 目标树（关键目录）
 ```text
-D:\GymBro\vue-fastapi-admin
+<repo-root>
 ├── run.py
 ├── app
 │   ├── core
