@@ -38,6 +38,8 @@ _SERP_OPEN = "<serp>"
 _SERP_CLOSE = "</serp>"
 _TITLE_OPEN = "<title>"
 _TITLE_CLOSE = "</title>"
+_TITLE_CAP_OPEN = "<Title>"
+_TITLE_CAP_CLOSE = "</Title>"
 _TITLE_ZH_OPEN = "<标题>"
 _TITLE_ZH_CLOSE = "</标题>"
 _PHASE_1_OPEN = '<phase id="1">'
@@ -58,6 +60,8 @@ _STREAM_SANITIZE_TAGS = (
     _PHASE_CLOSE,
     _TITLE_OPEN,
     _TITLE_CLOSE,
+    _TITLE_CAP_OPEN,
+    _TITLE_CAP_CLOSE,
     _TITLE_ZH_OPEN,
     _TITLE_ZH_CLOSE,
     _B_OPEN,
@@ -93,6 +97,7 @@ def _sanitize_thinkingml_reply(reply: str) -> str:
     inner_start = thinking_start + len(_THINKING_OPEN)
     inner = text[inner_start:thinking_end]
     inner = inner.replace(_TITLE_ZH_OPEN, _TITLE_OPEN).replace(_TITLE_ZH_CLOSE, _TITLE_CLOSE)
+    inner = inner.replace(_TITLE_CAP_OPEN, _TITLE_OPEN).replace(_TITLE_CAP_CLOSE, _TITLE_CLOSE)
     inner = _escape_xml_tag_literal(inner, tag=_THINKING_OPEN)
     inner = _escape_xml_tag_literal(inner, tag=_THINKING_CLOSE)
     inner = _escape_xml_tag_literal(inner, tag=_FINAL_OPEN)
@@ -350,6 +355,25 @@ class MessageEventBroker:
                     else:
                         emit(_TITLE_OPEN)
                 elif tag == _TITLE_ZH_CLOSE:
+                    if meta.thinkingml_phase_id is not None:
+                        if meta.thinkingml_phase_has_title and not meta.thinkingml_phase_title_closed:
+                            meta.thinkingml_phase_title_closed = True
+                            emit(_TITLE_CLOSE)
+                        else:
+                            emit("&lt;/title&gt;")
+                    else:
+                        emit(_TITLE_CLOSE)
+                elif tag == _TITLE_CAP_OPEN:
+                    if meta.thinkingml_phase_id is not None:
+                        if meta.thinkingml_phase_has_title:
+                            emit("&lt;title&gt;")
+                        else:
+                            meta.thinkingml_phase_has_title = True
+                            meta.thinkingml_phase_title_closed = False
+                            emit(_TITLE_OPEN)
+                    else:
+                        emit(_TITLE_OPEN)
+                elif tag == _TITLE_CAP_CLOSE:
                     if meta.thinkingml_phase_id is not None:
                         if meta.thinkingml_phase_has_title and not meta.thinkingml_phase_title_closed:
                             meta.thinkingml_phase_title_closed = True

@@ -70,6 +70,8 @@ e2e/anon_jwt_sse/artifacts/anon_token_*.json
 e2e/real_user_sse/artifacts/*
 e2e/real_ai_conversation/artifacts/*
 !e2e/real_ai_conversation/artifacts/.gitkeep
+e2e/real_user_ai_conversation/artifacts/*
+!e2e/real_user_ai_conversation/artifacts/.gitkeep
 
 # ============ 前端 ============
 node_modules/
