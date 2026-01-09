@@ -942,6 +942,9 @@ class AnonymousE2E:
 
         current_event: str = "message"
         data_lines: List[str] = []
+        # 原始 SSE 摘要：只保留首条 content_delta 与终止事件（completed/error）的原文，便于 App↔后端契约对齐。
+        raw_first_content_delta: Optional[str] = None
+        raw_terminal_event: Optional[str] = None
 
         def flush() -> Optional[Dict[str, Any]]:
             nonlocal data_lines, current_event
@@ -986,6 +989,14 @@ class AnonymousE2E:
                     line = line.rstrip("\r")
 
                     if line == "":
+                        # 捕获“原始 SSE 行”（event/data），仅用于对齐契约，不写入 token 等敏感信息。
+                        if current_event in ("content_delta", "completed", "error") and data_lines:
+                            raw_data = "\n".join(data_lines)
+                            if current_event == "content_delta" and raw_first_content_delta is None:
+                                raw_first_content_delta = f"event: {current_event}\ndata: {raw_data}\n"
+                            if current_event in ("completed", "error") and raw_terminal_event is None:
+                                raw_terminal_event = f"event: {current_event}\ndata: {raw_data}\n"
+
                         evt = flush()
                         if evt:
                             frames.append(self._safe_sse_event(str(evt.get("event")), evt.get("data")))
@@ -1027,6 +1038,11 @@ class AnonymousE2E:
         notes: Dict[str, Any] = {
             "frames": frames[:200],
         }
+        if raw_first_content_delta or raw_terminal_event:
+            notes["raw_sse_excerpt"] = {
+                "first_content_delta": raw_first_content_delta,
+                "terminal_event": raw_terminal_event,
+            }
 
         # 对账：completed/error 的 request_id 必须与 create 的 X-Request-Id 一致
         if isinstance(final_event, dict) and final_name in ("completed", "error"):
@@ -1349,6 +1365,10 @@ class AnonymousE2E:
                 lines.append(f"=== model={model_key} request_id={per_request_id} status={'PASS' if success else 'FAIL'} ===")
                 reply = item.get("reply")
                 final_event = item.get("final_event")
+                events_step = item.get("events_step")
+                raw_excerpt = None
+                if isinstance(events_step, StepRecord):
+                    raw_excerpt = (events_step.notes or {}).get("raw_sse_excerpt")
 
                 if isinstance(reply, str) and reply.strip():
                     lines.append(reply)
@@ -1364,6 +1384,18 @@ class AnonymousE2E:
                         lines.append("(no_reply)")
                 else:
                     lines.append("(no_reply)")
+
+                if raw_excerpt and isinstance(raw_excerpt, dict):
+                    first_delta = raw_excerpt.get("first_content_delta")
+                    terminal = raw_excerpt.get("terminal_event")
+                    if isinstance(first_delta, str) or isinstance(terminal, str):
+                        lines.append("")
+                        lines.append("--- sse_raw_excerpt ---")
+                        if isinstance(first_delta, str) and first_delta.strip():
+                            lines.append(first_delta.rstrip())
+                            lines.append("")
+                        if isinstance(terminal, str) and terminal.strip():
+                            lines.append(terminal.rstrip())
 
                 if self._result_mode in {"raw", "both"}:
                     try:
