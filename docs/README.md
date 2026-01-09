@@ -21,6 +21,7 @@
 | [api-contracts/](./api-contracts/) | Cloud API 最小契约（App/Web） |
 | [sse/](./sse/) | SSE 对话链路 + 统一事件（GymBro SSE） |
 | [ai预期响应结构.md](./ai预期响应结构.md) | AI 输出结构 SSOT（ThinkingML v4.5） |
+| [app_ai_sse_raw_结构体与样本.md](./app_ai_sse_raw_结构体与样本.md) | App 端 SSE RAW 结构体 + 近期 E2E 样本（含映射字段对账） |
 | [e2e-ai-conversation/](./e2e-ai-conversation/) | E2E 对话验收（含 mock 上游） |
 
 ---
