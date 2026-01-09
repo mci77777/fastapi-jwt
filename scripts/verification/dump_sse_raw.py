@@ -19,7 +19,11 @@ from urllib.parse import urlparse
 _LABEL_DOUBLE_ESCAPED_QUOTE = r'\\\"'
 _LABEL_DOUBLE_ESCAPED_NEWLINE = r"\\\\n"
 _PATTERN_DOUBLE_ESCAPED_QUOTE = b'\\\\\"'
-_PATTERN_DOUBLE_ESCAPED_NEWLINE = b"\\\\\\\\n"
+_PATTERN_DOUBLE_ESCAPED_NEWLINE = b"\\\\n"
+
+def _write_line(text: str) -> None:
+    sys.stdout.buffer.write((text + "\n").encode("utf-8"))
+    sys.stdout.buffer.flush()
 
 
 @dataclass
@@ -108,15 +112,17 @@ def _dump_sse_raw(
             if line == b"":
                 if current_event == b"completed" and completed_probe is not None:
                     payload = completed_probe.payload_bytes()
-                    sys.stdout.write("\n=== completed data: payload (raw) ===\n")
+                    _write_line("")
+                    _write_line("=== completed data: payload (raw) ===")
                     sys.stdout.buffer.write(payload + b"\n")
-                    sys.stdout.write(
+                    sys.stdout.buffer.flush()
+                    _write_line(
                         f"contains {_LABEL_DOUBLE_ESCAPED_QUOTE} : "
-                        f"{'YES' if completed_probe.has_double_escaped_quote() else 'NO'}\n"
+                        f"{'YES' if completed_probe.has_double_escaped_quote() else 'NO'}"
                     )
-                    sys.stdout.write(
+                    _write_line(
                         f"contains {_LABEL_DOUBLE_ESCAPED_NEWLINE} : "
-                        f"{'YES' if completed_probe.has_double_escaped_newline() else 'NO'}\n"
+                        f"{'YES' if completed_probe.has_double_escaped_newline() else 'NO'}"
                     )
                     return 0
 
