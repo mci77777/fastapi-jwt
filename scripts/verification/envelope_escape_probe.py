@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 _LABEL_DOUBLE_ESCAPED_QUOTE = r'\\\"'
 _LABEL_DOUBLE_ESCAPED_NEWLINE = r"\\\\n"
 _PATTERN_DOUBLE_ESCAPED_QUOTE = b'\\\\\"'
-_PATTERN_DOUBLE_ESCAPED_NEWLINE = b"\\\\n"
+_PATTERN_DOUBLE_ESCAPED_NEWLINE = b"\\\\\\\\n"
 
 def _write_line(text: str) -> None:
     sys.stdout.buffer.write((text + "\n").encode("utf-8"))
