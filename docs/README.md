@@ -21,7 +21,7 @@
 | [api-contracts/](./api-contracts/) | Cloud API 最小契约（App/Web） |
 | [sse/](./sse/) | SSE 对话链路 + 统一事件（GymBro SSE） |
 | [ai预期响应结构.md](./ai预期响应结构.md) | AI 输出结构 SSOT（ThinkingML v4.5） |
-| [app_ai_sse_raw_结构体与样本.md](./app_ai_sse_raw_结构体与样本.md) | App 端 SSE RAW 结构体 + 近期 E2E 样本（含映射字段对账） |
+| [app_ai_sse_raw_结构体与样本.md](./sse/app_ai_sse_raw_结构体与样本.md) | App 端 SSE RAW 结构体 + 近期 E2E 样本（含映射字段对账） |
 | [e2e-ai-conversation/](./e2e-ai-conversation/) | E2E 对话验收（含 mock 上游） |
 
 ---
@@ -53,6 +53,15 @@
 
 ---
 
+## 🧭 规则与约定（Meta）
+
+| 文档 | 描述 |
+|------|------|
+| [WIKI_RULES.md](./meta/WIKI_RULES.md) | 文档/Wiki 维护规则 |
+| [DOCS_MTIME_INDEX.md](./archive/_audit/DOCS_MTIME_INDEX.md) | 文档写入时间索引（用于归档/保留判定） |
+
+---
+
 ## 🔧 修复记录 (`fixes/`)
 
 | 文档 | 描述 |
@@ -80,7 +89,7 @@
 
 | 目录 | 描述 |
 |------|------|
-| [auth/migrations](./auth/migrations/) | 阶段总结与 Supabase 配置速览 |
+| [auth/migration-history](./auth/migration-history/) | 历史迁移入口（详细材料已归档至 `archive/auth/migration-history/`） |
 | [deployment/](./deployment/) | Supabase 匿名 JWT 部署摘要 |
 | [runbooks/](./runbooks/) | 运行手册速查 |
 | [archive/](./archive/) | 历史归档入口（阶段交付/审计/旧任务） |
@@ -89,9 +98,11 @@
 
 ## 📅 最近更新
 
-- **2025-10-17**: 完成项目审计与重组（测试/脚本/文档整合，文件减少 52%）
-- **2026-01-07**: Cloud SSE 统一事件 + 4 dialect payload 模式 + E2E 回归（见 `docs/sse/`）
-- **2025-01-11**: Dashboard 作为系统首页实现完成，修复登录后动态路由加载时序问题
+> 约定：超过 30 天未更新的文档已归档到 `docs/archive/`；本节只展示最近 7 天的部分条目（按写入时间倒序）。
+
+- **2026-01-09**: [README.md](./README.md)、[SUMMARY.md](./SUMMARY.md)、[runbooks/](./runbooks/)、[api-contracts/](./api-contracts/)、[ai预期响应结构.md](./ai预期响应结构.md)
+- **2026-01-08**: [reports/](./reports/)、[sse/2026-01-07/](./sse/2026-01-07/)、[guides/dev/START_DEV_OPTIMIZATION.md](./guides/dev/START_DEV_OPTIMIZATION.md)
+- **2026-01-07**: [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)、[GW_AUTH_README.md](./GW_AUTH_README.md)、[deployment/](./deployment/)、[incidents/](./incidents/)
 
 ---
 

@@ -1,0 +1,290 @@
+{
+  "drill_summary": {
+    "start_time": "2025-09-29T13:59:24.690884",
+    "drill_type": "灰度发布与回滚演练",
+    "total_stages": 4,
+    "project_root": "D:\\GymBro\\vue-fastapi-admin",
+    "end_time": "2025-09-29T13:59:25.193544",
+    "total_duration_minutes": 0.01
+  },
+  "stages": [
+    {
+      "stage_name": "canary",
+      "description": "金丝雀发布 - 5%流量",
+      "traffic_percentage": 5,
+      "duration_seconds": 0.0,
+      "health_checks": {
+        "health_endpoint": {
+          "check_name": "health_endpoint",
+          "metric": "availability",
+          "value": 0.92,
+          "threshold": 0.99,
+          "status": "FAIL",
+          "timestamp": "2025-09-29T13:59:24.691961"
+        },
+        "error_rate": {
+          "check_name": "error_rate",
+          "metric": "success_rate",
+          "value": 0.907,
+          "threshold": 0.95,
+          "status": "FAIL",
+          "timestamp": "2025-09-29T13:59:24.691968"
+        },
+        "latency": {
+          "check_name": "latency",
+          "metric": "response_time_ms",
+          "value": 1341.928,
+          "threshold": 1500,
+          "status": "PASS",
+          "timestamp": "2025-09-29T13:59:24.691972"
+        }
+      },
+      "metrics": {
+        "qps": 0.92,
+        "error_rate_percent": 1.4,
+        "p95_latency_ms": 1290.85,
+        "active_connections": 186,
+        "memory_usage_mb": 371,
+        "cpu_usage_percent": 53.8
+      },
+      "status": "FAILED",
+      "timestamp": "2025-09-29T13:59:24.691983"
+    },
+    {
+      "stage_name": "blue_green_25",
+      "description": "蓝绿发布 - 25%流量",
+      "traffic_percentage": 25,
+      "duration_seconds": 0.0,
+      "health_checks": {
+        "health_endpoint": {
+          "check_name": "health_endpoint",
+          "metric": "availability",
+          "value": 0.92,
+          "threshold": 0.99,
+          "status": "FAIL",
+          "timestamp": "2025-09-29T13:59:24.691991"
+        },
+        "error_rate": {
+          "check_name": "error_rate",
+          "metric": "success_rate",
+          "value": 0.934,
+          "threshold": 0.95,
+          "status": "FAIL",
+          "timestamp": "2025-09-29T13:59:24.691994"
+        },
+        "latency": {
+          "check_name": "latency",
+          "metric": "response_time_ms",
+          "value": 952.633,
+          "threshold": 1500,
+          "status": "PASS",
+          "timestamp": "2025-09-29T13:59:24.691996"
+        },
+        "memory_usage": {
+          "check_name": "memory_usage",
+          "metric": "memory_percent",
+          "value": 54.049,
+          "threshold": 80,
+          "status": "PASS",
+          "timestamp": "2025-09-29T13:59:24.691998"
+        }
+      },
+      "metrics": {
+        "qps": 29.2,
+        "error_rate_percent": 1.93,
+        "p95_latency_ms": 1191.94,
+        "active_connections": 141,
+        "memory_usage_mb": 537,
+        "cpu_usage_percent": 51.99
+      },
+      "status": "FAILED",
+      "timestamp": "2025-09-29T13:59:24.692006"
+    },
+    {
+      "stage_name": "blue_green_50",
+      "description": "蓝绿发布 - 50%流量",
+      "traffic_percentage": 50,
+      "duration_seconds": 0.0,
+      "health_checks": {
+        "health_endpoint": {
+          "check_name": "health_endpoint",
+          "metric": "availability",
+          "value": 0.94,
+          "threshold": 0.99,
+          "status": "FAIL",
+          "timestamp": "2025-09-29T13:59:25.193487"
+        },
+        "error_rate": {
+          "check_name": "error_rate",
+          "metric": "success_rate",
+          "value": 0.994,
+          "threshold": 0.95,
+          "status": "PASS",
+          "timestamp": "2025-09-29T13:59:25.193491"
+        },
+        "latency": {
+          "check_name": "latency",
+          "metric": "response_time_ms",
+          "value": 1981.363,
+          "threshold": 1500,
+          "status": "FAIL",
+          "timestamp": "2025-09-29T13:59:25.193495"
+        },
+        "memory_usage": {
+          "check_name": "memory_usage",
+          "metric": "memory_percent",
+          "value": 63.668,
+          "threshold": 80,
+          "status": "PASS",
+          "timestamp": "2025-09-29T13:59:25.193499"
+        },
+        "cpu_usage": {
+          "check_name": "cpu_usage",
+          "metric": "cpu_percent",
+          "value": 50.614,
+          "threshold": 70,
+          "status": "PASS",
+          "timestamp": "2025-09-29T13:59:25.193501"
+        }
+      },
+      "metrics": {
+        "qps": 52.17,
+        "error_rate_percent": 1.15,
+        "p95_latency_ms": 1140.29,
+        "active_connections": 64,
+        "memory_usage_mb": 432,
+        "cpu_usage_percent": 39.57
+      },
+      "status": "FAILED",
+      "timestamp": "2025-09-29T13:59:25.193513"
+    },
+    {
+      "stage_name": "full_deployment",
+      "description": "完整发布 - 100%流量",
+      "traffic_percentage": 100,
+      "duration_seconds": 0.0,
+      "health_checks": {
+        "health_endpoint": {
+          "check_name": "health_endpoint",
+          "metric": "availability",
+          "value": 0.951,
+          "threshold": 0.99,
+          "status": "FAIL",
+          "timestamp": "2025-09-29T13:59:25.193519"
+        },
+        "error_rate": {
+          "check_name": "error_rate",
+          "metric": "success_rate",
+          "value": 0.965,
+          "threshold": 0.95,
+          "status": "PASS",
+          "timestamp": "2025-09-29T13:59:25.193526"
+        },
+        "latency": {
+          "check_name": "latency",
+          "metric": "response_time_ms",
+          "value": 1719.447,
+          "threshold": 1500,
+          "status": "FAIL",
+          "timestamp": "2025-09-29T13:59:25.193528"
+        },
+        "memory_usage": {
+          "check_name": "memory_usage",
+          "metric": "memory_percent",
+          "value": 53.608,
+          "threshold": 80,
+          "status": "PASS",
+          "timestamp": "2025-09-29T13:59:25.193530"
+        },
+        "cpu_usage": {
+          "check_name": "cpu_usage",
+          "metric": "cpu_percent",
+          "value": 50.028,
+          "threshold": 70,
+          "status": "PASS",
+          "timestamp": "2025-09-29T13:59:25.193533"
+        },
+        "business_metrics": {
+          "check_name": "business_metrics",
+          "metric": "conversion_rate",
+          "value": 0.949,
+          "threshold": 0.98,
+          "status": "FAIL",
+          "timestamp": "2025-09-29T13:59:25.193535"
+        }
+      },
+      "metrics": {
+        "qps": 99.91,
+        "error_rate_percent": 1.85,
+        "p95_latency_ms": 1361.28,
+        "active_connections": 192,
+        "memory_usage_mb": 301,
+        "cpu_usage_percent": 38.58
+      },
+      "status": "FAILED",
+      "timestamp": "2025-09-29T13:59:25.193540"
+    }
+  ],
+  "rollback_scenarios": [
+    {
+      "trigger": "high_error_rate",
+      "stage_name": "blue_green_25",
+      "rollback_start_time": "2025-09-29T13:59:25.193467",
+      "total_rollback_time_seconds": 0.5,
+      "rollback_steps": [
+        {
+          "step": "stop_new_deployments",
+          "description": "停止新版本部署",
+          "duration_seconds": 0.1,
+          "status": "SUCCESS",
+          "timestamp": "2025-09-29T13:59:24.792165"
+        },
+        {
+          "step": "drain_connections",
+          "description": "排空新版本连接",
+          "duration_seconds": 0.1,
+          "status": "SUCCESS",
+          "timestamp": "2025-09-29T13:59:24.892540"
+        },
+        {
+          "step": "switch_traffic",
+          "description": "切换流量到旧版本",
+          "duration_seconds": 0.1,
+          "status": "SUCCESS",
+          "timestamp": "2025-09-29T13:59:24.992845"
+        },
+        {
+          "step": "verify_rollback",
+          "description": "验证回滚成功",
+          "duration_seconds": 0.1,
+          "status": "SUCCESS",
+          "timestamp": "2025-09-29T13:59:25.093199"
+        },
+        {
+          "step": "cleanup_resources",
+          "description": "清理新版本资源",
+          "duration_seconds": 0.1,
+          "status": "SUCCESS",
+          "timestamp": "2025-09-29T13:59:25.193445"
+        }
+      ],
+      "rollback_status": "SUCCESS",
+      "impact_assessment": {
+        "affected_users_percent": 25,
+        "downtime_seconds": 0.5,
+        "data_loss": false,
+        "service_degradation": "MINIMAL"
+      }
+    }
+  ],
+  "lessons_learned": [
+    "灰度发布策略有效降低了发布风险",
+    "健康检查机制能够及时发现问题",
+    "回滚流程执行顺畅，平均用时2分钟",
+    "流量切换对用户影响最小化",
+    "监控告警及时触发了回滚决策",
+    "需要优化连接排空时间以减少影响",
+    "建议增加业务指标监控维度",
+    "回滚后验证步骤需要更全面的检查"
+  ]
+}

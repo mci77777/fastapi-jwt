@@ -4,6 +4,7 @@
 
 ## 目录
 - `_audit/`：2025-10 项目审计与重组材料
+- `auth/`：认证迁移与历史材料（按阶段归档）
 - `dashboard-refactor/`：Dashboard 重构阶段交付/交接材料
 - `jwt改/`、`jwt改造/`：JWT 改造历史材料
 - `task/`：历史任务交付文档

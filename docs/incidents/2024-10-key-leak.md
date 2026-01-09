@@ -1,15 +1,15 @@
 # 🔒 密钥泄露紧急处理指南
 
-> **泄露的密钥**: `98ef4ec9397c6627b12acae20e618aa524933073`  
+> **泄露的密钥**: `<redacted>`  
 > **泄露的文件**: `storage/ai_router/supabase_endpoints-latest.json`  
-> **泄露的 commit**: `98ef4ec`
+> **泄露的 commit**: `<redacted>`
 
 ## 📋 执行清单（15分钟完成）
 
 ### ✅ 步骤 1: 撤销泄露的密钥（5分钟）
 
 1. 登录 xAI Console: https://console.x.ai/api-keys
-2. 找到并删除密钥: `98ef4ec...073`
+2. 找到并删除密钥: `<redacted>`
 3. 生成新密钥并保存到密码管理器
 4. 更新 `.env` 文件：
    ```bash
@@ -93,7 +93,7 @@ make check-secrets
 
 ```bash
 # 搜索泄露的密钥（应该找不到）
-git log --all --full-history --source --pretty=format:"%H %s" | grep "98ef4ec"
+git log --all --full-history --source --pretty=format:"%H %s" | grep "<redacted>"
 
 # 搜索文件历史（应该不存在）
 git log --all -- storage/ai_router/supabase_endpoints-latest.json
@@ -103,7 +103,7 @@ git log --all -- storage/ai_router/supabase_endpoints-latest.json
 
 ## 📞 需要帮助？
 
-- **技术问题**: 查看 `docs/SECURITY.md`
+- **技术问题**: 查看 `docs/runbooks/security/KEY_LEAK_RESPONSE.md`
 - **紧急联系**: DevOps 团队
 
 **文档版本**: v1.0  

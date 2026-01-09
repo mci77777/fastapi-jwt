@@ -42,5 +42,4 @@ python scripts/verification/verify_gw_auth.py
 ## 5) 相关文档
 
 - 设计与总览：`docs/GW_AUTH_README.md`
-- 回滚预案：`docs/runbooks/GW_AUTH_ROLLBACK.md`
-
+- 回滚预案：`docs/runbooks/gw-auth/GW_AUTH_ROLLBACK.md`

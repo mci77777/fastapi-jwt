@@ -1,0 +1,307 @@
+{
+	"info": {
+		"_postman_id": "gymbro-api-tests",
+		"name": "GymBro API Tests",
+		"description": "端到端测试集合，用于验证 JWT 认证、AI 对话和数据同步功能",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:9999",
+			"type": "string"
+		},
+		{
+			"key": "supabase_url",
+			"value": "https://your-project-id.supabase.co",
+			"type": "string"
+		},
+		{
+			"key": "supabase_anon_key",
+			"value": "your-anon-key-here",
+			"type": "string"
+		},
+		{
+			"key": "test_email",
+			"value": "test@example.com",
+			"type": "string"
+		},
+		{
+			"key": "test_password",
+			"value": "testpassword123",
+			"type": "string"
+		},
+		{
+			"key": "access_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "message_id",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "1. 用户注册",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200 or 400 (user exists)\", function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "apikey",
+						"value": "{{supabase_anon_key}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}"
+				},
+				"url": {
+					"raw": "{{supabase_url}}/auth/v1/signup",
+					"host": [
+						"{{supabase_url}}"
+					],
+					"path": [
+						"auth",
+						"v1",
+						"signup"
+					]
+				}
+			}
+		},
+		{
+			"name": "2. 用户登录获取 JWT",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has access_token\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('access_token');",
+							"    pm.collectionVariables.set('access_token', jsonData.access_token);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "apikey",
+						"value": "{{supabase_anon_key}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}"
+				},
+				"url": {
+					"raw": "{{supabase_url}}/auth/v1/token?grant_type=password",
+					"host": [
+						"{{supabase_url}}"
+					],
+					"path": [
+						"auth",
+						"v1",
+						"token"
+					],
+					"query": [
+						{
+							"key": "grant_type",
+							"value": "password"
+						}
+					]
+				}
+			}
+		},
+		{
+			"name": "3. 测试无效 JWT - 应返回 401",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 401\", function () {",
+							"    pm.response.to.have.status(401);",
+							"});",
+							"",
+							"pm.test(\"Response has error details\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('detail');",
+							"    pm.expect(jsonData.detail).to.have.property('code');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer invalid-token"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"text\": \"Hello, this should fail\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/messages",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"messages"
+					]
+				}
+			}
+		},
+		{
+			"name": "4. 发送 AI 消息 - 有效 JWT",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 202\", function () {",
+							"    pm.response.to.have.status(202);",
+							"});",
+							"",
+							"pm.test(\"Response has message_id\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('message_id');",
+							"    pm.collectionVariables.set('message_id', jsonData.message_id);",
+							"});",
+							"",
+							"pm.test(\"Response has trace_id\", function () {",
+							"    pm.expect(pm.response.headers.get('x-trace-id')).to.not.be.null;",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{access_token}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"text\": \"Hello, can you help me with my workout plan?\",\n  \"conversation_id\": \"test-conversation-001\",\n  \"metadata\": {\n    \"test\": true,\n    \"timestamp\": \"{{$timestamp}}\"\n  }\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/messages",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"messages"
+					]
+				}
+			}
+		},
+		{
+			"name": "5. 获取 SSE 事件流",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Content-Type is text/event-stream\", function () {",
+							"    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+							"});",
+							"",
+							"pm.test(\"Response contains SSE events\", function () {",
+							"    var responseText = pm.response.text();",
+							"    pm.expect(responseText).to.include('event:');",
+							"    pm.expect(responseText).to.include('data:');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{access_token}}"
+					},
+					{
+						"key": "Accept",
+						"value": "text/event-stream"
+					},
+					{
+						"key": "Cache-Control",
+						"value": "no-cache"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/v1/messages/{{message_id}}/events",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"messages",
+						"{{message_id}}",
+						"events"
+					]
+				}
+			}
+		}
+	]
+}

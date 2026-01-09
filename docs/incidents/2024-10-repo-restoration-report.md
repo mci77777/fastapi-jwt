@@ -293,7 +293,7 @@ f0befee feat: add dashboard components for log window, polling config, real-time
 
 - **云端部署指南**: `docs/deployment/CLOUD_DEPLOYMENT_GUIDE.md`
 - **环境配置脚本**: `scripts/configure-env.ps1`
-- **Git 历史清理报告**: `docs/KEY_LEAK_RESPONSE.md`
+- **Git 历史清理报告**: `docs/runbooks/security/KEY_LEAK_RESPONSE.md`
 - **仓库迁移文档**: `docs/MIGRATION_TO_NEW_REPO.md`
 
 ## ✅ 验证清单

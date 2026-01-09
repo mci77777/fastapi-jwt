@@ -4,13 +4,13 @@
 
 ## 首页
 - `docs/README.md`
-- `docs/WIKI_RULES.md`
+- `docs/meta/WIKI_RULES.md`
 
 ## 核心
 - `docs/PROJECT_OVERVIEW.md`
 - `docs/GW_AUTH_README.md`
-- `docs/GW_AUTH_INSTALLATION.md`
-- `docs/GW_AUTH_DELIVERY_REPORT.md`
+- `docs/runbooks/gw-auth/GW_AUTH_INSTALLATION.md`
+- `docs/runbooks/gw-auth/GW_AUTH_DELIVERY_REPORT.md`
 - `docs/SCRIPTS_INDEX.md`
 - `docs/ENV_CONFIGURATION_GUIDE.md`
 
@@ -31,12 +31,12 @@
 ## 功能 / 运维
 - `docs/features/README.md`
 - `docs/runbooks/README.md`
-- `docs/runbooks/GW_AUTH_ROLLBACK.md`
+- `docs/runbooks/gw-auth/GW_AUTH_ROLLBACK.md`
 - `docs/deployment/README.md`
 - `docs/supabase/README.md`
 
 ## 历史
 - `docs/fixes/README.md`
 - `docs/incidents/README.md`
-- `docs/KEY_LEAK_RESPONSE.md`
+- `docs/runbooks/security/KEY_LEAK_RESPONSE.md`
 - `docs/archive/README.md`

@@ -7,7 +7,7 @@
 -- - anonymous: disabled by default (no grants / no policies)
 --
 -- Notes
--- - Use (select auth.uid()) to avoid per-row auth.uid() evaluation (see docs/RLS_PERFORMANCE_OPTIMIZATION.md).
+-- - Use (select auth.uid()) to avoid per-row auth.uid() evaluation (see docs/supabase/RLS_PERFORMANCE_OPTIMIZATION.md).
 
 begin;
 

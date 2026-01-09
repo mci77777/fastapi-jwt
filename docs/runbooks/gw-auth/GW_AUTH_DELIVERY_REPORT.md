@@ -40,5 +40,4 @@ python scripts/verification/verify_gw_auth.py
 
 ## 5) 回滚
 
-回滚步骤见：`docs/runbooks/GW_AUTH_ROLLBACK.md`
-
+回滚步骤见：`docs/runbooks/gw-auth/GW_AUTH_ROLLBACK.md`

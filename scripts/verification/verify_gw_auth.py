@@ -126,7 +126,7 @@ class GWAuthVerifier:
 
         import os
 
-        files_to_check = ["docs/runbooks/GW_AUTH_ROLLBACK.md", ".env.example", "app/settings/config.py"]
+        files_to_check = ["docs/runbooks/gw-auth/GW_AUTH_ROLLBACK.md", ".env.example", "app/settings/config.py"]
 
         all_exist = True
         for file_path in files_to_check:

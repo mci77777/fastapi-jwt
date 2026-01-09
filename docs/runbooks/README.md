@@ -1,6 +1,6 @@
 # Runbook 汇总
 
-整合原 `e2e-anon.md` 与 `GW_AUTH_ROLLBACK.md`，集中保留告警判定、排查路径与回滚步骤。
+集中保留告警判定、排查路径与回滚步骤；GW-Auth 相关手册统一放在 `gw-auth/`。
 
 ## 🌙 E2E-ANON Nightly
 - 指标：`e2e_anon_success`、`e2e_anon_latency_ms`、`sse_conns_inflight`、`auth_jwks_refresh_err_total`。
@@ -11,3 +11,8 @@
 - 触发：认证失败率 >5%、正常用户误杀 >10%、`/healthz` 异常、Prometheus 指标异常或用户投诉激增。
 - 快照：保留 JWT 校验开关、匿名限流、SSE 并发、回滚 Feature Flag 等环境变量。
 - 操作：切换回旧版本配置→验证健康探针→观察告警回落→记录根因与补救动作。
+
+## 📁 GW-Auth（网关认证）
+- `gw-auth/GW_AUTH_INSTALLATION.md`：安装与验证（推荐入口）
+- `gw-auth/GW_AUTH_ROLLBACK.md`：回滚预案
+- `gw-auth/GW_AUTH_DELIVERY_REPORT.md`：交付报告（范围/接口/指标/验收）

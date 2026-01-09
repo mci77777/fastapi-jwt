@@ -1,0 +1,50 @@
+[
+  {
+    "timestamp": "2025-09-29T14:35:00Z",
+    "alert_name": "HighAuthFailureRate",
+    "severity": "warning",
+    "status": "firing",
+    "labels": {
+      "service": "gymbro-api",
+      "severity": "warning"
+    },
+    "annotations": {
+      "summary": "JWT认证失败率过高",
+      "description": "401错误率 42.3% 超过阈值20%",
+      "runbook_url": "https://wiki.company.com/runbooks/auth-failure"
+    },
+    "value": "42.3%"
+  },
+  {
+    "timestamp": "2025-09-29T15:03:00Z",
+    "alert_name": "HighErrorRate",
+    "severity": "critical",
+    "status": "firing",
+    "labels": {
+      "service": "gymbro-api",
+      "severity": "critical"
+    },
+    "annotations": {
+      "summary": "5xx错误率过高",
+      "description": "5xx错误率 12.8% 超过阈值5%",
+      "runbook_url": "https://wiki.company.com/runbooks/high-error-rate"
+    },
+    "value": "12.8%"
+  },
+  {
+    "timestamp": "2025-09-29T15:05:00Z",
+    "alert_name": "HighLatency",
+    "severity": "critical",
+    "status": "firing",
+    "labels": {
+      "service": "gymbro-api",
+      "severity": "critical"
+    },
+    "annotations": {
+      "summary": "API延迟过高",
+      "description": "P95延迟 6250ms 超过阈值5000ms",
+      "runbook_url": "https://wiki.company.com/runbooks/high-latency"
+    },
+    "value": "6250ms"
+  }
+]

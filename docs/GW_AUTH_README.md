@@ -6,9 +6,9 @@
 
 ## 📚 快速导航
 
-- [安装指南](GW_AUTH_INSTALLATION.md) - 如何安装和配置
-- [交付报告](GW_AUTH_DELIVERY_REPORT.md) - 完整的功能说明
-- [回滚预案](runbooks/GW_AUTH_ROLLBACK.md) - 紧急回滚步骤
+- [安装指南](runbooks/gw-auth/GW_AUTH_INSTALLATION.md) - 如何安装和配置
+- [交付报告](runbooks/gw-auth/GW_AUTH_DELIVERY_REPORT.md) - 完整的功能说明
+- [回滚预案](runbooks/gw-auth/GW_AUTH_ROLLBACK.md) - 紧急回滚步骤
 
 ## 🎯 核心功能
 
@@ -209,10 +209,11 @@ WHITELIST_PATHS = {
 │       └── config.py          # 配置管理（修改：添加回滚开关）
 ├── docs/
 │   ├── GW_AUTH_README.md      # 本文档
-│   ├── GW_AUTH_INSTALLATION.md # 安装指南
-│   ├── GW_AUTH_DELIVERY_REPORT.md # 交付报告
 │   └── runbooks/
-│       └── GW_AUTH_ROLLBACK.md # 回滚预案
+│       └── gw-auth/
+│           ├── GW_AUTH_INSTALLATION.md # 安装指南
+│           ├── GW_AUTH_DELIVERY_REPORT.md # 交付报告
+│           └── GW_AUTH_ROLLBACK.md # 回滚预案
 ├── scripts/
 │   └── verification/
 │       ├── verify_gw_auth.py      # Python验证脚本
@@ -252,7 +253,7 @@ pip install prometheus_client
 
 - **技术文档**: [docs/](.)
 - **问题反馈**: GitHub Issues
-- **紧急联系**: 参考 [回滚预案](runbooks/GW_AUTH_ROLLBACK.md)
+- **紧急联系**: 参考 [回滚预案](runbooks/gw-auth/GW_AUTH_ROLLBACK.md)
 
 ## 📝 更新日志
 
