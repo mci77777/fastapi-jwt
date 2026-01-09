@@ -4,7 +4,7 @@
 
 1. `verify_setup.py`：检查依赖、环境变量、网络连通性以及必需文件。
 2. `generate_test_token.py`：生成匿名访问用的测试 Token，默认写入 `../artifacts/token.json`（支持 `--method {auto|edge|native}` 与 `--verify`）。
-3. `run_e2e_enhanced.py`：单脚本串联注册 → 登录 → 消息发送 → SSE 拉流，并把完整链路写入 JSON。
+3. `run_e2e_enhanced.py`：单脚本串联注册 → 登录 → 消息发送 → SSE 拉流，并产出 **TXT（默认，含尖括号标签原样）** + JSON（完整 trace）。
 
 若需进一步调试，可根据场景选用下列脚本：
 
@@ -24,6 +24,39 @@ python e2e/anon_jwt_sse/scripts/verify_setup.py
 python e2e/anon_jwt_sse/scripts/generate_test_token.py
 python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py
 ```
+
+## Prompt 模式（server / passthrough）
+
+`run_e2e_enhanced.py` 支持两种 prompt 策略：
+
+- `--prompt-mode passthrough`（默认）：透传 `messages(system+user)` 且 `skip_prompt=true`，便于验证“尖括号标签原样输出（例如 `<thinking>/<final>`）”。
+- `--prompt-mode server`：仅发送 `text` 且 `skip_prompt=false`，由后端按 prompt SSOT 组装。
+
+可选参数：
+
+- `--extra-system-prompt "<text>"`：仅对 `passthrough` 生效；传空字符串可关闭。
+
+## 多模型并发（--models / --concurrency）
+
+示例（并发 2，跑两个 model key）：
+
+```bash
+python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py --models "xai,deepseek" --concurrency 2
+```
+
+说明：
+
+- `--models` 为空时会尝试从 `GET /api/v1/llm/app/models` 自动选择；失败则走 default model（不显式传 model）。
+- 并发过高可能触发后端 SSE 并发守卫/限流，失败会在 TXT/JSON 报告里体现。
+
+## 报告产物（TXT / JSON）
+
+- JSON：默认 `e2e/anon_jwt_sse/artifacts/anon_e2e_trace.json`（机器可读 trace）
+- TXT：默认同名 `.txt`（人工核对，包含 `completed.reply` 原文，含尖括号标签原样）
+
+可选切换 TXT 内容：
+
+- `--result-mode text|raw|both`（默认 `text`）
 
 ## 真实邮箱流（Mail API）
 

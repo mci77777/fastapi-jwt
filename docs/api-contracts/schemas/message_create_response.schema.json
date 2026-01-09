@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.gymbro.cloud/schemas/message_create_response.schema.json",
+  "title": "MessageCreateResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "message_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "conversation_id": { "type": "string", "format": "uuid" }
+  },
+  "required": ["message_id", "conversation_id"]
+}
+

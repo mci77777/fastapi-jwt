@@ -32,6 +32,15 @@ except Exception:  # pragma: no cover
 
 ARTIFACTS_DIR = Path(__file__).resolve().parents[1] / "artifacts"
 DEFAULT_OUTPUT = ARTIFACTS_DIR / "anon_e2e_trace.json"
+DEFAULT_OUTPUT_TXT = ARTIFACTS_DIR / "anon_e2e_trace.txt"
+
+# 默认附加 prompt（E2E/Web 默认启用）：要求模型原样输出包含尖括号标签的文本。
+# 注意：此 prompt 仅用于 passthrough（skip_prompt=true），server 模式不注入（由后端 prompt SSOT 决定）。
+DEFAULT_EXTRA_SYSTEM_PROMPT = (
+    "请严格按原样输出带尖括号标签的 ThinkingML："
+    "<thinking>...</thinking> 紧接 <final>...</final>。"
+    "不要转义尖括号，不要额外解释协议。"
+)
 
 
 @dataclass
@@ -99,6 +108,15 @@ class AnonymousE2E:
             api_base_url=self.api_base_url,
             request_id=self.request_id,
         )
+        # 运行参数（用于 TXT 报告）
+        self._output_txt_path: Optional[Path] = None
+        self._result_mode: str = "text"
+        self._prompt_mode: str = "passthrough"
+        self._extra_system_prompt: str = DEFAULT_EXTRA_SYSTEM_PROMPT
+        self._models: list[str] = []
+        self._concurrency: int = 1
+        self._message_text: str = "hello"
+        self._model_runs: list[dict[str, Any]] = []
 
     @staticmethod
     def _now_ms() -> float:
@@ -175,6 +193,57 @@ class AnonymousE2E:
                     },
                 }
         return {"event": event, "data": data}
+
+    @staticmethod
+    def _parse_models(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple)):
+            raw_list = [str(v) for v in value]
+        else:
+            raw_list = re.split(r"[,\s]+", str(value or "").strip())
+        items: list[str] = []
+        for v in raw_list:
+            text = str(v or "").strip()
+            if text:
+                items.append(text)
+        # 去重但保序
+        seen: set[str] = set()
+        out: list[str] = []
+        for m in items:
+            if m in seen:
+                continue
+            seen.add(m)
+            out.append(m)
+        return out
+
+    async def _list_app_models(self, client: httpx.AsyncClient, token: str) -> list[str]:
+        """拉取 App 可发送的 model keys（SSOT：/llm/app/models）。失败时返回空列表。"""
+
+        url = f"{self.api_base_url}/llm/app/models"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "X-Request-Id": self.request_id,
+        }
+        try:
+            resp = await client.get(url, headers=headers, params={"only_active": "true"}, timeout=self.timeout)
+        except Exception:
+            return []
+        if resp.status_code != 200:
+            return []
+        body = _safe_json(resp)
+        items = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(items, list):
+            return []
+        out: list[str] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if name:
+                out.append(name)
+        return out
 
     @staticmethod
     def _extract_otp(text: str) -> Optional[str]:
@@ -779,19 +848,51 @@ class AnonymousE2E:
         )
         return step, (token if isinstance(token, str) else None)
 
-    async def _send_message(self, client: httpx.AsyncClient, token: str) -> StepRecord:
+    async def _send_message(
+        self,
+        client: httpx.AsyncClient,
+        token: str,
+        *,
+        request_id: str,
+        model_key: Optional[str],
+        prompt_mode: str,
+        extra_system_prompt: str,
+        message_text: str,
+    ) -> StepRecord:
         url = f"{self.api_base_url}/messages"
-        payload = {
-            "text": "hello",
-            "conversation_id": None,
-            "metadata": {
-                "source": "anon_e2e",
-            },
+        resolved_model_key = str(model_key or "").strip() or None
+        resolved_prompt_mode = "passthrough" if str(prompt_mode or "").strip() == "passthrough" else "server"
+        text = str(message_text or "").strip() or "hello"
+
+        metadata: Dict[str, Any] = {
+            "source": "anon_e2e",
+            "prompt_mode": resolved_prompt_mode,
         }
+        if resolved_model_key:
+            metadata["model"] = resolved_model_key
+
+        payload: Dict[str, Any] = {
+            "conversation_id": None,
+            "metadata": metadata,
+        }
+        if resolved_model_key:
+            payload["model"] = resolved_model_key
+
+        if resolved_prompt_mode == "passthrough":
+            payload["skip_prompt"] = True
+            system_text = str(extra_system_prompt or "").strip() or DEFAULT_EXTRA_SYSTEM_PROMPT
+            payload["messages"] = [
+                {"role": "system", "content": system_text},
+                {"role": "user", "content": text},
+            ]
+        else:
+            payload["skip_prompt"] = False
+            payload["text"] = text
+
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "X-Request-Id": self.request_id,
+            "X-Request-Id": request_id,
         }
 
         start = self._now_ms()
@@ -803,24 +904,39 @@ class AnonymousE2E:
         conversation_id = body.get("conversation_id") if isinstance(body, dict) else None
 
         return StepRecord(
-            name="api_create_message",
+            name=f"api_create_message(model={resolved_model_key or 'default'},prompt={resolved_prompt_mode})",
             success=resp.status_code in (200, 202) and isinstance(message_id, str) and isinstance(conversation_id, str),
-            request={"url": url, "headers": {"X-Request-Id": self.request_id}, "payload": payload},
+            request={"url": url, "headers": {"X-Request-Id": request_id}, "payload": payload},
             response={"status_code": resp.status_code, "body": body},
-            notes={"message_id": message_id, "conversation_id": conversation_id},
+            notes={
+                "request_id": request_id,
+                "model": resolved_model_key,
+                "prompt_mode": resolved_prompt_mode,
+                "message_id": message_id,
+                "conversation_id": conversation_id,
+            },
             duration_ms=duration,
         )
 
-    async def _stream_events(self, client: httpx.AsyncClient, token: str, message_id: str, conversation_id: str) -> StepRecord:
+    async def _stream_events(
+        self,
+        client: httpx.AsyncClient,
+        token: str,
+        message_id: str,
+        conversation_id: str,
+        *,
+        request_id: str,
+    ) -> tuple[StepRecord, Optional[str], Optional[Dict[str, Any]]]:
         url = f"{self.api_base_url}/messages/{message_id}/events"
         headers = {
             "Authorization": f"Bearer {token}",
             "Accept": "text/event-stream",
-            "X-Request-Id": self.request_id,
+            "X-Request-Id": request_id,
         }
 
         frames: List[Dict[str, Any]] = []
         final_event: Optional[Dict[str, Any]] = None
+        final_reply_text: Optional[str] = None
         status_code = None
         start = self._now_ms()
 
@@ -848,16 +964,20 @@ class AnonymousE2E:
 
                 if resp.status_code != 200:
                     text = await resp.aread()
-                    return StepRecord(
-                        name="api_stream_events",
-                        success=False,
-                        request={
-                            "url": url,
-                            "headers": {"X-Request-Id": self.request_id},
-                            "params": {"conversation_id": conversation_id},
-                        },
-                        response={"status_code": resp.status_code, "body": text.decode("utf-8", "ignore")},
-                        duration_ms=self._now_ms() - start,
+                    return (
+                        StepRecord(
+                            name="api_stream_events",
+                            success=False,
+                            request={
+                                "url": url,
+                                "headers": {"X-Request-Id": request_id},
+                                "params": {"conversation_id": conversation_id},
+                            },
+                            response={"status_code": resp.status_code, "body": text.decode("utf-8", "ignore")},
+                            duration_ms=self._now_ms() - start,
+                        ),
+                        None,
+                        None,
                     )
 
                 async for line in resp.aiter_lines():
@@ -871,6 +991,9 @@ class AnonymousE2E:
                             frames.append(self._safe_sse_event(str(evt.get("event")), evt.get("data")))
                             if evt.get("event") in ("completed", "error"):
                                 final_event = evt
+                                data = evt.get("data")
+                                if isinstance(data, dict) and isinstance(data.get("reply"), str):
+                                    final_reply_text = str(data.get("reply") or "")
                                 break
                         current_event = "message"
                         continue
@@ -880,28 +1003,35 @@ class AnonymousE2E:
                     elif line.startswith("data:"):
                         data_lines.append(line[len("data:") :].strip())
         except Exception as exc:  # pragma: no cover
-            return StepRecord(
-                name="api_stream_events",
-                success=False,
-                request={"url": url},
-                response={"status_code": status_code, "body": str(exc)},
-                duration_ms=self._now_ms() - start,
-                notes={"error": str(exc)},
+            return (
+                StepRecord(
+                    name="api_stream_events",
+                    success=False,
+                    request={"url": url},
+                    response={"status_code": status_code, "body": str(exc)},
+                    duration_ms=self._now_ms() - start,
+                    notes={"error": str(exc)},
+                ),
+                None,
+                None,
             )
 
         duration = self._now_ms() - start
         final_name = final_event.get("event") if isinstance(final_event, dict) else None
         ok = bool(final_event) and len(frames) > 0 and final_name == "completed"
 
+        safe_final: Optional[Dict[str, Any]] = None
+        if isinstance(final_event, dict) and final_name in ("completed", "error"):
+            safe_final = self._safe_sse_event(final_name, final_event.get("data"))
+
         notes: Dict[str, Any] = {
             "frames": frames[:200],
-            "final_event": final_event,
         }
 
         # 对账：completed/error 的 request_id 必须与 create 的 X-Request-Id 一致
         if isinstance(final_event, dict) and final_name in ("completed", "error"):
             data = final_event.get("data")
-            if isinstance(data, dict) and data.get("request_id") and data.get("request_id") != self.request_id:
+            if isinstance(data, dict) and data.get("request_id") and data.get("request_id") != request_id:
                 ok = False
                 notes["request_id_mismatch"] = True
 
@@ -909,21 +1039,25 @@ class AnonymousE2E:
         if final_name == "error":
             notes["final_error"] = True
 
-        return StepRecord(
-            name="api_stream_events",
-            success=ok,
-            request={
-                "url": url,
-                "headers": {"X-Request-Id": self.request_id},
-                "params": {"conversation_id": conversation_id},
-            },
-            response={
-                "status_code": status_code,
-                "frames_count": len(frames),
-                "final_event": final_event,
-            },
-            notes=notes,
-            duration_ms=duration,
+        return (
+            StepRecord(
+                name="api_stream_events",
+                success=ok,
+                request={
+                    "url": url,
+                    "headers": {"X-Request-Id": request_id},
+                    "params": {"conversation_id": conversation_id},
+                },
+                response={
+                    "status_code": status_code,
+                    "frames_count": len(frames),
+                    "final_event": safe_final,
+                },
+                notes=notes,
+                duration_ms=duration,
+            ),
+            final_reply_text,
+            final_event,
         )
 
     async def run(
@@ -936,8 +1070,23 @@ class AnonymousE2E:
         mail_api_domain: Optional[str],
         mail_api_expiry_ms: int,
         otp_output_path: Optional[str],
+        prompt_mode: str,
+        extra_system_prompt: str,
+        models: list[str],
+        concurrency: int,
+        result_mode: str,
+        output_txt_path: Optional[Path],
+        message_text: str,
     ) -> int:
         ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+        self._output_txt_path = output_txt_path
+        raw_result_mode = str(result_mode or "").strip()
+        self._result_mode = "raw" if raw_result_mode == "raw" else ("both" if raw_result_mode == "both" else "text")
+        self._prompt_mode = "passthrough" if str(prompt_mode or "").strip() == "passthrough" else "server"
+        self._extra_system_prompt = str(extra_system_prompt or "").strip() or DEFAULT_EXTRA_SYSTEM_PROMPT
+        self._models = list(models or [])
+        self._concurrency = max(int(concurrency or 1), 1)
+        self._message_text = str(message_text or "").strip() or "hello"
 
         mailbox: Optional[Mailbox] = None
         local_domain = os.getenv("E2E_LOCAL_EMAIL_DOMAIN", "example.com").strip() or "example.com"
@@ -1001,6 +1150,20 @@ class AnonymousE2E:
 
         print(f"request_id={self.request_id} action=start_anon_e2e api_base={self.api_base_url}")
         print(f"request_id={self.request_id} temp_email={self._mask_email(email)}")
+        self.report.add_step(
+            StepRecord(
+                name="e2e_config",
+                success=True,
+                notes={
+                    "prompt_mode": self._prompt_mode,
+                    "extra_system_prompt_len": len(self._extra_system_prompt or ""),
+                    "models": self._models,
+                    "concurrency": self._concurrency,
+                    "result_mode": self._result_mode,
+                    "message_text_len": len(self._message_text),
+                },
+            )
+        )
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             # 注册
@@ -1068,23 +1231,91 @@ class AnonymousE2E:
             if not isinstance(token, str) or not token:
                 return await self._finalize(1)
 
-            # 发送消息
-            message_step = await self._send_message(client, token)
-            self.report.add_step(message_step)
-            print(f"[STEP] Message status: {message_step.response['status_code']} request_id={self.request_id}")
-            if not message_step.success:
-                return await self._finalize(1)
+            selected_models = [m for m in (self._models or []) if str(m or "").strip()]
+            if not selected_models:
+                try:
+                    selected_models = await self._list_app_models(client, token)
+                except Exception:
+                    selected_models = []
+                # 兼容：无法获取模型列表时，走 default model（不显式传 model_key）
+                if not selected_models:
+                    selected_models = [""]
 
-            message_id = message_step.notes.get("message_id")
-            conversation_id = message_step.notes.get("conversation_id")
-            if not isinstance(message_id, str) or not isinstance(conversation_id, str):
-                return await self._finalize(1)
+            async def run_one(idx: int, raw_model: str) -> dict[str, Any]:
+                model_key = str(raw_model or "").strip() or None
+                per_request_id = str(uuid.uuid4())
+                create_step = await self._send_message(
+                    client,
+                    token,
+                    request_id=per_request_id,
+                    model_key=model_key,
+                    prompt_mode=self._prompt_mode,
+                    extra_system_prompt=self._extra_system_prompt,
+                    message_text=self._message_text,
+                )
+                message_id = create_step.notes.get("message_id")
+                conversation_id = create_step.notes.get("conversation_id")
+                if not create_step.success or not isinstance(message_id, str) or not isinstance(conversation_id, str):
+                    return {
+                        "idx": idx,
+                        "model": model_key,
+                        "request_id": per_request_id,
+                        "create_step": create_step,
+                        "events_step": None,
+                        "success": False,
+                        "reply": None,
+                        "final_event": None,
+                    }
 
-            # 监听 SSE
-            events_step = await self._stream_events(client, token, message_id, conversation_id)
-            self.report.add_step(events_step)
-            print(f"request_id={self.request_id} step=stream_events status={events_step.response.get('status_code')}")
-            if not events_step.success:
+                events_step, reply_text, final_event = await self._stream_events(
+                    client,
+                    token,
+                    message_id,
+                    conversation_id,
+                    request_id=per_request_id,
+                )
+                return {
+                    "idx": idx,
+                    "model": model_key,
+                    "request_id": per_request_id,
+                    "create_step": create_step,
+                    "events_step": events_step,
+                    "success": bool(events_step.success),
+                    "reply": reply_text,
+                    "final_event": final_event,
+                }
+
+            sem = asyncio.Semaphore(self._concurrency)
+
+            async def bounded(idx: int, model_key: str) -> dict[str, Any]:
+                async with sem:
+                    return await run_one(idx, model_key)
+
+            tasks = [bounded(i, m) for i, m in enumerate(selected_models)]
+            raw_results = await asyncio.gather(*tasks, return_exceptions=False)
+            results = sorted(raw_results, key=lambda item: int(item.get("idx", 0)))
+
+            ok_all = True
+            for item in results:
+                create_step = item.get("create_step")
+                events_step = item.get("events_step")
+                if isinstance(create_step, StepRecord):
+                    self.report.add_step(create_step)
+                    print(
+                        f"request_id={item.get('request_id')} step=create_message model={item.get('model') or 'default'} "
+                        f"status={create_step.response.get('status_code')}"
+                    )
+                if isinstance(events_step, StepRecord):
+                    self.report.add_step(events_step)
+                    print(
+                        f"request_id={item.get('request_id')} step=stream_events model={item.get('model') or 'default'} "
+                        f"status={events_step.response.get('status_code')}"
+                    )
+                if not bool(item.get("success")):
+                    ok_all = False
+
+            self._model_runs = results
+            if not ok_all:
                 return await self._finalize(1)
 
         return await self._finalize(0)
@@ -1094,6 +1325,60 @@ class AnonymousE2E:
         with self.output_path.open("w", encoding="utf-8") as fp:
             json.dump(self.report.to_json(), fp, ensure_ascii=False, indent=2)
         print(f"[INFO] Full trace saved to: {self.output_path}")
+        # 默认 TXT 报告：包含 completed.reply 原文（含尖括号标签），便于人工核对。
+        txt_path = self._output_txt_path
+        if txt_path is None:
+            if self.output_path.suffix.lower() == ".json":
+                txt_path = self.output_path.with_suffix(".txt")
+            else:
+                txt_path = DEFAULT_OUTPUT_TXT
+        try:
+            lines: list[str] = []
+            lines.append(f"request_id={self.request_id}")
+            lines.append(f"api_base_url={self.api_base_url}")
+            lines.append(f"prompt_mode={self._prompt_mode}")
+            lines.append(f"concurrency={self._concurrency}")
+            models_label = ",".join([m for m in (self._models or []) if str(m or "").strip()]) or "auto"
+            lines.append(f"models={models_label}")
+            lines.append("")
+
+            for item in (self._model_runs or []):
+                model_key = item.get("model") or "default"
+                per_request_id = item.get("request_id") or ""
+                success = bool(item.get("success"))
+                lines.append(f"=== model={model_key} request_id={per_request_id} status={'PASS' if success else 'FAIL'} ===")
+                reply = item.get("reply")
+                final_event = item.get("final_event")
+
+                if isinstance(reply, str) and reply.strip():
+                    lines.append(reply)
+                elif isinstance(final_event, dict):
+                    data = final_event.get("data")
+                    if isinstance(data, dict):
+                        msg = data.get("message") or data.get("error") or data.get("code")
+                        if msg:
+                            lines.append(str(msg))
+                        else:
+                            lines.append("(no_reply)")
+                    else:
+                        lines.append("(no_reply)")
+                else:
+                    lines.append("(no_reply)")
+
+                if self._result_mode in {"raw", "both"}:
+                    try:
+                        lines.append("")
+                        lines.append("--- raw ---")
+                        lines.append(json.dumps(final_event, ensure_ascii=False, indent=2))
+                    except Exception:
+                        pass
+                lines.append("")
+
+            txt_path.parent.mkdir(parents=True, exist_ok=True)
+            txt_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+            print(f"[INFO] TXT report saved to: {txt_path}")
+        except Exception:
+            pass
         return exit_code
 
 
@@ -1149,10 +1434,48 @@ def parse_args() -> argparse.Namespace:
         help=f"链路 JSON 输出路径，默认 {DEFAULT_OUTPUT}",
     )
     parser.add_argument(
+        "--output-txt",
+        default=None,
+        help=f"可选：TXT 报告输出路径（默认与 --output 同名 .txt，或 {DEFAULT_OUTPUT_TXT}）",
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=float(os.getenv("E2E_HTTP_TIMEOUT", "30")),
         help="HTTP 请求超时时间（秒），默认为 30",
+    )
+    parser.add_argument(
+        "--prompt-mode",
+        choices=["passthrough", "server"],
+        default=os.getenv("E2E_PROMPT_MODE", "passthrough"),
+        help="prompt 策略：passthrough=透传 messages(system+user) 且 skip_prompt=true；server=只发 text 且由后端注入默认 prompt",
+    )
+    parser.add_argument(
+        "--extra-system-prompt",
+        default=os.getenv("E2E_EXTRA_SYSTEM_PROMPT", DEFAULT_EXTRA_SYSTEM_PROMPT),
+        help="passthrough 模式下追加的 system prompt（默认非空，用于强调尖括号标签原样输出；传空字符串可关闭）",
+    )
+    parser.add_argument(
+        "--models",
+        default=os.getenv("E2E_MODELS", ""),
+        help="可选：逗号/空格分隔的 model keys（如 xai,deepseek）。为空则尝试从 /llm/app/models 自动选择，否则走 default。",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=int(os.getenv("E2E_CONCURRENCY", "1")),
+        help="并发数（默认 1；过高可能触发 SSE 并发守卫/限流）。",
+    )
+    parser.add_argument(
+        "--result-mode",
+        choices=["text", "raw", "both"],
+        default=os.getenv("E2E_RESULT_MODE", "text"),
+        help="TXT 报告内容：text=仅 reply；raw=仅 raw final_event；both=两者都写。",
+    )
+    parser.add_argument(
+        "--message",
+        default=os.getenv("E2E_MESSAGE", "hello"),
+        help="用户消息内容（默认 hello）。",
     )
     parser.add_argument(
         "--auth-method",
@@ -1313,6 +1636,9 @@ async def async_main() -> int:
             print("[WARN] 检测到使用遗留环境变量 `api` 作为 Mail API Key；建议改为 `MAIL_API_KEY`。")
         runner.mail_api = MailApiClient(base_url=mail_api_base_url, api_key=mail_api_key)
 
+    models = AnonymousE2E._parse_models(args.models)
+    output_txt = Path(args.output_txt) if args.output_txt else None
+
     return await runner.run(
         auth_method=args.auth_method,
         email_mode=email_mode,
@@ -1321,6 +1647,13 @@ async def async_main() -> int:
         mail_api_domain=args.mail_domain,
         mail_api_expiry_ms=args.mail_expiry_ms,
         otp_output_path=args.otp_output_path,
+        prompt_mode=args.prompt_mode,
+        extra_system_prompt=str(args.extra_system_prompt or ""),
+        models=models,
+        concurrency=args.concurrency,
+        result_mode=args.result_mode,
+        output_txt_path=output_txt,
+        message_text=str(args.message or ""),
     )
 
 

@@ -4,4 +4,4 @@
 
 - `api_gymbro_cloud_app_min_contract.md`：App 端最小对接（models/messages/SSE）
 - `api_gymbro_cloud_conversation_min_contract.md`：对话聚合最小契约（含 JSON Schema）
-
+- `schemas/`：可机读 JSON Schema（请求/响应/事件帧）

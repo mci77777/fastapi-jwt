@@ -72,7 +72,7 @@ vue-fastapi-admin/
 | 脚本 | 功能 | 运行方式 |
 |------|------|----------|
 | `verify_setup.py` | ✅ 检查依赖、网络与配置 | `python e2e/anon_jwt_sse/scripts/verify_setup.py` |
-| `run_e2e_enhanced.py` | 注册 → 登录 → AI 消息 → SSE → JSON 记录 | `python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py` |
+| `run_e2e_enhanced.py` | 注册 → 登录 → AI 消息 → SSE → **TXT（默认，含 <> 标签原样）** + JSON 记录 | `python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py` |
 | `anon_signin_enhanced.py` | 逐步调试匿名登录与 SSE | `python e2e/anon_jwt_sse/scripts/anon_signin_enhanced.py` |
 | `sse_client.py` | 轻量 SSE 客户端调试 | `python e2e/anon_jwt_sse/scripts/sse_client.py` |
 | `sse_chaos.py` | SSE 混沌/压力测试 | `python e2e/anon_jwt_sse/scripts/sse_chaos.py` |
@@ -105,6 +105,8 @@ python scripts/verification/verify_jwks_cache.py
 # 2. 生成 Token 并执行匿名 E2E
 python e2e/anon_jwt_sse/scripts/generate_test_token.py --method auto --verify
 python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py
+# 可选：多模型并发（model key 来自 /api/v1/llm/app/models）
+# python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py --models "xai,deepseek" --concurrency 2
 
 # 3. 运行冒烟 / CI 套件
 python scripts/monitoring/smoke_test.py

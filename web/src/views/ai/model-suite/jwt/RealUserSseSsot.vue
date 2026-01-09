@@ -52,7 +52,9 @@ const refreshingMailUser = ref(false)
 
 const mailUserSelectOptions = computed(() =>
   (mailUsers.value || []).map((u) => ({
-    label: `${u.email || u.username || `user-${u.id}`}${u.has_refresh_token ? '' : '（no refresh_token）'}`,
+    label: `${u.email || u.username || `user-${u.id}`}${
+      u.has_refresh_token ? '' : '（no refresh_token）'
+    }`,
     value: u.id,
     raw: u,
   }))
@@ -210,12 +212,22 @@ const sending = ref(false)
 const chatText = ref('Hello, this is a JWT SSE test message.')
 const conversationId = ref('')
 const messageId = ref('')
-const aiResponse = ref('')
+const aiResponseText = ref('')
+const aiResponseRaw = ref('')
 const lastCreateRequestId = ref('')
 const lastSseRequestId = ref('')
 
+// prompt / result mode
+const promptMode = ref('passthrough') // server | passthrough
+const extraSystemPrompt = ref(
+  '请严格按原样输出带尖括号标签的 ThinkingML：<thinking>...</thinking> 紧接 <final>...</final>。不要转义尖括号，不要额外解释协议。'
+)
+const resultMode = ref('text') // text | raw
+
 function genRequestId(prefix) {
-  const rid = globalThis.crypto?.randomUUID?.() || `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const rid =
+    globalThis.crypto?.randomUUID?.() ||
+    `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
   return String(rid)
 }
 
@@ -234,23 +246,47 @@ async function handleSend() {
   }
 
   sending.value = true
-  aiResponse.value = ''
+  aiResponseText.value = ''
+  aiResponseRaw.value = ''
   messageId.value = ''
 
   try {
     const createRequestId = genRequestId('web-create')
     lastCreateRequestId.value = createRequestId
 
+    const resolvedPromptMode = promptMode.value === 'passthrough' ? 'passthrough' : 'server'
+    const userText = chatText.value.trim()
+
+    const openai =
+      resolvedPromptMode === 'passthrough'
+        ? {
+            model: selectedModel.value,
+            messages: [
+              {
+                role: 'system',
+                content: String(extraSystemPrompt.value || '').trim() || undefined,
+              },
+              { role: 'user', content: userText },
+            ].filter((m) => m && m.content),
+          }
+        : { model: selectedModel.value }
+
     const created = await createMessage({
-      text: chatText.value.trim(),
+      text: resolvedPromptMode === 'server' ? userText : undefined,
       conversationId: conversationId.value || null,
       metadata: {
         scenario: 'ai_jwt_ssot_sse',
         model: selectedModel.value,
+        prompt_mode: resolvedPromptMode,
+        extra_prompt_len:
+          resolvedPromptMode === 'passthrough'
+            ? String(extraSystemPrompt.value || '').trim().length
+            : 0,
+        result_mode: resultMode.value,
       },
       requestId: createRequestId,
-      promptMode: 'server',
-      openai: { model: selectedModel.value },
+      promptMode: resolvedPromptMode,
+      openai,
       accessToken: jwtToken.value,
     })
 
@@ -309,12 +345,12 @@ async function streamSse(msgId, convId, requestId) {
     return { event: currentEvent || 'message', data: parsed }
   }
 
-  while (true) {
+  for (;;) {
     const { value, done } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
 
-    while (true) {
+    for (;;) {
       const idx = buffer.indexOf('\n')
       if (idx === -1) break
       const line = buffer.slice(0, idx).replace(/\r$/, '')
@@ -325,11 +361,26 @@ async function streamSse(msgId, convId, requestId) {
         if (ev) {
           requestLogAppendEvent({ kind: 'sse', url, requestId, event: ev })
           if (ev.event === 'content_delta' && ev.data?.delta) {
-            aiResponse.value += String(ev.data.delta)
+            aiResponseText.value += String(ev.data.delta)
           }
-          if (ev.event === 'completed') return
+          if (ev.event === 'completed') {
+            if (typeof ev.data === 'object' && ev.data && typeof ev.data.reply === 'string') {
+              aiResponseText.value = ev.data.reply
+            }
+            try {
+              aiResponseRaw.value = JSON.stringify(ev.data ?? ev, null, 2)
+            } catch {
+              aiResponseRaw.value = String(ev.data ?? ev)
+            }
+            return
+          }
           if (ev.event === 'error') {
             const msg = typeof ev.data === 'string' ? ev.data : JSON.stringify(ev.data)
+            try {
+              aiResponseRaw.value = JSON.stringify(ev.data ?? ev, null, 2)
+            } catch {
+              aiResponseRaw.value = String(ev.data ?? ev)
+            }
             throw new Error(msg || 'SSE error')
           }
         }
@@ -352,6 +403,11 @@ onMounted(() => {
   loadMailUsers()
   loadAppModels()
 })
+
+const responseContent = computed(() => {
+  if (resultMode.value === 'raw') return aiResponseRaw.value
+  return aiResponseText.value
+})
 </script>
 
 <template>
@@ -372,7 +428,8 @@ onMounted(() => {
         </NFormItem>
       </NForm>
       <NAlert type="info" :bordered="false" class="mt-2">
-        此 Key 仅保存在浏览器 localStorage，用于「生成测试用户」。设置为 <code>test-key-mock</code> 可开启 Mock 模式。
+        此 Key 仅保存在浏览器 localStorage，用于「生成测试用户」。设置为
+        <code>test-key-mock</code> 可开启 Mock 模式。
       </NAlert>
 
       <NSpace wrap>
@@ -400,7 +457,12 @@ onMounted(() => {
           placeholder="选择已保存测试用户"
           style="min-width: 320px"
         />
-        <NButton secondary :disabled="!selectedMailUserId" :loading="refreshingMailUser" @click="handleUseSelectedMailUser">
+        <NButton
+          secondary
+          :disabled="!selectedMailUserId"
+          :loading="refreshingMailUser"
+          @click="handleUseSelectedMailUser"
+        >
           刷新并使用
         </NButton>
         <NButton tertiary :loading="mailUsersLoading" @click="loadMailUsers">刷新列表</NButton>
@@ -435,6 +497,40 @@ onMounted(() => {
         <NButton secondary :loading="modelsLoading" @click="loadAppModels">刷新模型</NButton>
       </NSpace>
 
+      <NSpace align="center" wrap class="mt-3">
+        <NSelect
+          v-model:value="promptMode"
+          :options="[
+            { label: '透传 prompt（passthrough）', value: 'passthrough' },
+            { label: '后端组装 prompt（server）', value: 'server' },
+          ]"
+          style="min-width: 240px"
+        />
+        <NSelect
+          v-model:value="resultMode"
+          :options="[
+            { label: 'Text（reply / delta）', value: 'text' },
+            { label: 'RAW（completed/error）', value: 'raw' },
+          ]"
+          style="min-width: 220px"
+        />
+        <NText v-if="promptMode === 'server'" depth="3"
+          >server 模式不会注入“附加 prompt”（由后端 SSOT 决定）</NText
+        >
+      </NSpace>
+
+      <NForm label-placement="left" label-width="100" class="mt-3">
+        <NFormItem label="附加 Prompt">
+          <NInput
+            v-model:value="extraSystemPrompt"
+            type="textarea"
+            :rows="3"
+            :disabled="promptMode === 'server'"
+            placeholder="passthrough 模式下作为 system message 发送（可包含 <...> 标签要求）"
+          />
+        </NFormItem>
+      </NForm>
+
       <NForm label-placement="left" label-width="100" class="mt-3">
         <NFormItem label="Message">
           <NInput v-model:value="chatText" type="textarea" :rows="3" placeholder="输入消息内容" />
@@ -452,8 +548,8 @@ onMounted(() => {
         <div>conversation_id: {{ conversationId }}</div>
       </NAlert>
 
-      <NCard v-if="aiResponse" size="small" class="mt-3" title="AI Response">
-        <NInput :value="aiResponse" type="textarea" :rows="6" readonly />
+      <NCard v-if="responseContent" size="small" class="mt-3" title="AI Response">
+        <NInput :value="responseContent" type="textarea" :rows="10" readonly />
       </NCard>
     </NCard>
   </NSpace>

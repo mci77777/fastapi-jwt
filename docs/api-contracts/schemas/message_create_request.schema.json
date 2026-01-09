@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.gymbro.cloud/schemas/message_create_request.schema.json",
+  "title": "MessageCreateRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "model": { "type": "string", "minLength": 1, "description": "模型白名单 key（建议使用 /api/v1/llm/models 返回的 data[].name）" },
+    "text": { "type": "string", "minLength": 1, "description": "用户输入文本（messages 不为空时可省略）" },
+    "conversation_id": { "type": ["string", "null"], "format": "uuid", "description": "会话 ID（UUID；null 或缺省表示由服务端生成）" },
+    "metadata": { "type": "object", "additionalProperties": true, "default": {}, "description": "客户端附加信息（不做字段白名单）" },
+    "skip_prompt": { "type": "boolean", "default": false, "description": "是否跳过服务端默认 prompt 注入（透传模式）" },
+    "messages": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/OpenAIChatMessage" },
+      "description": "OpenAI chat messages（透传；服务端不强校验每个字段）"
+    },
+    "system_prompt": { "type": "string", "minLength": 1, "description": "system prompt（server 模式优先于默认 prompt；passthrough 模式下与 messages[].role=system 冲突）" },
+    "tools": { "type": "array", "items": {}, "description": "OpenAI tools（透传）" },
+    "tool_choice": { "description": "OpenAI tool_choice（透传）" },
+    "temperature": { "type": "number", "description": "OpenAI temperature（透传）" },
+    "top_p": { "type": "number", "description": "OpenAI top_p（透传）" },
+    "max_tokens": { "type": "integer", "minimum": 1, "description": "OpenAI max_tokens（透传）" },
+    "dialect": {
+      "type": "string",
+      "enum": ["openai.chat_completions", "openai.responses", "anthropic.messages", "gemini.generate_content"],
+      "description": "上游方言（仅 payload 模式使用）"
+    },
+    "payload": { "type": "object", "additionalProperties": true, "description": "上游 provider 原生请求体（payload 模式）" }
+  },
+  "required": ["model"],
+  "allOf": [
+    {
+      "anyOf": [{ "required": ["text"] }, { "required": ["messages"] }, { "required": ["payload"] }],
+      "description": "server/passthrough：text 与 messages 至少提供一个；payload 模式：必须提供 payload"
+    },
+    {
+      "if": { "required": ["payload"] },
+      "then": {
+        "required": ["dialect"],
+        "not": {
+          "anyOf": [
+            { "required": ["text"] },
+            { "required": ["messages"] },
+            { "required": ["system_prompt"] },
+            { "required": ["tools"] },
+            { "required": ["tool_choice"] },
+            { "required": ["temperature"] },
+            { "required": ["top_p"] },
+            { "required": ["max_tokens"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "required": ["dialect"], "not": { "required": ["payload"] } },
+      "then": false,
+      "description": "dialect 仅在 payload 模式下使用（dialect 出现时必须同时提供 payload）"
+    },
+    {
+      "if": {
+        "properties": { "skip_prompt": { "const": true }, "system_prompt": { "type": "string", "minLength": 1 } },
+        "required": ["skip_prompt", "system_prompt", "messages"]
+      },
+      "then": {
+        "properties": {
+          "messages": {
+            "not": {
+              "contains": {
+                "type": "object",
+                "properties": { "role": { "const": "system" } },
+                "required": ["role"]
+              }
+            }
+          }
+        }
+      },
+      "description": "passthrough 模式下禁止同时提供 system_prompt 与 messages[].role=system（避免歧义）"
+    }
+  ],
+  "$defs": {
+    "OpenAIChatMessage": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["role"],
+      "properties": {
+        "role": { "type": "string", "description": "OpenAI 语义：system/user/assistant/tool 等" },
+        "content": { "description": "OpenAI 语义：string 或多模态结构（透传）" }
+      }
+    }
+  }
+}
+

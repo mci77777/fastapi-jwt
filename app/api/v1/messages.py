@@ -482,6 +482,7 @@ async def create_message(
         message_id,
         owner_user_id=current_user.uid,
         conversation_id=conversation_id,
+        request_id=request_id or "",
     )
 
     async def runner() -> None:
@@ -528,7 +529,11 @@ async def stream_message_events(
 
     settings = get_settings()
     heartbeat_interval = max(settings.event_stream_heartbeat_seconds, 0.5)
-    request_id = getattr(request.state, "request_id", None) or get_current_request_id()
+    stream_request_id = getattr(request.state, "request_id", None) or get_current_request_id()
+    # SSOT：SSE 事件里的 request_id 应与创建消息请求对账；heartbeat/fallback 优先用创建时固化的 request_id。
+    create_request_id = ""
+    if meta is not None:
+        create_request_id = str(getattr(meta, "request_id", "") or "")
 
     async def event_generator():
         started = time.time()
@@ -545,7 +550,7 @@ async def stream_message_events(
                 except asyncio.TimeoutError:
                     heartbeat_data = {
                         "message_id": message_id,
-                        "request_id": request_id or "",
+                        "request_id": create_request_id or stream_request_id or "",
                         "ts": int(time.time() * 1000),
                     }
                     heartbeat = json.dumps(heartbeat_data, ensure_ascii=False, separators=(",", ":"))
@@ -592,7 +597,7 @@ async def stream_message_events(
                             "message": "sse_stream_closed_without_terminal_event",
                             # 兼容旧客户端：保留 legacy 字段
                             "error": "sse_stream_closed_without_terminal_event",
-                            "request_id": request_id or "",
+                            "request_id": create_request_id or stream_request_id or "",
                         },
                     )
                 try:
@@ -612,7 +617,7 @@ async def stream_message_events(
                     message_id,
                     {
                         "sse": {
-                            "request_id": request_id,
+                            "request_id": create_request_id or stream_request_id or "",
                             "duration_s": round(duration, 3),
                             "end_reason": end_reason,
                             "frames": frames,

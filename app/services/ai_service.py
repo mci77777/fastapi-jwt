@@ -147,6 +147,7 @@ class MessageEvent:
 class MessageChannelMeta:
     owner_user_id: str
     conversation_id: str
+    request_id: str
     created_at: datetime
     closed: bool = False
     terminal_event: Optional[MessageEvent] = None
@@ -178,6 +179,7 @@ class MessageEventBroker:
         *,
         owner_user_id: str,
         conversation_id: str,
+        request_id: str = "",
     ) -> asyncio.Queue[Optional[MessageEvent]]:
         queue: asyncio.Queue[Optional[MessageEvent]] = asyncio.Queue()
         async with self._lock:
@@ -185,6 +187,7 @@ class MessageEventBroker:
             self._meta[message_id] = MessageChannelMeta(
                 owner_user_id=owner_user_id,
                 conversation_id=conversation_id,
+                request_id=str(request_id or ""),
                 created_at=datetime.utcnow(),
             )
         return queue
