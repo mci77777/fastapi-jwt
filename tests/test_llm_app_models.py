@@ -111,3 +111,43 @@ def test_llm_app_models_filters_embedding_candidates(client) -> None:
     assert returned and returned[0]["name"] == "xai"
     assert returned[0]["default_model"] == "gpt-4o-mini"
     assert "text-embedding-3-large" not in (returned[0].get("candidates") or [])
+
+
+def test_llm_app_models_exposes_required_tier(client) -> None:
+    user = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
+
+    class FakeVerifier:
+        def verify_token(self, _token: str) -> AuthenticatedUser:
+            return user
+
+    mappings = [
+        {
+            "id": "mapping:claude-opus",
+            "scope_type": "mapping",
+            "scope_key": "claude-opus",
+            "name": "Claude Opus",
+            # 使用测试环境默认 endpoint 的模型，确保可路由
+            "default_model": "gpt-4o-mini",
+            "candidates": ["gpt-4o-mini"],
+            "is_active": True,
+            "updated_at": "2026-01-09T00:00:00+00:00",
+            "source": "sqlite",
+            "metadata": {"required_tier": "pro"},
+        }
+    ]
+
+    from app import app as fastapi_app
+
+    with patch("app.auth.dependencies.get_jwt_verifier", return_value=FakeVerifier()):
+        with patch.object(fastapi_app.state.model_mapping_service, "list_mappings", new=AsyncMock(return_value=mappings)):
+            resp = client.get(
+                "/api/v1/llm/app/models",
+                headers={"Authorization": "Bearer test.jwt"},
+            )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["code"] == 200
+    returned = payload["data"]
+    assert returned and returned[0]["name"] == "claude-opus"
+    assert returned[0].get("required_tier") == "pro"

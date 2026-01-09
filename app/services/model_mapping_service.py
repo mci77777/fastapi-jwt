@@ -272,6 +272,31 @@ class ModelMappingService:
             }
         )
 
+    async def ensure_test_claude_opus_mapping(self) -> dict[str, Any] | None:
+        """测试期默认映射：claude-opus（高级模型）。
+
+        仅在 allow_test_ai_endpoints=true 时启用，避免生产环境出现“删不掉/回弹”的隐式配置。
+        """
+
+        if not self._auto_seed_enabled:
+            return None
+
+        existing = await self.list_mappings(scope_type="mapping", scope_key="claude-opus")
+        if existing:
+            return existing[0]
+
+        return await self.upsert_mapping(
+            {
+                "scope_type": "mapping",
+                "scope_key": "claude-opus",
+                "name": "claude-opus",
+                "default_model": "claude-opus-4-5-20251101",
+                "candidates": ["claude-opus-4-5-20251101"],
+                "is_active": True,
+                "metadata": {"required_tier": "pro"},
+            }
+        )
+
     async def activate_default(self, mapping_id: str, default_model: str) -> dict[str, Any]:
         await self._ensure_sqlite_imported()
         scope_type, scope_key = self._split_mapping_id(mapping_id)

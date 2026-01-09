@@ -115,6 +115,21 @@ CREATE TABLE IF NOT EXISTS ai_request_stats (
 CREATE INDEX IF NOT EXISTS idx_ai_request_date ON ai_request_stats(request_date);
 CREATE INDEX IF NOT EXISTS idx_ai_request_endpoint ON ai_request_stats(endpoint_id);
 
+CREATE TABLE IF NOT EXISTS ai_model_daily_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    model_key TEXT NOT NULL,
+    usage_date TEXT NOT NULL,
+    count INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, model_key, usage_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_model_daily_usage_date ON ai_model_daily_usage(usage_date);
+CREATE INDEX IF NOT EXISTS idx_ai_model_daily_usage_user ON ai_model_daily_usage(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_model_daily_usage_model ON ai_model_daily_usage(model_key);
+
 CREATE TABLE IF NOT EXISTS conversation_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
@@ -377,6 +392,71 @@ class SQLiteManager:
             rows = await cursor.fetchall()
             await cursor.close()
         return [dict(row) for row in rows]
+
+    async def increment_daily_model_usage_if_below_limit(
+        self,
+        user_id: str,
+        model_key: str,
+        usage_date: str,
+        *,
+        limit: int,
+    ) -> tuple[bool, int]:
+        """按日对指定 model_key 计数并做上限门控（原子操作）。
+
+        Returns:
+            (allowed, count_after)
+        """
+
+        if self._conn is None:
+            raise RuntimeError("SQLiteManager has not been initialised.")
+
+        safe_limit = int(limit)
+        if safe_limit <= 0:
+            row = await self.fetchone(
+                """
+                SELECT count
+                FROM ai_model_daily_usage
+                WHERE user_id = ? AND model_key = ? AND usage_date = ?
+                """,
+                (user_id, model_key, usage_date),
+            )
+            count_after = int((row or {}).get("count") or 0)
+            return False, count_after
+
+        async with self._lock:
+            await self._conn.execute(
+                """
+                INSERT INTO ai_model_daily_usage (user_id, model_key, usage_date, count)
+                VALUES (?, ?, ?, 1)
+                ON CONFLICT(user_id, model_key, usage_date)
+                DO UPDATE SET
+                    count = count + 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE count < ?
+                """,
+                (user_id, model_key, usage_date, safe_limit),
+            )
+
+            cursor = await self._conn.execute("SELECT changes() as changed")
+            changed_row = await cursor.fetchone()
+            await cursor.close()
+            changed = int(changed_row["changed"] or 0) if changed_row else 0
+
+            cursor = await self._conn.execute(
+                """
+                SELECT count
+                FROM ai_model_daily_usage
+                WHERE user_id = ? AND model_key = ? AND usage_date = ?
+                """,
+                (user_id, model_key, usage_date),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+            count_after = int(row["count"] or 0) if row else 0
+
+            await self._conn.commit()
+
+        return changed > 0, count_after
 
     async def log_conversation(
         self,

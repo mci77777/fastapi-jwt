@@ -102,6 +102,11 @@ async def lifespan(app: FastAPI):
         await app.state.model_mapping_service.ensure_minimal_global_mapping()
     except Exception:
         pass
+    # 测试期默认映射：用于联调“高级模型”展示/路由（不做权限门控，仅透出 required_tier 字段）
+    try:
+        await app.state.model_mapping_service.ensure_test_claude_opus_mapping()
+    except Exception:
+        pass
     app.state.llm_model_registry = LlmModelRegistry(
         app.state.ai_config_service,
         app.state.model_mapping_service,

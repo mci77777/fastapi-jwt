@@ -70,6 +70,30 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
 
 用途：创建异步对话任务，随后用 SSE 拉流。
 
+### 权限等级与配额（SSOT）
+
+当前仅区分 **2 个权限等级**：
+- **普通用户（free）**：与匿名用户保持一致
+- **订阅用户（pro）**：拥有更高权限/更高配额（默认不受普通配额限制）
+
+普通用户（free）/匿名用户的**按模型日配额**：
+- `deepseek`：无限
+- `xai`：50 次/天
+- `gpt` / `claude` / `gemini`：20 次/天
+
+超出配额会返回 `429`：
+```json
+{
+  "status": 429,
+  "code": "model_daily_quota_exceeded",
+  "message": "xai 超出每日对话额度（50/天）",
+  "request_id": "<opaque>",
+  "model_key": "xai",
+  "limit": 50,
+  "used": 50
+}
+```
+
 ### Headers
 
 - `Authorization: Bearer <redacted>`
@@ -118,7 +142,7 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
   - 覆盖上游的 `model` 为映射后的 `resolved_model`（客户端不得直接指定真实 model/base_url/api_key）
 - `payload` 存在白名单字段校验（非白名单字段会 422：`payload_fields_not_allowed`）
 
-> 权限：payload 模式属于“高级能力”，匿名用户禁止；永久用户需有有效 Pro Entitlement（否则 403）。
+> 权限：payload 只是请求体方言（不作为权限区分点）。普通/订阅用户都可用；实际差异由“模型权限 + 配额”决定。
 
 **(A) OpenAI Chat Completions**：`dialect=openai.chat_completions`
 ```json
@@ -215,8 +239,8 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
   - `{"state":"queued|working","message_id":"..."}`
   - `{"state":"routed","message_id":"...","request_id":"...","provider":"xai","resolved_model":"grok-4-1-fast-reasoning","endpoint_id":123,"upstream_request_id":null}`
 - `event: content_delta`：`{"message_id":"...","request_id":"...","seq":1,"delta":"..."}`
-- `event: completed`：`{"message_id":"...","request_id":"...","reply_len":1234,"provider":"...","resolved_model":"...","endpoint_id":123,"upstream_request_id":"...|null","metadata":null}`
+- `event: completed`：`{"message_id":"...","request_id":"...","reply":"...","reply_len":1234,"provider":"...","resolved_model":"...","endpoint_id":123,"upstream_request_id":"...|null","metadata":null}`
 - `event: error`：`{"message_id":"...","request_id":"...","code":"...","message":"...","error":"...","provider":"...|null","resolved_model":"...|null","endpoint_id":123|null}`
 - `event: heartbeat`：`{"message_id":"...","request_id":"...","ts":1736253242000}`
 
-> reply 由 `content_delta.delta` 拼接得到；结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。
+> reply 优先由 `content_delta.delta` 拼接得到；`completed.reply` 仅作兜底（例如晚订阅/漏订阅）。结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。

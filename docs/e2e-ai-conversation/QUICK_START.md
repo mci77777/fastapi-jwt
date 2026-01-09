@@ -83,7 +83,7 @@ event: content_delta
 data: {"message_id":"abc123def456","request_id":"...","seq":1,"delta":"For beginners, I recommend..."}
 
 event: completed
-data: {"message_id":"abc123def456","request_id":"...","provider":"xai","resolved_model":"...","endpoint_id":28,"upstream_request_id":"...","reply_len":1234,"metadata":null}
+data: {"message_id":"abc123def456","request_id":"...","provider":"xai","resolved_model":"...","endpoint_id":28,"upstream_request_id":"...","reply":"...","reply_len":1234,"metadata":null}
 ```
 
 ### 6. Check Metrics
@@ -420,7 +420,7 @@ event: content_delta
 data: {"message_id":"...","request_id":"...","seq":1,"delta":"chunk of text"}
 
 event: completed
-data: {"message_id":"...","request_id":"...","provider":"openai","resolved_model":"...","endpoint_id":1,"upstream_request_id":"...","reply_len":1234,"metadata":null}
+data: {"message_id":"...","request_id":"...","provider":"openai","resolved_model":"...","endpoint_id":1,"upstream_request_id":"...","reply":"...","reply_len":1234,"metadata":null}
 
 event: error
 data: {"message_id":"...","request_id":"...","code":"provider_error","message":"...","error":"...","provider":"openai","resolved_model":"...","endpoint_id":1}

@@ -90,7 +90,7 @@ Cloud 不负责：
 3) `GET /api/v1/messages/{message_id}/events?conversation_id=...`（SSE）
    - 至少收到 1 次 `content_delta`
    - 最终必须收到 `completed` 或 `error`
-   - reply 由 `content_delta.delta` 拼接得到；`completed.reply_len` 仅作摘要/长度校验参考
+   - reply 优先由 `content_delta.delta` 拼接得到；`completed.reply` 仅作兜底；`completed.reply_len` 仅作摘要/长度校验参考
 
 本地可复现（mock 上游，不出网）：
 - `.venv/bin/python scripts/monitoring/local_mock_ai_conversation_e2e.py`

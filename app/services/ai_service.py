@@ -751,6 +751,13 @@ class AIService:
                 "default_model": resolved_model,
                 "candidates": selected_candidates,
             }
+            required_tier: str | None = None
+            meta = selected_mapping.get("metadata") if isinstance(selected_mapping, dict) else None
+            if isinstance(meta, dict):
+                raw = meta.get("required_tier")
+                if isinstance(raw, str) and raw.strip():
+                    required_tier = raw.strip().lower()
+            item["required_tier"] = required_tier
             if include_debug_fields:
                 item.update(
                     {
@@ -922,6 +929,8 @@ class AIService:
                         "resolved_model": model_used,
                         "endpoint_id": endpoint_id_used,
                         "upstream_request_id": upstream_request_id,
+                        # 兼容 App：提供最终全文（避免“只拿到 completed 但没有拼接到 reply”）。
+                        "reply": reply_text,
                         "reply_len": len(reply_text),
                         "metadata": provider_metadata,
                     },

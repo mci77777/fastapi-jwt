@@ -32,6 +32,30 @@
 - `Authorization: Bearer <redacted>`
 - `Content-Type: application/json`
 
+### 权限等级与配额（SSOT）
+
+当前仅区分 **2 个权限等级**：
+- **普通用户（free）**：与匿名用户一致
+- **订阅用户（pro）**：拥有更高权限/更高配额（默认不受普通配额限制）
+
+普通用户（free）/匿名用户的**按模型日配额**：
+- `deepseek`：无限
+- `xai`：50 次/天
+- `gpt` / `claude` / `gemini`：20 次/天
+
+超出配额会返回 `429`：
+```json
+{
+  "status": 429,
+  "code": "model_daily_quota_exceeded",
+  "message": "xai 超出每日对话额度（50/天）",
+  "request_id": "<request_id>",
+  "model_key": "xai",
+  "limit": 50,
+  "used": 50
+}
+```
+
 ### Request Body（最小字段）
 > 重要：请求体 **不允许额外字段**（`additionalProperties=false`）。
 >
@@ -69,7 +93,7 @@
   - 当 `payload` 存在时，必须提供 `dialect`
   - `dialect ∈ openai.chat_completions | openai.responses | anthropic.messages | gemini.generate_content`
   - payload 存在白名单字段校验，非白名单字段返回 `422 payload_fields_not_allowed`
-  - payload 模式属于“高级能力”：匿名用户禁止；永久用户需有效 Pro Entitlement（否则 403）
+  - 权限：payload 只是请求体方言（不作为权限区分点）；实际差异由“模型权限 + 配额”决定
 
 ### Response（202 Accepted）
 ```json
@@ -147,7 +171,7 @@
 ```
 
 #### `event: completed`
-- 终止事件（不含 reply 原文；客户端需拼接 `content_delta.delta` 得到 reply）
+- 终止事件（包含 `reply` 兜底；仍建议拼接 `content_delta.delta` 作为流式 SSOT）
 ```json
 {
   "message_id": "<message_id>",
@@ -156,6 +180,7 @@
   "resolved_model": "upstream provider model id",
   "endpoint_id": 123,
   "upstream_request_id": "<redacted>|null",
+  "reply": "<full reply text>",
   "reply_len": 1234,
   "metadata": null
 }
@@ -370,6 +395,7 @@ curl -X POST https://api.gymbro.cloud/api/v1/messages \
           "properties": {
             "message_id": { "type": "string" },
             "request_id": { "type": "string" },
+            "reply": { "type": "string" },
             "reply_len": { "type": "integer" }
           }
         }

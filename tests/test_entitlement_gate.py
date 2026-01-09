@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,106 +7,88 @@ from fastapi import status
 
 from app import app as fastapi_app
 from app.auth import AuthenticatedUser
-from app.services.entitlement_service import EntitlementService
 
 
 @pytest.mark.asyncio
-async def test_messages_skip_prompt_denied_for_anonymous(async_client, mock_jwt_token: str):
+async def test_messages_payload_mode_allowed_for_anonymous(async_client, mock_jwt_token: str):
     with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
         mock_verifier = MagicMock()
         mock_verifier.verify_token.return_value = AuthenticatedUser(uid="anon-user-123", claims={}, user_type="anonymous")
         mock_get_verifier.return_value = mock_verifier
 
-        resp = await async_client.post(
-            "/api/v1/messages",
-            headers={"Authorization": f"Bearer {mock_jwt_token}"},
-            json={"text": "Hello", "skip_prompt": True},
-        )
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
-        data = resp.json()
-        assert data["code"] == "entitlement_required"
-
-
-@pytest.mark.asyncio
-async def test_messages_skip_prompt_denied_without_entitlement(async_client, mock_jwt_token: str):
-    with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
-        mock_verifier = MagicMock()
-        mock_verifier.verify_token.return_value = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
-        mock_get_verifier.return_value = mock_verifier
-
-        repo = MagicMock()
-        repo.get_entitlements = AsyncMock(return_value=None)
-        service = EntitlementService(repo, ttl_seconds=60)
-
-        prev_service = getattr(fastapi_app.state, "entitlement_service", None)
-        fastapi_app.state.entitlement_service = service
-        try:
+        with patch.object(fastapi_app.state.ai_service, "run_conversation", new=AsyncMock(return_value=None)):
             resp = await async_client.post(
                 "/api/v1/messages",
                 headers={"Authorization": f"Bearer {mock_jwt_token}"},
-                json={"text": "Hello", "skip_prompt": True},
-            )
-            assert resp.status_code == status.HTTP_403_FORBIDDEN
-            data = resp.json()
-            assert data["code"] == "entitlement_required"
-        finally:
-            fastapi_app.state.entitlement_service = prev_service
-
-
-@pytest.mark.asyncio
-async def test_messages_skip_prompt_denied_for_expired_pro(async_client, mock_jwt_token: str):
-    with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
-        mock_verifier = MagicMock()
-        mock_verifier.verify_token.return_value = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
-        mock_get_verifier.return_value = mock_verifier
-
-        now_ms = int(time.time() * 1000)
-        repo = MagicMock()
-        repo.get_entitlements = AsyncMock(
-            return_value={"tier": "pro", "expires_at": now_ms - 60_000, "flags": {}, "last_updated": now_ms - 60_000}
-        )
-        service = EntitlementService(repo, ttl_seconds=60)
-
-        prev_service = getattr(fastapi_app.state, "entitlement_service", None)
-        fastapi_app.state.entitlement_service = service
-        try:
-            resp = await async_client.post(
-                "/api/v1/messages",
-                headers={"Authorization": f"Bearer {mock_jwt_token}"},
-                json={"text": "Hello", "skip_prompt": True},
-            )
-            assert resp.status_code == status.HTTP_403_FORBIDDEN
-            data = resp.json()
-            assert data["code"] == "entitlement_required"
-        finally:
-            fastapi_app.state.entitlement_service = prev_service
-
-
-@pytest.mark.asyncio
-async def test_messages_skip_prompt_allowed_for_active_pro(async_client, mock_jwt_token: str):
-    with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
-        mock_verifier = MagicMock()
-        mock_verifier.verify_token.return_value = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
-        mock_get_verifier.return_value = mock_verifier
-
-        now_ms = int(time.time() * 1000)
-        repo = MagicMock()
-        repo.get_entitlements = AsyncMock(
-            return_value={"tier": "pro", "expires_at": now_ms + 60_000, "flags": {}, "last_updated": now_ms}
-        )
-        service = EntitlementService(repo, ttl_seconds=60)
-
-        prev_service = getattr(fastapi_app.state, "entitlement_service", None)
-        fastapi_app.state.entitlement_service = service
-        try:
-            resp = await async_client.post(
-                "/api/v1/messages",
-                headers={"Authorization": f"Bearer {mock_jwt_token}"},
-                json={"text": "Hello", "skip_prompt": True, "model": "global:global"},
+                json={
+                    "model": "global:global",
+                    "dialect": "openai.chat_completions",
+                    "payload": {"messages": [{"role": "user", "content": "hi"}]},
+                },
             )
             assert resp.status_code == status.HTTP_202_ACCEPTED
             data = resp.json()
-            assert "message_id" in data
-        finally:
-            fastapi_app.state.entitlement_service = prev_service
+            assert data.get("message_id")
+
+
+@pytest.mark.asyncio
+async def test_messages_payload_mode_requires_dialect(async_client, mock_jwt_token: str):
+    with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+        mock_verifier = MagicMock()
+        mock_verifier.verify_token.return_value = AuthenticatedUser(uid="anon-user-456", claims={}, user_type="anonymous")
+        mock_get_verifier.return_value = mock_verifier
+
+        resp = await async_client.post(
+            "/api/v1/messages",
+            headers={"Authorization": f"Bearer {mock_jwt_token}"},
+            json={
+                "model": "global:global",
+                "payload": {"messages": [{"role": "user", "content": "hi"}]},
+            },
+        )
+        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        data = resp.json()
+        assert data.get("code") == "dialect_required"
+
+
+@pytest.mark.asyncio
+async def test_messages_model_daily_quota_exceeded_for_free_user(async_client, mock_jwt_token: str, monkeypatch):
+    # isolate bucket: map any requested model to "xai", and set a tiny daily limit
+    from app.api.v1 import messages as messages_module
+
+    monkeypatch.setattr(messages_module, "_normalize_quota_model_key", lambda _model: "xai")
+    monkeypatch.setattr(messages_module, "_FREE_TIER_DAILY_MODEL_LIMITS", {"xai": 2, "deepseek": None, "gpt": 20, "claude": 20, "gemini": 20})
+
+    with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+        mock_verifier = MagicMock()
+        mock_verifier.verify_token.return_value = AuthenticatedUser(uid="quota-user-123", claims={}, user_type="anonymous")
+        mock_get_verifier.return_value = mock_verifier
+
+        with patch.object(fastapi_app.state.ai_service, "run_conversation", new=AsyncMock(return_value=None)):
+            for _ in range(2):
+                resp = await async_client.post(
+                    "/api/v1/messages",
+                    headers={"Authorization": f"Bearer {mock_jwt_token}"},
+                    json={
+                        "model": "global:global",
+                        "dialect": "openai.chat_completions",
+                        "payload": {"messages": [{"role": "user", "content": "hi"}]},
+                        "metadata": {"client": "pytest"},
+                    },
+                )
+                assert resp.status_code == status.HTTP_202_ACCEPTED
+
+            blocked = await async_client.post(
+                "/api/v1/messages",
+                headers={"Authorization": f"Bearer {mock_jwt_token}"},
+                json={
+                    "model": "global:global",
+                    "dialect": "openai.chat_completions",
+                    "payload": {"messages": [{"role": "user", "content": "hi"}]},
+                    "metadata": {"client": "pytest"},
+                },
+            )
+            assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+            data = blocked.json()
+            assert data.get("code") == "model_daily_quota_exceeded"
 

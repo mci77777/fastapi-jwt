@@ -6,6 +6,7 @@ import asyncio
 import json
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
@@ -21,6 +22,36 @@ from app.services.entitlement_service import EntitlementService
 from app.settings.config import get_settings
 
 router = APIRouter(tags=["messages"])
+
+
+_FREE_TIER_DAILY_MODEL_LIMITS: dict[str, int | None] = {
+    # 普通用户（free）与匿名用户一致：deepseek 无限，xai 50，gpt/claude/gemini 20
+    "deepseek": None,
+    "xai": 50,
+    "gpt": 20,
+    "claude": 20,
+    "gemini": 20,
+}
+
+
+def _normalize_quota_model_key(model_name: str) -> str:
+    raw = str(model_name or "").strip().lower()
+    if ":" in raw:
+        raw = raw.split(":", 1)[1].strip()
+
+    if raw in {"deepseek"} or raw.startswith("deepseek"):
+        return "deepseek"
+    if raw in {"xai", "grok"} or raw.startswith("xai") or raw.startswith("grok"):
+        return "xai"
+    if raw in {"claude", "anthropic"} or raw.startswith("claude") or raw.startswith("anthropic"):
+        return "claude"
+    if raw in {"gemini"} or raw.startswith("gemini"):
+        return "gemini"
+    if raw in {"gpt", "openai"} or raw.startswith("gpt") or raw.startswith("openai"):
+        return "gpt"
+
+    # 未识别的模型 key：按 gpt 桶兜底（避免因配置漂移导致全量 403/429）。
+    return "gpt"
 
 
 class MessageCreateRequest(BaseModel):
@@ -213,62 +244,11 @@ def _sanitize_provider_payload(
     return {str(k): v for k, v in payload.items() if str(k) in allow}
 
 
-async def _require_entitlement_for_message(
-    payload: MessageCreateRequest,
-    request: Request,
-    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
-) -> None:
-    """Entitlement gate for advanced chat features (KISS).
-
-    - Anonymous: always denied for advanced features
-    - Permanent: requires active "pro" entitlement for advanced features
-    """
-    # KISS：仅对“跳过服务端 prompt 注入”与“provider payload 模式”做门控（避免影响基础对话链路）。
-    wants_advanced = bool(payload.skip_prompt) or payload.payload is not None
-    if not wants_advanced:
-        return
-
-    request_id = getattr(request.state, "request_id", None) or get_current_request_id() or ""
-
-    if current_user.is_anonymous:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "entitlement_required",
-                "message": "Anonymous user is not allowed to use advanced AI features",
-                "request_id": request_id,
-            },
-        )
-
-    entitlement_service = getattr(request.app.state, "entitlement_service", None)
-    if not isinstance(entitlement_service, EntitlementService):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "entitlement_required",
-                "message": "Pro entitlement is required for advanced AI features",
-                "request_id": request_id,
-            },
-        )
-
-    entitlement = await entitlement_service.resolve(current_user.uid)
-    if not entitlement.is_pro:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "entitlement_required",
-                "message": "Pro entitlement is required for advanced AI features",
-                "request_id": request_id,
-            },
-        )
-
-
 @router.post("/messages", response_model=MessageCreateResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_message(
     payload: MessageCreateRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    _: None = Depends(_require_entitlement_for_message),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> MessageCreateResponse:
     broker: MessageEventBroker = request.app.state.message_broker
@@ -323,6 +303,41 @@ async def create_message(
                 "request_id": request_id or "",
             },
         )
+
+    # 普通用户（free）与匿名用户一致：按 model_key 做日配额（deepseek 无限）。订阅用户（pro）不做配额。
+    quota_model_key = _normalize_quota_model_key(requested_model)
+    daily_limit = _FREE_TIER_DAILY_MODEL_LIMITS.get(quota_model_key)
+    if daily_limit is not None and daily_limit > 0:
+        is_pro = False
+        if not current_user.is_anonymous:
+            entitlement_service = getattr(request.app.state, "entitlement_service", None)
+            if isinstance(entitlement_service, EntitlementService):
+                try:
+                    entitlement = await entitlement_service.resolve(current_user.uid)
+                    is_pro = bool(entitlement.is_pro)
+                except Exception:
+                    is_pro = False
+
+        if not is_pro:
+            today = datetime.now(timezone.utc).date().isoformat()
+            db = get_sqlite_manager(request.app)
+            allowed, count_after = await db.increment_daily_model_usage_if_below_limit(
+                current_user.uid,
+                quota_model_key,
+                today,
+                limit=daily_limit,
+            )
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail={
+                        "code": "model_daily_quota_exceeded",
+                        "message": f"{quota_model_key} 超出每日对话额度（{daily_limit}/天）",
+                        "model_key": quota_model_key,
+                        "limit": daily_limit,
+                        "used": count_after,
+                    },
+                )
 
     conversation_id = None
     if payload.conversation_id:
