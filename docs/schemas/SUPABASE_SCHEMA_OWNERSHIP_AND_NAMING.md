@@ -11,7 +11,7 @@
 
 ### public 表清单（快照）
 
-以下为当前项目 `public` schema 下的表名快照（生成日期：2025-12-24）。该清单用于“最初解释清晰”，后续以审计脚本生成的报告为准。
+以下为当前项目 `public` schema 下的表名快照（生成日期：2026-01-09）。该清单用于“最初解释清晰”，后续以审计脚本生成的报告为准。
 
 - `ai_model`
 - `ai_prompt`
@@ -31,6 +31,7 @@
 - `system_prompts`
 - `tokens`
 - `user_anon`
+- `user_entitlements`
 - `user_metrics`
 - `user_profiles`
 - `user_settings`

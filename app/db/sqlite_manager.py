@@ -186,6 +186,17 @@ CREATE TABLE IF NOT EXISTS user_entitlement_tier_presets (
 
 CREATE INDEX IF NOT EXISTS idx_user_entitlement_tier_presets_updated_at ON user_entitlement_tier_presets(updated_at DESC);
 
+-- App 用户管理配置（Dashboard 本地 SSOT；不与 Supabase 用户表混用）
+-- value_json: 存储 JSON 字面量（例如 true/false/数字/字符串/对象）
+CREATE TABLE IF NOT EXISTS app_user_admin_settings (
+    key TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_user_admin_settings_updated_at ON app_user_admin_settings(updated_at DESC);
+
 -- Official Exercise Library snapshots (versioned seed payloads)
 CREATE TABLE IF NOT EXISTS exercise_library_snapshots (
     version INTEGER PRIMARY KEY,

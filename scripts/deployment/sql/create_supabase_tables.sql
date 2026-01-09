@@ -114,3 +114,78 @@ CREATE POLICY messages_insert_own
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT SELECT, INSERT ON public.conversations TO authenticated;
 GRANT SELECT, INSERT ON public.messages TO authenticated;
+
+-- 4) user_entitlements（管理端权益登记；后端通过 service_role 访问）
+CREATE TABLE IF NOT EXISTS public.user_entitlements (
+  user_id uuid NOT NULL,
+  tier text NOT NULL DEFAULT 'free',
+  expires_at bigint NULL, -- epoch ms
+  flags jsonb NOT NULL DEFAULT '{}'::jsonb,
+  last_updated bigint NOT NULL DEFAULT (floor(extract(epoch from now()) * 1000))::bigint,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_entitlements_pkey PRIMARY KEY (user_id)
+);
+
+ALTER TABLE IF EXISTS public.user_entitlements
+  DROP CONSTRAINT IF EXISTS user_entitlements_user_id_fkey;
+ALTER TABLE IF EXISTS public.user_entitlements
+  ADD CONSTRAINT user_entitlements_user_id_fkey
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS idx_user_entitlements_tier ON public.user_entitlements(tier);
+CREATE INDEX IF NOT EXISTS idx_user_entitlements_expires_at ON public.user_entitlements(expires_at);
+CREATE INDEX IF NOT EXISTS idx_user_entitlements_last_updated ON public.user_entitlements(last_updated DESC);
+
+DROP TRIGGER IF EXISTS update_user_entitlements_updated_at ON public.user_entitlements;
+CREATE TRIGGER update_user_entitlements_updated_at
+  BEFORE UPDATE ON public.user_entitlements
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+ALTER TABLE public.user_entitlements ENABLE ROW LEVEL SECURITY;
+GRANT USAGE ON SCHEMA public TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_entitlements TO service_role;
+
+-- View: list all users with their entitlements (SSOT: auth.users)
+-- 说明：匿名用户只用于统计/审计；默认列表过滤掉匿名用户即可。
+DROP VIEW IF EXISTS public.user_entitlements_list;
+CREATE VIEW public.user_entitlements_list AS
+SELECT
+  au.id AS user_id,
+  COALESCE(e.tier, 'free') AS tier,
+  e.expires_at,
+  COALESCE(e.flags, '{}'::jsonb) AS flags,
+  e.last_updated,
+  (e.user_id IS NOT NULL) AS exists,
+  COALESCE(au.is_anonymous, false) AS is_anonymous
+FROM auth.users au
+LEFT JOIN public.user_entitlements e ON e.user_id = au.id;
+
+GRANT SELECT ON public.user_entitlements_list TO service_role;
+
+-- View: App user admin list (auth.users is SSOT for user existence)
+-- 用于 Dashboard 的 App 用户管理列表：支持分页/过滤/统计，并确保 user_id 一定存在于 auth.users。
+DROP VIEW IF EXISTS public.app_users_admin_view;
+CREATE VIEW public.app_users_admin_view AS
+SELECT
+  au.id AS user_id,
+  au.email,
+  COALESCE(NULLIF(au.raw_user_meta_data ->> 'username', ''), NULLIF(au.raw_user_meta_data ->> 'name', '')) AS username,
+  au.is_anonymous AS is_anonymous,
+  au.created_at AS created_at,
+  au.last_sign_in_at AS last_sign_in_at,
+  au.banned_until AS banned_until,
+  (CASE WHEN au.banned_until IS NOT NULL AND au.banned_until > now() THEN false ELSE true END) AS is_active,
+  COALESCE(ue.tier, 'free') AS tier,
+  ue.expires_at,
+  COALESCE(ue.flags, '{}'::jsonb) AS flags,
+  ue.last_updated,
+  (ue.user_id IS NOT NULL) AS entitlements_exists
+FROM auth.users au
+LEFT JOIN public.user_entitlements ue ON ue.user_id = au.id;
+
+GRANT SELECT ON public.app_users_admin_view TO service_role;
+
+-- PostgREST schema cache refresh (best-effort).
+NOTIFY pgrst, 'reload schema';

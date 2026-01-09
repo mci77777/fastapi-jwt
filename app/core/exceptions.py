@@ -70,6 +70,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     """注册 FastAPI 全局异常处理。"""
 
     from app.services.supabase_admin import SupabaseAdminError
+    from app.services.supabase_auth_admin import SupabaseAuthAdminError
 
     @app.exception_handler(SupabaseAdminError)
     async def supabase_admin_exception_handler(request: Request, exc: SupabaseAdminError) -> JSONResponse:
@@ -78,6 +79,17 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=int(getattr(exc, "status_code", 500) or 500),
             code=str(getattr(exc, "code", "supabase_error") or "supabase_error"),
             message=str(exc) or "Supabase error",
+            request_id=request_id,
+            hint=getattr(exc, "hint", None),
+        )
+
+    @app.exception_handler(SupabaseAuthAdminError)
+    async def supabase_auth_admin_exception_handler(request: Request, exc: SupabaseAuthAdminError) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", None) or get_current_request_id() or uuid.uuid4().hex
+        return create_error_response(
+            status_code=int(getattr(exc, "status_code", 500) or 500),
+            code=str(getattr(exc, "code", "supabase_auth_admin_error") or "supabase_auth_admin_error"),
+            message=str(exc) or "Supabase auth admin error",
             request_id=request_id,
             hint=getattr(exc, "hint", None),
         )

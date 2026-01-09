@@ -38,12 +38,53 @@ def _extract_postgrest_error_hint(response: httpx.Response) -> Optional[str]:
     return text[:240]
 
 
+def _extract_postgrest_error_code(response: httpx.Response) -> Optional[str]:
+    try:
+        data = response.json()
+    except Exception:
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    code = data.get("code")
+    if isinstance(code, str) and code.strip():
+        return code.strip()
+    return None
+
+
+def _merge_hints(primary: Optional[str], extra: Optional[str]) -> Optional[str]:
+    primary_text = (primary or "").strip()
+    extra_text = (extra or "").strip()
+    if not primary_text:
+        return extra_text or None
+    if not extra_text:
+        return primary_text or None
+    return f"{primary_text}; {extra_text}"[:240]
+
+
 def _fallback_hint_for_status(status_code: int, *, table: Optional[str] = None) -> Optional[str]:
     if status_code in (401, 403):
         return "检查 SUPABASE_SERVICE_ROLE_KEY 是否有效且具备 service_role 权限"
     if status_code == 404 and table:
         return f"检查 Supabase 是否已创建表 {table} 且已开放 PostgREST"
     return None
+
+
+def _map_postgrest_code_to_error(postgrest_code: Optional[str], *, table: str) -> tuple[Optional[str], Optional[str]]:
+    """Map PostgREST/PG error codes to a stable dashboard error code + hint."""
+    if not postgrest_code:
+        return None, None
+    code = str(postgrest_code).strip()
+    if code == "PGRST205":
+        return "supabase_table_missing", "数据源缺失或未初始化，请完成 Supabase 初始化后重试"
+    # PGSQL foreign_key_violation
+    if code == "23503":
+        return (
+            "supabase_foreign_key_violation",
+            "该用户不存在或已删除，无法执行该操作",
+        )
+    return None, None
 
 
 class SupabaseAdminError(RuntimeError):
@@ -125,7 +166,17 @@ class SupabaseAdminClient:
         except httpx.HTTPStatusError as exc:
             status = int(getattr(exc.response, "status_code", 0) or 0) or 502
             logger.warning("Supabase admin request failed table=%s status=%s", table, status)
-            hint = _extract_postgrest_error_hint(exc.response) or _fallback_hint_for_status(status, table=table)
+            postgrest_code = _extract_postgrest_error_code(exc.response)
+            extracted_hint = _extract_postgrest_error_hint(exc.response)
+            hint = extracted_hint or _fallback_hint_for_status(status, table=table)
+            mapped_code, mapped_hint = _map_postgrest_code_to_error(postgrest_code, table=table)
+            if mapped_code:
+                raise SupabaseAdminError(
+                    code=mapped_code,
+                    message="Supabase request failed",
+                    status_code=status,
+                    hint=_merge_hints(hint, mapped_hint),
+                ) from exc
             raise SupabaseAdminError(
                 code="supabase_request_failed",
                 message="Supabase request failed",
@@ -192,7 +243,17 @@ class SupabaseAdminClient:
         except httpx.HTTPStatusError as exc:
             status = int(getattr(exc.response, "status_code", 0) or 0) or 502
             logger.warning("Supabase admin upsert failed table=%s status=%s", table, status)
-            hint = _extract_postgrest_error_hint(exc.response) or _fallback_hint_for_status(status, table=table)
+            postgrest_code = _extract_postgrest_error_code(exc.response)
+            extracted_hint = _extract_postgrest_error_hint(exc.response)
+            hint = extracted_hint or _fallback_hint_for_status(status, table=table)
+            mapped_code, mapped_hint = _map_postgrest_code_to_error(postgrest_code, table=table)
+            if mapped_code:
+                raise SupabaseAdminError(
+                    code=mapped_code,
+                    message="Supabase upsert failed",
+                    status_code=status,
+                    hint=_merge_hints(hint, mapped_hint),
+                ) from exc
             raise SupabaseAdminError(
                 code="supabase_upsert_failed",
                 message="Supabase upsert failed",
@@ -212,6 +273,61 @@ class SupabaseAdminClient:
         except ValueError:
             return None
 
+        if isinstance(data, dict):
+            return data
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            return data[0]
+        return None
+
+    async def update_one_by_user_id(
+        self,
+        *,
+        table: str,
+        user_id: str,
+        values: dict[str, Any],
+        select: str = "*",
+    ) -> Optional[dict[str, Any]]:
+        """PATCH update by user_id and return representation (best-effort)."""
+        url = f"{self._base_url}/rest/v1/{table}"
+        params = {"user_id": f"eq.{user_id}", "select": select}
+        headers = self._headers({"Prefer": "return=representation"})
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.patch(url, headers=headers, params=params, json=values)
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status = int(getattr(exc.response, "status_code", 0) or 0) or 502
+            logger.warning("Supabase admin update failed table=%s status=%s", table, status)
+            postgrest_code = _extract_postgrest_error_code(exc.response)
+            extracted_hint = _extract_postgrest_error_hint(exc.response)
+            hint = extracted_hint or _fallback_hint_for_status(status, table=table)
+            mapped_code, mapped_hint = _map_postgrest_code_to_error(postgrest_code, table=table)
+            if mapped_code:
+                raise SupabaseAdminError(
+                    code=mapped_code,
+                    message="Supabase update failed",
+                    status_code=status,
+                    hint=_merge_hints(hint, mapped_hint),
+                ) from exc
+            raise SupabaseAdminError(
+                code="supabase_update_failed",
+                message="Supabase update failed",
+                status_code=status,
+                hint=hint,
+            ) from exc
+        except httpx.HTTPError as exc:
+            logger.warning("Supabase admin update error table=%s error=%s", table, type(exc).__name__)
+            raise SupabaseAdminError(
+                code="supabase_update_error",
+                message="Supabase update error",
+                status_code=502,
+            ) from exc
+
+        try:
+            data = response.json()
+        except ValueError:
+            return None
         if isinstance(data, dict):
             return data
         if isinstance(data, list) and data and isinstance(data[0], dict):
@@ -251,7 +367,17 @@ class SupabaseAdminClient:
         except httpx.HTTPStatusError as exc:
             status = int(getattr(exc.response, "status_code", 0) or 0) or 502
             logger.warning("Supabase admin list failed table=%s status=%s", table, status)
-            hint = _extract_postgrest_error_hint(exc.response) or _fallback_hint_for_status(status, table=table)
+            postgrest_code = _extract_postgrest_error_code(exc.response)
+            extracted_hint = _extract_postgrest_error_hint(exc.response)
+            hint = extracted_hint or _fallback_hint_for_status(status, table=table)
+            mapped_code, mapped_hint = _map_postgrest_code_to_error(postgrest_code, table=table)
+            if mapped_code:
+                raise SupabaseAdminError(
+                    code=mapped_code,
+                    message="Supabase request failed",
+                    status_code=status,
+                    hint=_merge_hints(hint, mapped_hint),
+                ) from exc
             raise SupabaseAdminError(
                 code="supabase_request_failed",
                 message="Supabase request failed",

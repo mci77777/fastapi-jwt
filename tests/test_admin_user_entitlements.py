@@ -183,16 +183,21 @@ async def test_admin_user_entitlements_stats(async_client, mock_jwt_token: str):
         mock_get_verifier.return_value = mock_verifier
 
         async def _count_rows(*, table: str, filters=None):
-            assert table == "user_entitlements"
-            if not filters:
-                return 10
-            if filters.get("tier") == "eq.free":
-                return 6
-            if filters.get("tier") == "eq.pro" and "or" not in filters:
-                return 3
-            if filters.get("tier") == "eq.pro" and "or" in filters:
-                return 2
-            return 1
+            if table == "user_entitlements":
+                if not filters:
+                    return 10
+                if filters.get("tier") == "eq.free":
+                    return 6
+                if filters.get("tier") == "eq.pro" and "or" not in filters:
+                    return 3
+                if filters.get("tier") == "eq.pro" and "or" in filters:
+                    return 2
+                return 1
+            if table == "users":
+                if filters and filters.get("isanonymous") == "eq.1":
+                    return 4
+                return 0
+            raise AssertionError(f"unexpected table={table}")
 
         supabase = _make_supabase_admin()
         supabase.count_rows = AsyncMock(side_effect=_count_rows)
@@ -211,6 +216,7 @@ async def test_admin_user_entitlements_stats(async_client, mock_jwt_token: str):
             assert data["total_rows"] == 10
             assert data["pro_active"] == 2
             assert data["pro_expired"] == 1
+            assert data["anonymous_users"] == 4
             tiers = {item["tier"]: item["count"] for item in data["tiers"]}
             assert tiers["free"] == 6
             assert tiers["pro"] == 3
@@ -232,7 +238,7 @@ async def test_admin_user_entitlements_list(async_client, mock_jwt_token: str):
 
         now_ms = int(time.time() * 1000)
         supabase = _make_supabase_admin()
-        supabase.fetch_list = AsyncMock(
+        fetch_list_mock = AsyncMock(
             return_value=(
                 [
                     {
@@ -241,11 +247,14 @@ async def test_admin_user_entitlements_list(async_client, mock_jwt_token: str):
                         "expires_at": now_ms + 60_000,
                         "flags": {"skip_prompt": True},
                         "last_updated": now_ms,
+                        "exists": True,
+                        "is_anonymous": False,
                     }
                 ],
                 1,
             )
         )
+        supabase.fetch_list = fetch_list_mock
 
         prev_client = getattr(fastapi_app.state, "supabase_admin", None)
         fastapi_app.state.supabase_admin = supabase
@@ -263,6 +272,9 @@ async def test_admin_user_entitlements_list(async_client, mock_jwt_token: str):
             assert len(data["items"]) == 1
             assert data["items"][0]["user_id"] == "user-123"
             assert data["items"][0]["tier"] == "pro"
+            fetch_list_mock.assert_awaited()
+            _, kwargs = fetch_list_mock.await_args
+            assert kwargs["table"] == "user_entitlements_list"
         finally:
             fastapi_app.state.supabase_admin = prev_client
 

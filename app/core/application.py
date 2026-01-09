@@ -28,6 +28,7 @@ from app.services.model_mapping_service import ModelMappingService
 from app.services.monitor_service import EndpointMonitor
 from app.services.entitlement_service import EntitlementService
 from app.services.supabase_admin import SupabaseAdminClient
+from app.services.supabase_auth_admin import SupabaseAuthAdminClient
 from app.services.supabase_keepalive import SupabaseKeepaliveService
 from app.services.sync_service import SyncService
 from app.settings.config import get_settings
@@ -130,16 +131,19 @@ async def lifespan(app: FastAPI):
 
     # Supabase Admin access (service role) - used by mobile APIs like /v1/me (best-effort init).
     app.state.supabase_admin = None
+    app.state.supabase_auth_admin = None
     app.state.user_repository = None
     app.state.entitlement_service = None
     if bool(settings.supabase_service_role_key) and (bool(settings.supabase_url) or bool(settings.supabase_project_id)):
         try:
             app.state.supabase_admin = SupabaseAdminClient(settings)
+            app.state.supabase_auth_admin = SupabaseAuthAdminClient(settings)
             app.state.user_repository = UserRepository(app.state.supabase_admin, bundle_ttl_seconds=60)
             app.state.entitlement_service = EntitlementService(app.state.user_repository, ttl_seconds=60)
         except Exception:
             # 缺少配置或初始化失败不阻断启动；具体端点按需返回可诊断错误体。
             app.state.supabase_admin = None
+            app.state.supabase_auth_admin = None
             app.state.user_repository = None
             app.state.entitlement_service = None
 

@@ -121,7 +121,16 @@ class SupabaseConfigValidator:
             log_success("✅ Supabase API 连接成功")
 
             # 统一校验：B2 落库模型（conversations/messages）+ AI 配置表（ai_model/ai_prompt）
-            required_tables = ["conversations", "messages", "ai_model", "ai_prompt"]
+            # + 管理端权益表（user_entitlements）+ 列表视图（user_entitlements_list）+ App 用户管理视图（app_users_admin_view）
+            required_tables = [
+                "conversations",
+                "messages",
+                "ai_model",
+                "ai_prompt",
+                "user_entitlements",
+                "user_entitlements_list",
+                "app_users_admin_view",
+            ]
             tables: Dict[str, Any] = {}
             for table in required_tables:
                 table_response = await self.client.get(f"{base_url}/rest/v1/{table}?limit=1", headers=headers)
@@ -132,7 +141,13 @@ class SupabaseConfigValidator:
                 else:
                     log_warning(f"⚠️ 表 '{table}' 不存在或不可访问（HTTP {table_response.status_code}）")
 
-            return {"accessible": True, "tables": tables}
+            all_required_tables_ok = all(bool(item.get("ok")) for item in tables.values())
+            if all_required_tables_ok:
+                log_success("✅ 必需表全部可访问")
+            else:
+                log_error("❌ 必需表存在缺失/不可访问")
+
+            return {"accessible": True, "tables": tables, "all_required_tables_ok": all_required_tables_ok}
 
         except httpx.HTTPError as e:
             log_error(f"❌ Supabase API 连接失败: {e}")
@@ -149,11 +164,9 @@ class SupabaseConfigValidator:
         }
 
         # 计算总体状态
-        all_passed = (
-            results["env_vars"]["all_valid"]
-            and results["jwks_endpoint"]["accessible"]
-            and results["supabase_api"]["accessible"]
-        )
+        all_passed = results["env_vars"]["all_valid"] and results["jwks_endpoint"]["accessible"] and results["supabase_api"]["accessible"]
+        if results["supabase_api"].get("accessible"):
+            all_passed = all_passed and bool(results["supabase_api"].get("all_required_tables_ok"))
 
         results["overall_status"] = "PASS" if all_passed else "FAIL"
 

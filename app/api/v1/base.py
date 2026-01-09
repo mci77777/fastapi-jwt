@@ -357,20 +357,29 @@ async def get_user_menu(current_user: AuthenticatedUser = Depends(get_current_us
                         "keepalive": False,
                     },
                     {
-                        "name": "用户权益",
-                        "path": "user-entitlements",
-                        "component": "/system/user-entitlements",
-                        "icon": "mdi:account-star-outline",
+                        "name": "App 用户管理",
+                        "path": "app-users",
+                        "component": "/system/app-users",
+                        "icon": "mdi:account-multiple-outline",
                         "order": 3,
                         "is_hidden": False,
                         "keepalive": False,
                     },
                     {
-                        "name": "权益等级配置",
+                        "name": "用户管理配置",
+                        "path": "app-users/config",
+                        "component": "/system/app-users/config",
+                        "icon": "mdi:cog-outline",
+                        "order": 4,
+                        "is_hidden": False,
+                        "keepalive": False,
+                    },
+                    {
+                        "name": "订阅等级配置",
                         "path": "user-entitlements/config",
                         "component": "/system/user-entitlements/config",
                         "icon": "mdi:tune-variant",
-                        "order": 4,
+                        "order": 5,
                         "is_hidden": False,
                         "keepalive": False,
                     },
@@ -484,14 +493,22 @@ async def get_user_api(current_user: AuthenticatedUser = Depends(get_current_use
             # 动作库发布（admin）
             "post/api/v1/admin/exercise/library/publish",
             "post/api/v1/admin/exercise/library/patch",
-            # 用户权益（admin）
-            "get/api/v1/admin/user-entitlements",
-            "get/api/v1/admin/user-entitlements/stats",
-            "get/api/v1/admin/user-entitlements/list",
+            # 订阅等级配置（admin）
             "get/api/v1/admin/user-entitlements/presets",
-            "post/api/v1/admin/user-entitlements",
             "post/api/v1/admin/user-entitlements/presets",
             "delete/api/v1/admin/user-entitlements/presets",
+            # App 用户管理（admin）
+            "get/api/v1/admin/app-users/config",
+            "post/api/v1/admin/app-users/config",
+            "get/api/v1/admin/app-users/bootstrap",
+            "get/api/v1/admin/app-users/stats",
+            "get/api/v1/admin/app-users/list",
+            "get/api/v1/admin/app-users",
+            "post/api/v1/admin/app-users/entitlements",
+            "post/api/v1/admin/app-users/permissions",
+            "post/api/v1/admin/app-users/disable",
+            "post/api/v1/admin/app-users/enable",
+            "post/api/v1/admin/app-users/reset-password",
         ]
     )
 

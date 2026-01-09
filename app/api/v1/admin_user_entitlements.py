@@ -196,6 +196,7 @@ class UserEntitlementsStats(BaseModel):
     tiers: list[UserEntitlementsTierCount] = Field(default_factory=list)
     pro_active: int = Field(..., ge=0)
     pro_expired: int = Field(..., ge=0)
+    anonymous_users: int = Field(default=0, ge=0, description="Count of anonymous users (best-effort)")
 
 
 @router.get("/user-entitlements/stats", response_model=None)
@@ -236,12 +237,23 @@ async def get_user_entitlements_stats(
         pro_active = 0
         pro_expired = 0
 
+    # Anonymous user count is best-effort (do not fail the whole endpoint).
+    anonymous_users = 0
+    try:
+        anonymous_users = int(await supabase.count_rows(table="app_users_admin_view", filters={"is_anonymous": "eq.true"}))
+    except Exception:
+        try:
+            anonymous_users = int(await supabase.count_rows(table="users", filters={"isanonymous": "eq.1"}))
+        except Exception:
+            anonymous_users = 0
+
     payload = UserEntitlementsStats(
         server_time_ms=now_ms,
         total_rows=int(total_rows),
         tiers=tier_counts,
         pro_active=int(pro_active),
         pro_expired=int(pro_expired),
+        anonymous_users=int(anonymous_users),
     ).model_dump(mode="json")
     return create_response(data=payload, msg="ok")
 
@@ -336,6 +348,7 @@ async def list_user_entitlements(
     tier: str | None = Query(None, description="Filter by tier (e.g. free/pro)"),  # noqa: B008
     active_only: bool = Query(False, description="Only active (expires_at is null or in the future)"),  # noqa: B008
     user_id: str | None = Query(None, description="Filter by user_id (UUID string)"),  # noqa: B008
+    include_anonymous: bool = Query(False, description="Include anonymous users"),  # noqa: B008
     _: AuthenticatedUser = Depends(require_dashboard_admin),  # noqa: B008
 ) -> dict[str, Any]:
     supabase = _get_supabase_admin(request)
@@ -348,13 +361,15 @@ async def list_user_entitlements(
         filters["tier"] = f"eq.{str(tier).strip().lower()}"
     if active_only:
         filters["or"] = f"(expires_at.is.null,expires_at.gt.{now_ms})"
+    if not include_anonymous:
+        filters["is_anonymous"] = "eq.false"
 
     limit = int(page_size)
     offset = (int(page) - 1) * limit
     items, total = await supabase.fetch_list(
-        table="user_entitlements",
+        table="user_entitlements_list",
         filters=filters or None,
-        select="user_id,tier,expires_at,flags,last_updated",
+        select="user_id,tier,expires_at,flags,last_updated,exists,is_anonymous",
         order="last_updated.desc",
         limit=limit,
         offset=offset,

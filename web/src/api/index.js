@@ -124,6 +124,23 @@ export default {
   deleteUserEntitlementTierPreset: (tier) =>
     request.delete(`/admin/user-entitlements/presets/${encodeURIComponent(String(tier || '').trim())}`),
   upsertUserEntitlements: (data = {}) => request.post('/admin/user-entitlements', data),
+  // app users (admin)
+  getAppUserAdminConfig: () => request.get('/admin/app-users/config'),
+  upsertAppUserAdminConfig: (data = {}) => request.post('/admin/app-users/config', data),
+  getAppUsersBootstrap: (params = {}) => request.get('/admin/app-users/bootstrap', { params }),
+  getAppUsersStats: () => request.get('/admin/app-users/stats'),
+  listAppUsers: (params = {}) => request.get('/admin/app-users/list', { params }),
+  getAppUserSnapshot: (userId) => request.get(`/admin/app-users/${encodeURIComponent(String(userId || '').trim())}`),
+  upsertAppUserEntitlements: (userId, data = {}) =>
+    request.post(`/admin/app-users/${encodeURIComponent(String(userId || '').trim())}/entitlements`, data),
+  upsertAppUserPermissions: (userId, data = {}) =>
+    request.post(`/admin/app-users/${encodeURIComponent(String(userId || '').trim())}/permissions`, data),
+  disableAppUser: (userId, data = {}) =>
+    request.post(`/admin/app-users/${encodeURIComponent(String(userId || '').trim())}/disable`, data),
+  enableAppUser: (userId, data = {}) =>
+    request.post(`/admin/app-users/${encodeURIComponent(String(userId || '').trim())}/enable`, data),
+  resetAppUserPassword: (userId, data = {}) =>
+    request.post(`/admin/app-users/${encodeURIComponent(String(userId || '').trim())}/reset-password`, data),
   // depts
   getDepts: (params = {}) => request.get('/dept/list', { params }),
   createDept: (data = {}) => request.post('/dept/create', data),

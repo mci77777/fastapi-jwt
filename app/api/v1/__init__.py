@@ -14,6 +14,7 @@ from .metrics import router as metrics_router
 from .exercise_library import router as exercise_library_router
 from .admin_exercise_library import router as admin_exercise_library_router
 from .admin_user_entitlements import router as admin_user_entitlements_router
+from .admin_app_users import router as admin_app_users_router
 from .seed import router as seed_router
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ v1_router.include_router(agents_router)
 v1_router.include_router(exercise_library_router)
 v1_router.include_router(admin_exercise_library_router)
 v1_router.include_router(admin_user_entitlements_router)
+v1_router.include_router(admin_app_users_router)
 v1_router.include_router(seed_router)
 logger.info("[ROUTER_INIT] Agents router registered with %d routes", len(agents_router.routes))
 
