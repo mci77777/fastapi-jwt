@@ -105,8 +105,15 @@ python scripts/verification/verify_jwks_cache.py
 # 2. 生成 Token 并执行匿名 E2E
 python e2e/anon_jwt_sse/scripts/generate_test_token.py --method auto --verify
 python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py
-# 可选：多模型并发（model key 来自 /api/v1/llm/app/models）
+# 产物：默认输出到 e2e/anon_jwt_sse/artifacts/anon_e2e_trace.json + anon_e2e_trace.txt（TXT 含 completed.reply 原文，便于人工核对尖括号标签）
+#
+# 可选：prompt 模式（server / passthrough）与 TXT 内容（text / raw / both）
+# python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py --prompt-mode passthrough --extra-system-prompt "<text>" --result-mode both
+# python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py --prompt-mode server --result-mode raw
+#
+# 可选：多模型并发（model key 来自 /api/v1/llm/app/models；并发过高可能触发 SSE 并发守卫/限流，失败会在报告中汇总）
 # python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py --models "xai,deepseek" --concurrency 2
+# python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py --models auto --concurrency 2
 
 # 3. 运行冒烟 / CI 套件
 python scripts/monitoring/smoke_test.py

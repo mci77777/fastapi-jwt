@@ -46,7 +46,9 @@ python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py --models "xai,deepseek" --co
 
 说明：
 
-- `--models` 为空时会尝试从 `GET /api/v1/llm/app/models` 自动选择；失败则走 default model（不显式传 model）。
+- 未提供 `--models`：
+  - 会从 `GET /api/v1/llm/app/models` 选取 **recommended_model（或首个可用）** 作为默认 model key（后端 `/messages` schema 可能要求显式 model）。
+- `--models auto`（或 `--models '*'`）：从 `GET /api/v1/llm/app/models` 自动选择；若接口不可用/为空会直接失败并在报告中给出提示。
 - 并发过高可能触发后端 SSE 并发守卫/限流，失败会在 TXT/JSON 报告里体现。
 
 ## 报告产物（TXT / JSON）

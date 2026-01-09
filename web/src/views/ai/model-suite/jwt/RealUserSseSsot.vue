@@ -219,9 +219,9 @@ const lastSseRequestId = ref('')
 
 // prompt / result mode
 const promptMode = ref('passthrough') // server | passthrough
-const extraSystemPrompt = ref(
+const DEFAULT_EXTRA_SYSTEM_PROMPT =
   '请严格按原样输出带尖括号标签的 ThinkingML：<thinking>...</thinking> 紧接 <final>...</final>。不要转义尖括号，不要额外解释协议。'
-)
+const extraSystemPrompt = ref(DEFAULT_EXTRA_SYSTEM_PROMPT)
 const resultMode = ref('text') // text | raw
 
 function genRequestId(prefix) {
@@ -229,6 +229,16 @@ function genRequestId(prefix) {
     globalThis.crypto?.randomUUID?.() ||
     `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
   return String(rid)
+}
+
+function handleSwitchToServerAndClearPrompt() {
+  promptMode.value = 'server'
+  extraSystemPrompt.value = ''
+}
+
+function handleResetPromptDefaults() {
+  promptMode.value = 'passthrough'
+  extraSystemPrompt.value = DEFAULT_EXTRA_SYSTEM_PROMPT
 }
 
 async function handleSend() {
@@ -514,6 +524,10 @@ const responseContent = computed(() => {
           ]"
           style="min-width: 220px"
         />
+        <NButton tertiary size="small" @click="handleSwitchToServerAndClearPrompt"
+          >切回 server + 清空</NButton
+        >
+        <NButton tertiary size="small" @click="handleResetPromptDefaults">恢复默认</NButton>
         <NText v-if="promptMode === 'server'" depth="3"
           >server 模式不会注入“附加 prompt”（由后端 SSOT 决定）</NText
         >

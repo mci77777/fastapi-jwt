@@ -233,9 +233,14 @@ class AnonymousE2E:
         if resp.status_code != 200:
             return []
         body = _safe_json(resp)
-        items = body.get("data") if isinstance(body, dict) else None
-        if not isinstance(items, list):
+        if not isinstance(body, dict):
             return []
+
+        recommended = str(body.get("recommended_model") or body.get("recommendedModel") or "").strip()
+        items = body.get("data")
+        if not isinstance(items, list):
+            items = []
+
         out: list[str] = []
         for item in items:
             if not isinstance(item, dict):
@@ -243,6 +248,11 @@ class AnonymousE2E:
             name = str(item.get("name") or "").strip()
             if name:
                 out.append(name)
+
+        # 优先把 recommended 放到列表首位（若存在）
+        if recommended:
+            out = [m for m in out if m != recommended]
+            out.insert(0, recommended)
         return out
 
     @staticmethod
@@ -1248,14 +1258,60 @@ class AnonymousE2E:
                 return await self._finalize(1)
 
             selected_models = [m for m in (self._models or []) if str(m or "").strip()]
+            # 约定：仅当用户显式传入 --models auto / --models '*' 时，才自动拉取 /llm/app/models。
+            # 未提供 --models 时默认走 default model（避免把未配置 key 的模型也跑进来导致 E2E 恒失败）。
+            wants_auto = False
+            if selected_models:
+                lowered = [str(m).strip().lower() for m in selected_models]
+                wants_auto = len(selected_models) == 1 and (lowered[0] == "auto" or selected_models[0].strip() == "*")
+
             if not selected_models:
+                # 默认选择：优先取 /llm/app/models 的 recommended_model（或首个可用）
+                # 说明：后端 /messages schema 可能要求显式传 model；因此默认不能省略。
+                try:
+                    candidates = await self._list_app_models(client, token)
+                except Exception:
+                    candidates = []
+                if candidates:
+                    selected_models = [candidates[0]]
+                else:
+                    self.report.add_step(
+                        StepRecord(
+                            name="e2e_select_default_model_failed",
+                            success=False,
+                            response={"error": "no_app_models"},
+                            notes={"hint": "请显式传 --models <key1,key2> 或使用 --models auto / '*'"},
+                        )
+                    )
+                    return await self._finalize(1)
+            elif wants_auto:
                 try:
                     selected_models = await self._list_app_models(client, token)
                 except Exception:
                     selected_models = []
-                # 兼容：无法获取模型列表时，走 default model（不显式传 model_key）
                 if not selected_models:
-                    selected_models = [""]
+                    self.report.add_step(
+                        StepRecord(
+                            name="e2e_list_app_models_failed",
+                            success=False,
+                            response={"error": "no_app_models"},
+                            notes={"hint": "请显式传 --models <key1,key2>"},
+                        )
+                    )
+                    return await self._finalize(1)
+            else:
+                # 若用户混入 auto/*，直接忽略该占位符（KISS：避免歧义）
+                selected_models = [m for m in selected_models if str(m).strip().lower() not in {"auto", "*"}]
+                if not selected_models:
+                    self.report.add_step(
+                        StepRecord(
+                            name="e2e_models_empty_after_filter",
+                            success=False,
+                            response={"error": "invalid_models"},
+                            notes={"hint": "请显式传 --models <key1,key2> 或使用 --models auto / '*'"},
+                        )
+                    )
+                    return await self._finalize(1)
 
             async def run_one(idx: int, raw_model: str) -> dict[str, Any]:
                 model_key = str(raw_model or "").strip() or None
@@ -1354,7 +1410,14 @@ class AnonymousE2E:
             lines.append(f"api_base_url={self.api_base_url}")
             lines.append(f"prompt_mode={self._prompt_mode}")
             lines.append(f"concurrency={self._concurrency}")
-            models_label = ",".join([m for m in (self._models or []) if str(m or "").strip()]) or "auto"
+            raw_models = [m for m in (self._models or []) if str(m or "").strip()]
+            lowered = [str(m).strip().lower() for m in raw_models]
+            is_auto = len(raw_models) == 1 and (lowered[0] == "auto" or str(raw_models[0]).strip() == "*")
+            models_label = ",".join([m for m in raw_models if str(m).strip().lower() not in {"auto", "*"}])
+            if is_auto:
+                models_label = "auto"
+            elif not models_label:
+                models_label = "recommended"
             lines.append(f"models={models_label}")
             lines.append("")
 
@@ -1490,7 +1553,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--models",
         default=os.getenv("E2E_MODELS", ""),
-        help="可选：逗号/空格分隔的 model keys（如 xai,deepseek）。为空则尝试从 /llm/app/models 自动选择，否则走 default。",
+        help=(
+            "可选：逗号/空格分隔的 model keys（如 xai,deepseek）。"
+            "未提供时会从 /llm/app/models 选取 recommended_model（或首个可用）作为默认；"
+            "传入 auto 或 '*' 则从 /llm/app/models 自动选择全部可用模型。"
+        ),
     )
     parser.add_argument(
         "--concurrency",

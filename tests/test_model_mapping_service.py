@@ -51,233 +51,245 @@ async def _new_service(tmp_path: Path) -> tuple[ModelMappingService, FakeAIConfi
 @pytest.mark.anyio("asyncio")
 async def test_list_mappings(tmp_path: Path) -> None:
     """测试映射列表查询功能"""
-    service, ai_service, _db = await _new_service(tmp_path)
+    service, ai_service, db = await _new_service(tmp_path)
+    try:
+        # 创建 prompt 映射
+        await service.upsert_mapping(
+            {
+                "scope_type": "prompt",
+                "scope_key": "1",
+                "name": "Test Prompt",
+                "default_model": "gpt-4o-mini",
+                "candidates": ["gpt-4o-mini", "gpt-4o"],
+                "is_active": True,
+                "metadata": {"env": "test"},
+            }
+        )
 
-    # 创建 prompt 映射
-    await service.upsert_mapping(
-        {
-            "scope_type": "prompt",
-            "scope_key": "1",
-            "name": "Test Prompt",
-            "default_model": "gpt-4o-mini",
-            "candidates": ["gpt-4o-mini", "gpt-4o"],
-            "is_active": True,
-            "metadata": {"env": "test"},
-        }
-    )
+        # 创建 fallback 映射
+        await service.upsert_mapping(
+            {
+                "scope_type": "module",
+                "scope_key": "chat",
+                "name": "Chat Module",
+                "default_model": "gpt-3.5-turbo",
+                "candidates": ["gpt-3.5-turbo"],
+                "is_active": True,
+                "metadata": {},
+            }
+        )
 
-    # 创建 fallback 映射
-    await service.upsert_mapping(
-        {
-            "scope_type": "module",
-            "scope_key": "chat",
-            "name": "Chat Module",
-            "default_model": "gpt-3.5-turbo",
-            "candidates": ["gpt-3.5-turbo"],
-            "is_active": True,
-            "metadata": {},
-        }
-    )
+        # 测试列出所有映射
+        all_items = await service.list_mappings()
+        assert len(all_items) == 2
 
-    # 测试列出所有映射
-    all_items = await service.list_mappings()
-    assert len(all_items) == 2
+        # 测试按 scope_type 过滤
+        prompt_items = await service.list_mappings(scope_type="prompt")
+        assert len(prompt_items) == 1
+        assert prompt_items[0]["scope_type"] == "prompt"
+        assert prompt_items[0]["scope_key"] == "1"
+        assert prompt_items[0]["source"] == "prompt"
 
-    # 测试按 scope_type 过滤
-    prompt_items = await service.list_mappings(scope_type="prompt")
-    assert len(prompt_items) == 1
-    assert prompt_items[0]["scope_type"] == "prompt"
-    assert prompt_items[0]["scope_key"] == "1"
-    assert prompt_items[0]["source"] == "prompt"
-
-    # 测试按 scope_key 过滤
-    chat_items = await service.list_mappings(scope_key="chat")
-    assert len(chat_items) == 1
-    assert chat_items[0]["scope_type"] == "module"
-    assert chat_items[0]["scope_key"] == "chat"
-    assert chat_items[0]["source"] == "sqlite"
+        # 测试按 scope_key 过滤
+        chat_items = await service.list_mappings(scope_key="chat")
+        assert len(chat_items) == 1
+        assert chat_items[0]["scope_type"] == "module"
+        assert chat_items[0]["scope_key"] == "chat"
+        assert chat_items[0]["source"] == "sqlite"
+    finally:
+        await db.close()
 
 
 @pytest.mark.anyio("asyncio")
 async def test_upsert_mapping(tmp_path: Path) -> None:
     """测试映射创建和更新功能"""
     service, ai_service, db = await _new_service(tmp_path)
+    try:
+        # 测试创建 prompt 映射
+        result = await service.upsert_mapping(
+            {
+                "scope_type": "prompt",
+                "scope_key": "1",
+                "name": "Test Prompt",
+                "default_model": "gpt-4o-mini",
+                "candidates": ["gpt-4o-mini", "gpt-4o"],
+                "is_active": True,
+                "metadata": {"env": "test"},
+            }
+        )
 
-    # 测试创建 prompt 映射
-    result = await service.upsert_mapping(
-        {
-            "scope_type": "prompt",
-            "scope_key": "1",
-            "name": "Test Prompt",
-            "default_model": "gpt-4o-mini",
-            "candidates": ["gpt-4o-mini", "gpt-4o"],
-            "is_active": True,
-            "metadata": {"env": "test"},
-        }
-    )
+        assert result["scope_type"] == "prompt"
+        assert result["scope_key"] == "1"
+        assert result["default_model"] == "gpt-4o-mini"
+        assert set(result["candidates"]) == {"gpt-4o-mini", "gpt-4o"}
+        assert result["is_active"] is True
+        assert result["source"] == "prompt"
 
-    assert result["scope_type"] == "prompt"
-    assert result["scope_key"] == "1"
-    assert result["default_model"] == "gpt-4o-mini"
-    assert set(result["candidates"]) == {"gpt-4o-mini", "gpt-4o"}
-    assert result["is_active"] is True
-    assert result["source"] == "prompt"
+        # 验证 AI 服务中的数据
+        assert 1 in ai_service.updated_payload
+        stored_first = ai_service.updated_payload[1]["tools_json"]
+        assert isinstance(stored_first, dict)
+        assert stored_first["__model_mapping"]["default_model"] == "gpt-4o-mini"
 
-    # 验证 AI 服务中的数据
-    assert 1 in ai_service.updated_payload
-    stored_first = ai_service.updated_payload[1]["tools_json"]
-    assert isinstance(stored_first, dict)
-    assert stored_first["__model_mapping"]["default_model"] == "gpt-4o-mini"
+        # 测试更新映射 (改变默认模型)
+        updated_result = await service.upsert_mapping(
+            {
+                "scope_type": "prompt",
+                "scope_key": "1",
+                "name": "Test Prompt",
+                "default_model": "gpt-4o",
+                "candidates": ["gpt-4o-mini", "gpt-4o"],
+                "is_active": True,
+                "metadata": {"env": "test"},
+            }
+        )
 
-    # 测试更新映射 (改变默认模型)
-    updated_result = await service.upsert_mapping(
-        {
-            "scope_type": "prompt",
-            "scope_key": "1",
-            "name": "Test Prompt",
-            "default_model": "gpt-4o",
-            "candidates": ["gpt-4o-mini", "gpt-4o"],
-            "is_active": True,
-            "metadata": {"env": "test"},
-        }
-    )
+        assert updated_result["default_model"] == "gpt-4o"
+        # 重新获取更新后的数据
+        stored_updated = ai_service.updated_payload[1]["tools_json"]
+        assert stored_updated["__model_mapping"]["default_model"] == "gpt-4o"
 
-    assert updated_result["default_model"] == "gpt-4o"
-    # 重新获取更新后的数据
-    stored_updated = ai_service.updated_payload[1]["tools_json"]
-    assert stored_updated["__model_mapping"]["default_model"] == "gpt-4o"
+        # 测试创建 fallback 映射
+        fallback_result = await service.upsert_mapping(
+            {
+                "scope_type": "module",
+                "scope_key": "chat",
+                "name": "Chat Module",
+                "default_model": "gpt-3.5-turbo",
+                "candidates": ["gpt-3.5-turbo"],
+                "is_active": True,
+                "metadata": {},
+            }
+        )
 
-    # 测试创建 fallback 映射
-    fallback_result = await service.upsert_mapping(
-        {
-            "scope_type": "module",
-            "scope_key": "chat",
-            "name": "Chat Module",
-            "default_model": "gpt-3.5-turbo",
-            "candidates": ["gpt-3.5-turbo"],
-            "is_active": True,
-            "metadata": {},
-        }
-    )
-
-    assert fallback_result["scope_type"] == "module"
-    assert fallback_result["source"] == "sqlite"
-    stored = await db.fetchone("SELECT id FROM llm_model_mappings WHERE id = ?", ("module:chat",))
-    assert stored and stored.get("id") == "module:chat"
+        assert fallback_result["scope_type"] == "module"
+        assert fallback_result["source"] == "sqlite"
+        stored = await db.fetchone("SELECT id FROM llm_model_mappings WHERE id = ?", ("module:chat",))
+        assert stored and stored.get("id") == "module:chat"
+    finally:
+        await db.close()
 
 
 @pytest.mark.anyio("asyncio")
 async def test_activate_default(tmp_path: Path) -> None:
     """测试激活默认模型功能"""
-    service, ai_service, _db = await _new_service(tmp_path)
-
-    # 创建映射
-    await service.upsert_mapping(
-        {
-            "scope_type": "prompt",
-            "scope_key": "1",
-            "name": "Test Prompt",
-            "default_model": "gpt-4o-mini",
-            "candidates": ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"],
-            "is_active": True,
-            "metadata": {"env": "test"},
-        }
-    )
-
-    # 激活新的默认模型
-    result = await service.activate_default("prompt:1", "gpt-4o")
-
-    assert result["default_model"] == "gpt-4o"
-    assert result["is_active"] is True
-    assert "gpt-4o" in result["candidates"]
-
-    # 验证存储中的数据已更新
-    stored = ai_service.updated_payload[1]["tools_json"]
-    assert stored["__model_mapping"]["default_model"] == "gpt-4o"
-
-    # 测试激活不存在的映射
+    service, ai_service, db = await _new_service(tmp_path)
     try:
-        await service.activate_default("prompt:999", "gpt-4o")
-        assert False, "Expected ValueError"
-    except ValueError as e:
-        assert str(e) == "mapping_not_found"
+        # 创建映射
+        await service.upsert_mapping(
+            {
+                "scope_type": "prompt",
+                "scope_key": "1",
+                "name": "Test Prompt",
+                "default_model": "gpt-4o-mini",
+                "candidates": ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"],
+                "is_active": True,
+                "metadata": {"env": "test"},
+            }
+        )
+
+        # 激活新的默认模型
+        result = await service.activate_default("prompt:1", "gpt-4o")
+
+        assert result["default_model"] == "gpt-4o"
+        assert result["is_active"] is True
+        assert "gpt-4o" in result["candidates"]
+
+        # 验证存储中的数据已更新
+        stored = ai_service.updated_payload[1]["tools_json"]
+        assert stored["__model_mapping"]["default_model"] == "gpt-4o"
+
+        # 测试激活不存在的映射
+        try:
+            await service.activate_default("prompt:999", "gpt-4o")
+            assert False, "Expected ValueError"
+        except ValueError as e:
+            assert str(e) == "mapping_not_found"
+    finally:
+        await db.close()
 
 
 @pytest.mark.anyio("asyncio")
 async def test_prompt_mapping_roundtrip(tmp_path: Path) -> None:
-    service, ai_service, _db = await _new_service(tmp_path)
+    service, ai_service, db = await _new_service(tmp_path)
+    try:
+        result = await service.upsert_mapping(
+            {
+                "scope_type": "prompt",
+                "scope_key": "1",
+                "name": "Test Prompt",
+                "default_model": "gpt-4o-mini",
+                "candidates": ["gpt-4o-mini", "gpt-4o"],
+                "is_active": True,
+                "metadata": {"env": "test"},
+            }
+        )
 
-    result = await service.upsert_mapping(
-        {
-            "scope_type": "prompt",
-            "scope_key": "1",
-            "name": "Test Prompt",
-            "default_model": "gpt-4o-mini",
-            "candidates": ["gpt-4o-mini", "gpt-4o"],
-            "is_active": True,
-            "metadata": {"env": "test"},
-        }
-    )
+        assert result["scope_type"] == "prompt"
+        assert result["default_model"] == "gpt-4o-mini"
+        assert 1 in ai_service.updated_payload
+        stored = ai_service.updated_payload[1]["tools_json"]
+        assert isinstance(stored, dict)
+        assert stored["__model_mapping"]["default_model"] == "gpt-4o-mini"
 
-    assert result["scope_type"] == "prompt"
-    assert result["default_model"] == "gpt-4o-mini"
-    assert 1 in ai_service.updated_payload
-    stored = ai_service.updated_payload[1]["tools_json"]
-    assert isinstance(stored, dict)
-    assert stored["__model_mapping"]["default_model"] == "gpt-4o-mini"
-
-    items = await service.list_mappings()
-    assert len(items) == 1
-    assert items[0]["scope_key"] == "1"
+        items = await service.list_mappings()
+        assert len(items) == 1
+        assert items[0]["scope_key"] == "1"
+    finally:
+        await db.close()
 
 
 @pytest.mark.anyio("asyncio")
 async def test_fallback_mapping(tmp_path: Path) -> None:
     service, ai_service, db = await _new_service(tmp_path)
-
-    payload = {
-        "scope_type": "module",
-        "scope_key": "chat",
-        "name": "Chat Module",
-        "default_model": "gpt-4o-mini",
-        "candidates": ["gpt-4o-mini"],
-        "is_active": True,
-        "metadata": {},
-    }
-    await service.upsert_mapping(payload)
-
-    items = await service.list_mappings(scope_type="module")
-    assert len(items) == 1
-    assert items[0]["scope_key"] == "chat"
-    assert items[0]["source"] == "sqlite"
-    stored = await db.fetchone("SELECT id FROM llm_model_mappings WHERE id = ?", ("module:chat",))
-    assert stored and stored.get("id") == "module:chat"
-
-
-@pytest.mark.anyio("asyncio")
-async def test_resolve_model_key_skips_blocked(tmp_path: Path) -> None:
-    service, _ai_service, _db = await _new_service(tmp_path)
-
-    await service.upsert_mapping(
-        {
+    try:
+        payload = {
             "scope_type": "module",
             "scope_key": "chat",
             "name": "Chat Module",
             "default_model": "gpt-4o-mini",
-            "candidates": ["gpt-4o-mini", "gpt-4o"],
+            "candidates": ["gpt-4o-mini"],
             "is_active": True,
             "metadata": {},
         }
-    )
+        await service.upsert_mapping(payload)
 
-    # 屏蔽默认模型后，应自动回退到下一个候选
-    await service.upsert_blocked_models([{"model": "gpt-4o-mini", "blocked": True}])
-    resolved = await service.resolve_model_key("module:chat")
-    assert resolved["hit"] is True
-    assert resolved["resolved_model"] == "gpt-4o"
+        items = await service.list_mappings(scope_type="module")
+        assert len(items) == 1
+        assert items[0]["scope_key"] == "chat"
+        assert items[0]["source"] == "sqlite"
+        stored = await db.fetchone("SELECT id FROM llm_model_mappings WHERE id = ?", ("module:chat",))
+        assert stored and stored.get("id") == "module:chat"
+    finally:
+        await db.close()
 
-    # 全部候选被屏蔽：应返回 hit=true 且 resolved_model=None（由调用方 fallback）
-    await service.upsert_blocked_models([{"model": "gpt-4o", "blocked": True}])
-    resolved2 = await service.resolve_model_key("module:chat")
-    assert resolved2["hit"] is True
-    assert resolved2["resolved_model"] is None
+
+@pytest.mark.anyio("asyncio")
+async def test_resolve_model_key_skips_blocked(tmp_path: Path) -> None:
+    service, _ai_service, db = await _new_service(tmp_path)
+    try:
+        await service.upsert_mapping(
+            {
+                "scope_type": "module",
+                "scope_key": "chat",
+                "name": "Chat Module",
+                "default_model": "gpt-4o-mini",
+                "candidates": ["gpt-4o-mini", "gpt-4o"],
+                "is_active": True,
+                "metadata": {},
+            }
+        )
+
+        # 屏蔽默认模型后，应自动回退到下一个候选
+        await service.upsert_blocked_models([{"model": "gpt-4o-mini", "blocked": True}])
+        resolved = await service.resolve_model_key("module:chat")
+        assert resolved["hit"] is True
+        assert resolved["resolved_model"] == "gpt-4o"
+
+        # 全部候选被屏蔽：应返回 hit=true 且 resolved_model=None（由调用方 fallback）
+        await service.upsert_blocked_models([{"model": "gpt-4o", "blocked": True}])
+        resolved2 = await service.resolve_model_key("module:chat")
+        assert resolved2["hit"] is True
+        assert resolved2["resolved_model"] is None
+    finally:
+        await db.close()
