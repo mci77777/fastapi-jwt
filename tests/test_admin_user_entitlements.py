@@ -10,6 +10,7 @@ from app import app as fastapi_app
 from app.auth import AuthenticatedUser
 from app.db import get_sqlite_manager
 from app.services.supabase_admin import SupabaseAdminClient
+from app.services.supabase_admin import SupabaseAdminError
 from app.settings.config import Settings
 
 
@@ -78,6 +79,45 @@ async def test_admin_user_entitlements_get_not_exists(async_client, mock_jwt_tok
             assert data["code"] == 200
             assert data["data"]["user_id"] == "user-123"
             assert data["data"]["exists"] is False
+        finally:
+            fastapi_app.state.supabase_admin = prev_client
+
+
+@pytest.mark.asyncio
+async def test_admin_user_entitlements_supabase_error_returns_diagnostic(async_client, mock_jwt_token: str):
+    with patch("app.auth.get_jwt_verifier") as mock_get_verifier:
+        mock_verifier = MagicMock()
+        mock_verifier.verify_token.return_value = AuthenticatedUser(
+            uid="admin-uid",
+            claims={"user_metadata": {"username": "admin"}},
+            user_type="permanent",
+        )
+        mock_get_verifier.return_value = mock_verifier
+
+        supabase = _make_supabase_admin()
+        supabase.fetch_one_by_user_id = AsyncMock(
+            side_effect=SupabaseAdminError(
+                code="supabase_request_failed",
+                message="Supabase request failed",
+                status_code=404,
+                hint="检查 Supabase 是否已创建表 user_entitlements",
+            )
+        )
+
+        prev_client = getattr(fastapi_app.state, "supabase_admin", None)
+        fastapi_app.state.supabase_admin = supabase
+        try:
+            resp = await async_client.get(
+                "/api/v1/admin/user-entitlements",
+                params={"user_id": "user-123"},
+                headers={"Authorization": f"Bearer {mock_jwt_token}"},
+            )
+            assert resp.status_code == 404
+            data = resp.json()
+            assert data["status"] == 404
+            assert data["code"] == "supabase_request_failed"
+            assert "msg" in data and "user_entitlements" in data["msg"]
+            assert "request_id" in data
         finally:
             fastapi_app.state.supabase_admin = prev_client
 

@@ -35,7 +35,10 @@ def _get_supabase_admin(request: Request) -> SupabaseAdminClient:
     if not isinstance(client, SupabaseAdminClient):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=create_response(code=503, msg="Supabase admin client unavailable"),
+            detail=create_response(
+                code=503,
+                msg="Supabase 未配置：需要 SUPABASE_URL(或 SUPABASE_PROJECT_ID) + SUPABASE_SERVICE_ROLE_KEY",
+            ),
         )
     return client
 

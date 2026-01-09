@@ -33,6 +33,8 @@ def create_error_response(
     payload: Dict[str, Any] = {
         "status": status_code,
         "code": code,
+        # Dashboard 前端兼容字段：axios 拦截器优先读取 msg
+        "msg": f"{message}（{hint}）" if hint else message,
         "message": message,
         "request_id": request_id,
     }
@@ -49,15 +51,36 @@ def _build_detail(detail: Any, default_code: str) -> Dict[str, Any]:
         result = detail.copy()
         result.setdefault("status", 500)
         result.setdefault("code", default_code)
+        if "message" not in result and isinstance(result.get("msg"), str) and result.get("msg"):
+            result["message"] = result["msg"]
         result.setdefault("message", default_code.replace("_", " "))
+        if "msg" not in result and isinstance(result.get("message"), str) and result.get("message"):
+            result["msg"] = result["message"]
         return result
     if detail is None:
-        return {"status": 500, "code": default_code, "message": default_code.replace("_", " ")}
-    return {"status": 500, "code": default_code, "message": str(detail)}
+        payload = {"status": 500, "code": default_code, "message": default_code.replace("_", " ")}
+        payload["msg"] = payload["message"]
+        return payload
+    payload = {"status": 500, "code": default_code, "message": str(detail)}
+    payload["msg"] = payload["message"]
+    return payload
 
 
 def register_exception_handlers(app: FastAPI) -> None:
     """注册 FastAPI 全局异常处理。"""
+
+    from app.services.supabase_admin import SupabaseAdminError
+
+    @app.exception_handler(SupabaseAdminError)
+    async def supabase_admin_exception_handler(request: Request, exc: SupabaseAdminError) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", None) or get_current_request_id() or uuid.uuid4().hex
+        return create_error_response(
+            status_code=int(getattr(exc, "status_code", 500) or 500),
+            code=str(getattr(exc, "code", "supabase_error") or "supabase_error"),
+            message=str(exc) or "Supabase error",
+            request_id=request_id,
+            hint=getattr(exc, "hint", None),
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -86,6 +109,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=422,
             content={
                 "detail": jsonable_encoder(exc.errors()),
+                "msg": "请求参数错误",
                 "request_id": request_id,
             },
         )
@@ -100,6 +124,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
         # 确保包含 request_id
         payload["request_id"] = request_id
+        payload.setdefault("msg", payload.get("message"))
 
         # 对于401错误，确保不泄露敏感信息
         if exc.status_code == 401:
@@ -108,6 +133,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 payload = {
                     "status": 401,
                     "code": "unauthorized",
+                    "msg": "Authentication required",
                     "message": "Authentication required",
                     "request_id": request_id,
                 }
@@ -121,6 +147,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         payload = {
             "status": 500,
             "code": "internal_server_error",
+            "msg": "Internal server error",
             "message": "Internal server error",
             "request_id": request_id,
         }

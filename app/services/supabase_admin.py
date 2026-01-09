@@ -12,6 +12,40 @@ from app.settings.config import Settings
 logger = logging.getLogger(__name__)
 
 
+def _extract_postgrest_error_hint(response: httpx.Response) -> Optional[str]:
+    try:
+        data = response.json()
+    except Exception:
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    parts: list[str] = []
+    for key in ("message", "hint", "details", "error_description", "error"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+
+    code = data.get("code")
+    if isinstance(code, str) and code.strip():
+        parts.append(f"code={code.strip()}")
+
+    if not parts:
+        return None
+
+    text = "; ".join(dict.fromkeys(parts))  # preserve order + dedupe
+    return text[:240]
+
+
+def _fallback_hint_for_status(status_code: int, *, table: Optional[str] = None) -> Optional[str]:
+    if status_code in (401, 403):
+        return "检查 SUPABASE_SERVICE_ROLE_KEY 是否有效且具备 service_role 权限"
+    if status_code == 404 and table:
+        return f"检查 Supabase 是否已创建表 {table} 且已开放 PostgREST"
+    return None
+
+
 class SupabaseAdminError(RuntimeError):
     def __init__(self, code: str, message: str, *, status_code: int = 500, hint: Optional[str] = None) -> None:
         super().__init__(message)
@@ -91,10 +125,12 @@ class SupabaseAdminClient:
         except httpx.HTTPStatusError as exc:
             status = int(getattr(exc.response, "status_code", 0) or 0) or 502
             logger.warning("Supabase admin request failed table=%s status=%s", table, status)
+            hint = _extract_postgrest_error_hint(exc.response) or _fallback_hint_for_status(status, table=table)
             raise SupabaseAdminError(
                 code="supabase_request_failed",
                 message="Supabase request failed",
                 status_code=status,
+                hint=hint,
             ) from exc
         except httpx.HTTPError as exc:
             logger.warning("Supabase admin request error table=%s error=%s", table, type(exc).__name__)
@@ -156,10 +192,12 @@ class SupabaseAdminClient:
         except httpx.HTTPStatusError as exc:
             status = int(getattr(exc.response, "status_code", 0) or 0) or 502
             logger.warning("Supabase admin upsert failed table=%s status=%s", table, status)
+            hint = _extract_postgrest_error_hint(exc.response) or _fallback_hint_for_status(status, table=table)
             raise SupabaseAdminError(
                 code="supabase_upsert_failed",
                 message="Supabase upsert failed",
                 status_code=status,
+                hint=hint,
             ) from exc
         except httpx.HTTPError as exc:
             logger.warning("Supabase admin upsert error table=%s error=%s", table, type(exc).__name__)
@@ -213,10 +251,12 @@ class SupabaseAdminClient:
         except httpx.HTTPStatusError as exc:
             status = int(getattr(exc.response, "status_code", 0) or 0) or 502
             logger.warning("Supabase admin list failed table=%s status=%s", table, status)
+            hint = _extract_postgrest_error_hint(exc.response) or _fallback_hint_for_status(status, table=table)
             raise SupabaseAdminError(
                 code="supabase_request_failed",
                 message="Supabase request failed",
                 status_code=status,
+                hint=hint,
             ) from exc
         except httpx.HTTPError as exc:
             logger.warning("Supabase admin list error table=%s error=%s", table, type(exc).__name__)
