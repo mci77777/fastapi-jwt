@@ -200,6 +200,36 @@ Open http://localhost:3101/dashboard
 产物：
 - 失败时会写入 `e2e/real_user_ai_conversation/artifacts/`（默认已 gitignore）。
 
+### Scenario 0.3: Prompt / Protocol 调试矩阵（持续调参用）
+
+用途：在你不断调整 `assets/prompts/*`（或后端 prompt SSOT）以及不同调用协议（server/passthrough、tool_choice、result_mode）时，**批量跑一组组合**并用 `docs/ai预期响应结构.md`（ThinkingML v4.5）做“硬验收”。
+
+默认行为：
+- 先用 admin JWT 写入并 activate `assets/prompts/serp_prompt.md` + `assets/prompts/tool.md`（SSOT）
+- 然后对每个 mapped model 依次跑协议组合：`POST /messages` → `GET /events` 拼接 reply → `_validate_thinkingml`
+- 产出脱敏 artifacts（不包含 delta/raw 原文，仅保留长度/对账字段）
+
+运行示例（只跑 xai + deepseek；server 与 passthrough 各跑一次）：
+```bash
+.venv/bin/python scripts/monitoring/prompt_protocol_tuner.py \
+  --models xai deepseek \
+  --prompt-mode server passthrough \
+  --result-mode xml_plaintext \
+  --tool-choice none
+```
+
+想复现“auto 降级”：
+```bash
+.venv/bin/python scripts/monitoring/prompt_protocol_tuner.py \
+  --models xai \
+  --prompt-mode server \
+  --result-mode auto
+```
+
+判定标准：
+- 终端输出 `SUMMARY total=... passed=... failed=0` 且 exit=0
+- 失败原因与对账字段见 `e2e/prompt_protocol_tuner/artifacts/SUMMARY.json`
+
 ### Scenario 1: Model Selection
 ```bash
 # Get whitelist (SSOT)
