@@ -224,8 +224,7 @@ const lastSseRequestId = ref('')
 
 // prompt / result mode
 const promptMode = ref('passthrough') // server | passthrough
-const DEFAULT_EXTRA_SYSTEM_PROMPT =
-  '请严格按原样输出带尖括号标签的 ThinkingML：<thinking>...</thinking> 紧接 <final>...</final>。不要转义尖括号，不要额外解释协议。'
+const DEFAULT_EXTRA_SYSTEM_PROMPT = `请严格按原样输出 Strict-XML（ThinkingML v4.5）：\n1) 必须输出且仅输出一个 XML 文本：<thinking>...</thinking> 紧接 <final>...</final>\n2) 只允许标签：think/serp/thinking/phase/title/final（phase 必须有 id=\"1..N\" 且递增）\n3) <final> 内容最后必须追加：\n<!-- <serp_queries>\n[\"q1\",\"q2\",\"q3\"]\n</serp_queries> -->\n4) 不要解释协议，不要使用 Markdown 代码块包裹 XML；若无法满足，输出 <<ParsingError>>`
 const extraSystemPrompt = ref(DEFAULT_EXTRA_SYSTEM_PROMPT)
 const resultMode = ref('xml_plaintext') // xml_plaintext | raw_passthrough | auto
 const toolChoice = ref('none') // '' | none | auto（OpenAI tool_choice）
