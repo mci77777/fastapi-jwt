@@ -1,22 +1,27 @@
 """基础认证端点（登录、用户信息等）。"""
 
+import asyncio
 import base64
 import hashlib
 import hmac
+import json
+import logging
 import secrets
 import time
 from typing import Any, Dict, Optional
 
 import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.auth import AuthenticatedUser
+from app.auth import AuthenticatedUser, get_current_user
 from app.core.middleware import get_current_request_id
 from app.db import get_sqlite_manager
 from app.settings.config import get_settings
 
 router = APIRouter(prefix="/base", tags=["base"])
+logger = logging.getLogger(__name__)
 
 
 class LoginRequest(BaseModel):
@@ -204,6 +209,49 @@ async def get_current_user_from_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=create_response(code=401, msg=f"令牌验证失败: {str(e)}")
         )
+
+
+@router.get("/sse_probe", summary="SSE 流式探针（用于验证网关/代理未缓冲）")
+async def sse_probe(
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> StreamingResponse:
+    """返回一个短生命周期 SSE 流，用于验证端到端“真实流式”。
+
+    语义：
+    - 每秒发送 1 条 `event: probe`（共 8 条）
+    - 末尾发送 `event: completed`
+    - 若客户端/代理把这些事件合并成“一次性到达”，说明存在响应缓冲或压缩导致的流式失真。
+    """
+
+    request_id = getattr(request.state, "request_id", None) or get_current_request_id() or ""
+    user_id = getattr(current_user, "uid", "") or ""
+
+    async def gen():
+        # 兼容部分反向代理的缓冲策略：先发送注释 padding，促使尽早 flush。
+        yield ":" + (" " * 2048) + "\n\n"
+        started_ms = int(time.time() * 1000)
+        for seq in range(1, 9):
+            ts_ms = int(time.time() * 1000)
+            payload = {"ts": ts_ms, "seq": seq, "request_id": request_id, "user_id": user_id}
+            logger.info("[SSE_PROBE_SENT] ts=%s request_id=%s seq=%s", ts_ms, request_id, seq)
+            yield f"event: probe\ndata: {json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}\n\n"
+            await asyncio.sleep(1.0)
+
+        done_ts = int(time.time() * 1000)
+        done = {"ts": done_ts, "seq": 9, "request_id": request_id, "user_id": user_id, "duration_ms": done_ts - started_ms}
+        logger.info("[SSE_PROBE_COMPLETED] ts=%s request_id=%s duration_ms=%s", done_ts, request_id, done["duration_ms"])
+        yield f"event: completed\ndata: {json.dumps(done, ensure_ascii=False, separators=(',', ':'))}\n\n"
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/access_token", summary="用户登录")

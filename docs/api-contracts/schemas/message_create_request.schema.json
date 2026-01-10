@@ -10,6 +10,11 @@
     "conversation_id": { "type": ["string", "null"], "format": "uuid", "description": "会话 ID（UUID；null 或缺省表示由服务端生成）" },
     "metadata": { "type": "object", "additionalProperties": true, "default": {}, "description": "客户端附加信息（不做字段白名单）" },
     "skip_prompt": { "type": "boolean", "default": false, "description": "是否跳过服务端默认 prompt 注入（透传模式）" },
+    "result_mode": {
+      "type": "string",
+      "enum": ["xml_plaintext", "raw_passthrough", "auto"],
+      "description": "SSE 输出模式：xml_plaintext=解析后纯文本（含 XML 标签）；raw_passthrough=上游 RAW 透明转发；auto=自动选择/降级"
+    },
     "messages": {
       "type": "array",
       "minItems": 1,
@@ -91,4 +96,3 @@
     }
   }
 }
-

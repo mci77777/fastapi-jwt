@@ -199,7 +199,27 @@ server {
     # 请求大小限制
     client_max_body_size 10M;
 
-    # 代理到 FastAPI
+    # SSE（消息流）：必须单独 location，确保禁缓冲 + 禁 gzip（否则“看起来不流式/批量到达”）
+    # 注意：必须覆盖 /api/v1/messages（无尾随 /）否则 POST 可能被 301/302 重定向，导致客户端丢方法/断连
+    location ^~ /api/v1/messages {
+        proxy_pass http://gymbro_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 3600s;  # SSE 长连接
+    }
+
+    # 代理到 FastAPI（非 SSE）
     location / {
         proxy_pass http://gymbro_backend;
         proxy_http_version 1.1;
@@ -211,14 +231,9 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
 
-        # SSE 支持
-        proxy_buffering off;
-        proxy_cache off;
-
-        # 超时配置
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
-        proxy_read_timeout 300s;  # SSE 长连接
+        proxy_read_timeout 60s;
     }
 
     # 健康检查端点不记录日志

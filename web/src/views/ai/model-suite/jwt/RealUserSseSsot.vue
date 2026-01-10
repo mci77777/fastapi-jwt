@@ -222,7 +222,7 @@ const promptMode = ref('passthrough') // server | passthrough
 const DEFAULT_EXTRA_SYSTEM_PROMPT =
   '请严格按原样输出带尖括号标签的 ThinkingML：<thinking>...</thinking> 紧接 <final>...</final>。不要转义尖括号，不要额外解释协议。'
 const extraSystemPrompt = ref(DEFAULT_EXTRA_SYSTEM_PROMPT)
-const resultMode = ref('text') // text | raw
+const resultMode = ref('xml_plaintext') // xml_plaintext | raw_passthrough | auto
 
 function genRequestId(prefix) {
   const rid =
@@ -296,6 +296,7 @@ async function handleSend() {
       },
       requestId: createRequestId,
       promptMode: resolvedPromptMode,
+      resultMode: resultMode.value,
       openai,
       accessToken: jwtToken.value,
     })
@@ -368,28 +369,57 @@ async function streamSse(msgId, convId, requestId) {
 
       if (!line) {
         const ev = flushEvent()
-        if (ev) {
-          requestLogAppendEvent({ kind: 'sse', url, requestId, event: ev })
-          if (ev.event === 'content_delta' && ev.data?.delta) {
-            aiResponseText.value += String(ev.data.delta)
-          }
+          if (ev) {
+            requestLogAppendEvent({ kind: 'sse', url, requestId, event: ev })
+            if (ev.event === 'upstream_raw') {
+              const chunk =
+                typeof ev.data === 'string'
+                  ? ev.data
+                  : typeof ev.data?.raw === 'string'
+                    ? ev.data.raw
+                    : ''
+              if (chunk) aiResponseRaw.value += `${chunk}\n`
+            }
+            if (ev.event === 'content_delta' && ev.data?.delta) {
+              aiResponseText.value += String(ev.data.delta)
+            }
           if (ev.event === 'completed') {
             if (typeof ev.data === 'object' && ev.data && typeof ev.data.reply === 'string') {
               aiResponseText.value = ev.data.reply
             }
-            try {
-              aiResponseRaw.value = JSON.stringify(ev.data ?? ev, null, 2)
-            } catch {
-              aiResponseRaw.value = String(ev.data ?? ev)
+            if (resultMode.value !== 'raw_passthrough') {
+              try {
+                aiResponseRaw.value = JSON.stringify(ev.data ?? ev, null, 2)
+              } catch {
+                aiResponseRaw.value = String(ev.data ?? ev)
+              }
+            } else {
+              let tail = ''
+              try {
+                tail = JSON.stringify(ev.data ?? ev, null, 2)
+              } catch {
+                tail = String(ev.data ?? ev)
+              }
+              if (tail) aiResponseRaw.value += `\n[completed]\n${tail}\n`
             }
             return
           }
           if (ev.event === 'error') {
             const msg = typeof ev.data === 'string' ? ev.data : JSON.stringify(ev.data)
-            try {
-              aiResponseRaw.value = JSON.stringify(ev.data ?? ev, null, 2)
-            } catch {
-              aiResponseRaw.value = String(ev.data ?? ev)
+            if (resultMode.value !== 'raw_passthrough') {
+              try {
+                aiResponseRaw.value = JSON.stringify(ev.data ?? ev, null, 2)
+              } catch {
+                aiResponseRaw.value = String(ev.data ?? ev)
+              }
+            } else {
+              let tail = ''
+              try {
+                tail = JSON.stringify(ev.data ?? ev, null, 2)
+              } catch {
+                tail = String(ev.data ?? ev)
+              }
+              if (tail) aiResponseRaw.value += `\n[error]\n${tail}\n`
             }
             throw new Error(msg || 'SSE error')
           }
@@ -415,7 +445,7 @@ onMounted(() => {
 })
 
 const responseContent = computed(() => {
-  if (resultMode.value === 'raw') return aiResponseRaw.value
+  if (resultMode.value === 'raw_passthrough') return aiResponseRaw.value
   return aiResponseText.value
 })
 </script>
@@ -519,8 +549,9 @@ const responseContent = computed(() => {
         <NSelect
           v-model:value="resultMode"
           :options="[
-            { label: 'Text（reply / delta）', value: 'text' },
-            { label: 'RAW（completed/error）', value: 'raw' },
+            { label: 'XML 纯文本（content_delta）', value: 'xml_plaintext' },
+            { label: 'RAW 透明转发（upstream_raw）', value: 'raw_passthrough' },
+            { label: 'AUTO（自动选择）', value: 'auto' },
           ]"
           style="min-width: 220px"
         />

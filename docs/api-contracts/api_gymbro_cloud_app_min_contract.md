@@ -70,6 +70,14 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
 
 用途：创建异步对话任务，随后用 SSE 拉流。
 
+### SSE 输出模式（SSOT）
+
+`POST /api/v1/messages` 支持可选字段 `result_mode`：
+
+- `xml_plaintext`（默认）：服务端解析上游响应，SSE 推送 `event: content_delta`（`delta` 为纯文本，允许包含 `<final>...</final>` 等 XML 标签）。
+- `raw_passthrough`：服务端透明转发上游 RAW，SSE 推送 `event: upstream_raw`（App 可自行回放/解析；仍会收到 `completed/error`）。
+- `auto`：服务端自动判定（优先 `xml_plaintext`；若无法产出 `content_delta` 则降级为 `raw_passthrough`）。
+
 ### 权限等级与配额（SSOT）
 
 当前仅区分 **2 个权限等级**：
@@ -110,7 +118,8 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
   "text": "给我一份三分化训练方案",
   "conversation_id": null,
   "metadata": { "client": "app", "client_message_id": "<opaque>" },
-  "skip_prompt": false
+  "skip_prompt": false,
+  "result_mode": "xml_plaintext"
 }
 ```
 
@@ -122,6 +131,7 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
 {
   "model": "global:xai",
   "skip_prompt": true,
+  "result_mode": "raw_passthrough",
   "messages": [
     { "role": "system", "content": "<redacted system prompt>" },
     { "role": "user", "content": "给我一份三分化训练方案" }
@@ -258,7 +268,7 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
 
 ## 3) SSE 订阅：`GET /api/v1/messages/{message_id}/events`
 
-用途：流式接收模型输出（`content_delta`）与最终结果（`completed`）。
+用途：流式接收模型输出（`content_delta` 或 `upstream_raw`）与最终结果（`completed`）。
 
 ### Headers（最小）
 
@@ -275,11 +285,13 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
   - `{"state":"queued|working","message_id":"...","request_id":"..."}`
   - `{"state":"routed","message_id":"...","request_id":"...","provider":"xai","resolved_model":"grok-4-1-fast-reasoning","endpoint_id":123,"upstream_request_id":null}`
 - `event: content_delta`：`{"message_id":"...","request_id":"...","seq":1,"delta":"..."}`
+- `event: upstream_raw`：`{"message_id":"...","request_id":"...","seq":1,"dialect":"openai.chat_completions","upstream_event":null,"raw":"..."}`
 - `event: completed`：`{"message_id":"...","request_id":"...","reply":"...","reply_len":1234,"provider":"...","resolved_model":"...","endpoint_id":123,"upstream_request_id":"...|null","metadata":null}`
 - `event: error`：`{"message_id":"...","request_id":"...","code":"...","message":"...","error":"...","provider":"...|null","resolved_model":"...|null","endpoint_id":123|null}`
 - `event: heartbeat`：`{"message_id":"...","request_id":"...","ts":1736253242000}`
 
-> reply 优先由 `content_delta.delta` 拼接得到；`completed.reply` 仅作兜底（例如晚订阅/漏订阅）。结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。
+> `result_mode=xml_plaintext` 时，reply 优先由 `content_delta.delta` 拼接得到；`completed.reply` 仅作兜底（例如晚订阅/漏订阅）。结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。  
+> `result_mode=raw_passthrough` 时，以 `upstream_raw.raw` 为准（透明转发）；`completed.reply` 可能为空（仅用于终止与对账）。
 
 ### SSE 事件字典（SSOT，可机读）
 

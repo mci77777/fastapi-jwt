@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 import uuid
 from datetime import datetime, timezone
@@ -22,6 +23,7 @@ from app.services.entitlement_service import EntitlementService
 from app.settings.config import get_settings
 
 router = APIRouter(tags=["messages"])
+logger = logging.getLogger(__name__)
 
 
 _FREE_TIER_DAILY_MODEL_LIMITS: dict[str, int | None] = {
@@ -85,6 +87,12 @@ class MessageCreateRequest(BaseModel):
         description="上游方言（payload 模式必填）：openai.chat_completions/openai.responses/anthropic.messages/gemini.generate_content",
     )
     payload: Optional[dict[str, Any]] = Field(default=None, description="上游 provider 原生请求体（payload 模式）")
+
+    # SSE 输出模式（SSOT：创建消息时固化；订阅侧只读）
+    result_mode: Optional[Literal["xml_plaintext", "raw_passthrough", "auto"]] = Field(
+        default=None,
+        description="SSE 输出：xml_plaintext=解析后纯文本（含 XML 标签）；raw_passthrough=上游 RAW 透明转发；auto=自动选择/降级",
+    )
 
     def _extract_metadata_chat_request(self) -> dict[str, Any]:
         if not isinstance(self.metadata, dict):
@@ -468,6 +476,10 @@ async def create_message(
             conversation_id=conversation_id,
             metadata=payload.metadata,
             skip_prompt=payload.skip_prompt,
+            result_mode=payload.result_mode
+            or (payload.metadata or {}).get("result_mode")
+            or (payload.metadata or {}).get("resultMode")
+            or None,
             model=requested_model,
             messages=normalized_messages,
             system_prompt=normalized_system_prompt,
@@ -483,6 +495,12 @@ async def create_message(
         owner_user_id=current_user.uid,
         conversation_id=conversation_id,
         request_id=request_id or "",
+        result_mode=(
+            payload.result_mode
+            or (payload.metadata or {}).get("result_mode")
+            or (payload.metadata or {}).get("resultMode")
+            or "xml_plaintext"
+        ),
     )
 
     async def runner() -> None:
@@ -534,6 +552,25 @@ async def stream_message_events(
     create_request_id = ""
     if meta is not None:
         create_request_id = str(getattr(meta, "request_id", "") or "")
+    result_mode = str(getattr(meta, "result_mode", "") or "xml_plaintext").strip() or "xml_plaintext"
+    if result_mode not in {"xml_plaintext", "raw_passthrough", "auto"}:
+        result_mode = "xml_plaintext"
+
+    # 输出事件白名单：避免客户端在某模式下收到无意义事件（同时降低敏感数据暴露面）。
+    def _current_allowed_events() -> set[str]:
+        if result_mode == "raw_passthrough":
+            return {"status", "heartbeat", "upstream_raw", "completed", "error"}
+        if result_mode != "auto":  # xml_plaintext
+            return {"status", "heartbeat", "content_delta", "completed", "error"}
+        # auto：若已判定 effective，则动态收敛到单一输出
+        effective = None
+        if meta is not None:
+            effective = str(getattr(meta, "effective_result_mode", "") or "").strip()
+        if effective == "raw_passthrough":
+            return {"status", "heartbeat", "upstream_raw", "completed", "error"}
+        if effective == "xml_plaintext":
+            return {"status", "heartbeat", "content_delta", "completed", "error"}
+        return {"status", "heartbeat", "content_delta", "upstream_raw", "completed", "error"}
 
     async def event_generator():
         started = time.time()
@@ -541,6 +578,9 @@ async def stream_message_events(
         frames: list[dict[str, Any]] = []
         terminal_sent = False
         try:
+            # 兼容部分反向代理的缓冲策略：先发送一段 SSE 注释 padding，促使尽早 flush。
+            # 注意：以 ":" 开头的行是 SSE 注释，客户端会忽略，不影响协议。
+            yield ":" + (" " * 2048) + "\n\n"
             while True:
                 if await request.is_disconnected():
                     end_reason = "client_disconnected"
@@ -562,6 +602,9 @@ async def stream_message_events(
                     end_reason = "channel_closed"
                     break
 
+                if item.event not in _current_allowed_events():
+                    continue
+
                 # 脱敏记录 SSE 帧（用于交接/排障，不写入原文内容）
                 safe_data = dict(item.data or {})
                 if item.event == "content_delta":
@@ -570,12 +613,53 @@ async def stream_message_events(
                         "message_id": safe_data.get("message_id"),
                         "delta_len": len(delta),
                     }
+                elif item.event == "upstream_raw":
+                    raw = safe_data.get("raw")
+                    safe_data = {
+                        "message_id": safe_data.get("message_id"),
+                        "seq": safe_data.get("seq"),
+                        "dialect": safe_data.get("dialect"),
+                        "upstream_event": safe_data.get("upstream_event"),
+                        "raw_len": len(raw) if isinstance(raw, str) else 0,
+                    }
                 elif item.event == "completed":
                     safe_data = {
                         "message_id": safe_data.get("message_id"),
                         "reply_len": safe_data.get("reply_len"),
                     }
                 frames.append({"event": item.event, "data": safe_data})
+
+                if item.event == "content_delta":
+                    data = item.data or {}
+                    delta = data.get("delta")
+                    seq = data.get("seq")
+                    logger.info(
+                        "[SSE_DELTA_SENT] ts=%s message_id=%s seq=%s delta_len=%s",
+                        int(time.time() * 1000),
+                        message_id,
+                        seq,
+                        len(delta) if isinstance(delta, str) else 0,
+                    )
+                elif item.event == "upstream_raw":
+                    data = item.data or {}
+                    raw = data.get("raw")
+                    seq = data.get("seq")
+                    logger.info(
+                        "[SSE_RAW_SENT] ts=%s message_id=%s seq=%s raw_len=%s",
+                        int(time.time() * 1000),
+                        message_id,
+                        seq,
+                        len(raw) if isinstance(raw, str) else 0,
+                    )
+                elif item.event == "completed":
+                    data = item.data or {}
+                    reply = data.get("reply")
+                    logger.info(
+                        "[SSE_COMPLETED] ts=%s message_id=%s reply_len=%s",
+                        int(time.time() * 1000),
+                        message_id,
+                        len(reply) if isinstance(reply, str) else int(data.get("reply_len") or 0),
+                    )
 
                 yield f"event: {item.event}\ndata: {json.dumps(item.data, ensure_ascii=False, separators=(',', ':'))}\n\n"
                 if item.event in {"completed", "error"}:
@@ -632,7 +716,7 @@ async def stream_message_events(
         event_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },

@@ -19,9 +19,19 @@ data: <one-line-json>
 
 ```
 
-其中 `<event_name>` 是 GymBro 自定义事件（统一对外）：`status` / `content_delta` / `completed` / `error` / `heartbeat`。
+其中 `<event_name>` 是 GymBro 自定义事件（统一对外）：`status` / `content_delta` / `upstream_raw` / `completed` / `error` / `heartbeat`。
 
 > 重要：**最终答案（reply）优先由 `content_delta.delta` 流式拼接得到（SSOT）**；`completed.reply` 仅作兜底（例如晚订阅/漏订阅）。
+
+---
+
+## 1.1 SSE 输出模式（SSOT）
+
+`POST /api/v1/messages` 可指定 `result_mode`（创建消息时固化，订阅侧只读）：
+
+- `xml_plaintext`：服务端解析上游响应，向 App 发送 `content_delta`（`delta` 为纯文本，允许包含 XML 标签如 `<final>...</final>`）。
+- `raw_passthrough`：服务端透明转发上游 RAW，向 App 发送 `upstream_raw`（App 侧可自行回放/解析；仍会收到 `completed/error` 终止事件）。
+- `auto`：服务端自动判定（优先 `xml_plaintext`；若长期无法产出 `content_delta`，则降级为 `raw_passthrough`）。
 
 ---
 
@@ -40,6 +50,7 @@ data: <one-line-json>
 export type GymBroSseEventName =
   | "status"
   | "content_delta"
+  | "upstream_raw"
   | "completed"
   | "error"
   | "heartbeat";
@@ -47,6 +58,7 @@ export type GymBroSseEventName =
 export type GymBroSseEnvelope =
   | { event: "status"; data: StatusEventData }
   | { event: "content_delta"; data: ContentDeltaEventData }
+  | { event: "upstream_raw"; data: UpstreamRawEventData }
   | { event: "completed"; data: CompletedEventData }
   | { event: "error"; data: ErrorEventData }
   | { event: "heartbeat"; data: HeartbeatEventData };
@@ -69,6 +81,15 @@ export interface ContentDeltaEventData {
   delta: string; // 追加到 reply_text
 }
 
+export interface UpstreamRawEventData {
+  message_id: string;
+  request_id?: string;
+  seq: number; // 从 1 开始单调递增（RAW 序列）
+  dialect?: string | null; // openai.chat_completions/openai.responses/anthropic.messages/gemini.generate_content
+  upstream_event?: string | null; // 上游 SSE 的 event 名（若上游未使用 event 行则为 null）
+  raw: string; // 上游 data 文本（不含 "data:" 前缀）
+}
+
 export interface CompletedEventData {
   message_id: string;
   request_id: string;
@@ -76,6 +97,8 @@ export interface CompletedEventData {
   resolved_model: string | null;
   endpoint_id: number | null;
   upstream_request_id: string | null;
+  result_mode?: string | null; // 客户端请求的 result_mode（创建时固化）
+  result_mode_effective?: string | null; // auto 模式的最终判定（或与 result_mode 相同）
   reply: string; // 兜底全文（客户端仍建议优先拼接 content_delta）
   reply_len: number;
   metadata: Record<string, unknown> | null; // provider 侧额外信息（可选）
@@ -167,4 +190,3 @@ data: {"code":"internal_error","message":"Client error '403 Forbidden' for url '
 1. **自定义事件监听**：若用 `EventSource`，必须 `addEventListener('content_delta'|'completed'|...)`，否则会“看起来没流”。  
 2. **301/302 会破坏 SSE/POST**：网关重定向 `/api/v1/messages` 可能导致 POST 丢失/断连；对照 `deploy/web.conf`。  
 3. **结构校验**：拼接后的 `reply_text` 的 ThinkingML 规则见 `docs/ai预期响应结构.md`；server 模式默认应满足 v4.5。
-

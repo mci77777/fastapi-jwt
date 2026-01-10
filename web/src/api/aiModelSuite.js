@@ -49,6 +49,7 @@ export const refreshMailUserToken = (testUserId, data = {}) =>
  * @param {string} [options.conversationId] - 会话 ID
  * @param {Object} [options.metadata] - 元数据
  * @param {('server'|'passthrough')} [options.promptMode='server'] - prompt 策略：使用后端 prompt 或透传 OpenAI 字段
+ * @param {('xml_plaintext'|'raw_passthrough'|'auto'|'text'|'raw')} [options.resultMode='xml_plaintext'] - SSE 输出：xml_plaintext=解析后纯文本（含 XML 标签）；raw_passthrough=上游 RAW 透明转发；auto=自动检测；兼容旧值 text/raw
  * @param {Object} [options.openai] - OpenAI 兼容字段（后端 SSOT）
  * @param {string} [options.openai.model]
  * @param {Array<Object>} [options.openai.messages]
@@ -68,6 +69,7 @@ export const createMessage = ({
   conversationId,
   metadata = {},
   promptMode = 'server',
+  resultMode = 'xml_plaintext',
   openai = {},
   skipPrompt,
   requestId,
@@ -96,6 +98,16 @@ export const createMessage = ({
   // prompt 策略：server=使用后端 prompt 注入；passthrough=仅透传 OpenAI 字段，不注入默认 prompt
   if (typeof skipPrompt === 'boolean') payload.skip_prompt = skipPrompt
   else payload.skip_prompt = resolvedPromptMode === 'passthrough'
+
+  // SSE 结果模式（SSOT：后端枚举为 xml_plaintext/raw_passthrough/auto；这里兼容旧值）
+  const normalizedResultMode = String(resultMode || '').trim()
+  const resolvedResultMode =
+    normalizedResultMode === 'raw_passthrough' || normalizedResultMode === 'xml_plaintext' || normalizedResultMode === 'auto'
+      ? normalizedResultMode
+      : normalizedResultMode === 'raw'
+        ? 'raw_passthrough'
+        : 'xml_plaintext'
+  payload.result_mode = resolvedResultMode
 
   // OpenAI 兼容字段（仅白名单字段进入 body 顶层；扩展信息仍应放 metadata）
   if (openai && typeof openai === 'object') {

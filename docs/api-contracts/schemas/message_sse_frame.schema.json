@@ -5,7 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "event": { "type": "string", "enum": ["status", "content_delta", "completed", "error", "heartbeat"] },
+    "event": { "type": "string", "enum": ["status", "content_delta", "upstream_raw", "completed", "error", "heartbeat"] },
     "data": { "type": "object" }
   },
   "required": ["event", "data"],
@@ -16,6 +16,10 @@
     },
     {
       "properties": { "event": { "const": "content_delta" }, "data": { "$ref": "#/$defs/ContentDeltaData" } },
+      "required": ["event", "data"]
+    },
+    {
+      "properties": { "event": { "const": "upstream_raw" }, "data": { "$ref": "#/$defs/UpstreamRawData" } },
       "required": ["event", "data"]
     },
     {
@@ -59,6 +63,19 @@
       },
       "required": ["message_id", "request_id", "seq", "delta"]
     },
+    "UpstreamRawData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message_id": { "$ref": "#/$defs/MessageId" },
+        "request_id": { "$ref": "#/$defs/RequestId" },
+        "seq": { "type": "integer", "minimum": 1 },
+        "dialect": { "type": ["string", "null"] },
+        "upstream_event": { "type": ["string", "null"] },
+        "raw": { "type": "string", "minLength": 1 }
+      },
+      "required": ["message_id", "request_id", "seq", "raw"]
+    },
     "CompletedData": {
       "type": "object",
       "additionalProperties": false,
@@ -69,6 +86,8 @@
         "resolved_model": { "type": ["string", "null"] },
         "endpoint_id": { "type": ["integer", "null"] },
         "upstream_request_id": { "type": ["string", "null"] },
+        "result_mode": { "type": ["string", "null"] },
+        "result_mode_effective": { "type": ["string", "null"] },
         "reply": { "type": "string" },
         "reply_len": { "type": "integer", "minimum": 0 },
         "metadata": { "type": ["object", "null"], "additionalProperties": true }
@@ -102,4 +121,3 @@
     }
   }
 }
-

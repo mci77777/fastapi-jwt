@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from time import perf_counter
@@ -69,6 +70,13 @@ _STREAM_SANITIZE_TAGS = (
     *_BR_TAGS,
 )
 
+_ALLOWED_RESULT_MODES = {"xml_plaintext", "raw_passthrough", "auto"}
+# auto 模式：在“能解析出文本”与“仅能拿到 raw”之间做最小判定。
+# 规则：先缓冲少量 upstream_raw；若很快出现 content_delta 则丢弃 raw 并选择 xml_plaintext；
+# 若 raw 连续出现且始终没有 content_delta，则尽早切换到 raw_passthrough 并 flush 已缓冲 raw，避免“只在末尾一次性出现”。
+_AUTO_PENDING_RAW_MAX_FRAMES = 4
+_AUTO_PENDING_RAW_MAX_CHARS = 4096
+
 
 def _escape_xml_tag_literal(text: str, *, tag: str) -> str:
     """将文本中的指定 XML 标签字面量转义为纯文本（避免误触发嵌套标签）。"""
@@ -123,6 +131,8 @@ class AIMessageInput:
     conversation_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     skip_prompt: bool = False
+    # SSE 输出模式（SSOT：由创建消息请求决定；下游以 broker.meta 为准）
+    result_mode: Optional[str] = None
     dialect: Optional[str] = None
     payload: Optional[dict[str, Any]] = None
 
@@ -149,9 +159,17 @@ class MessageChannelMeta:
     conversation_id: str
     request_id: str
     created_at: datetime
+    # SSE 输出模式（SSOT：创建消息时固化，订阅侧只读不推导）
+    result_mode: str = "xml_plaintext"
+    # auto 模式的实际输出（SSOT：由事件流观测决定；订阅侧只读）
+    effective_result_mode: Optional[str] = None
     closed: bool = False
     terminal_event: Optional[MessageEvent] = None
     delta_seq: int = 0
+    raw_seq: int = 0
+    # auto：缓存少量 raw 帧，等待判定；一旦判定则清空或 flush。
+    auto_pending_raw_events: list[MessageEvent] = field(default_factory=list)
+    auto_pending_raw_chars: int = 0
 
     # ThinkingML 运行时最小纠错：用于流式阶段把 <thinking> 内出现的 <final>/<\final> 字面量转义为纯文本。
     thinkingml_inside_thinking: bool = False
@@ -180,8 +198,12 @@ class MessageEventBroker:
         owner_user_id: str,
         conversation_id: str,
         request_id: str = "",
+        result_mode: str = "xml_plaintext",
     ) -> asyncio.Queue[Optional[MessageEvent]]:
         queue: asyncio.Queue[Optional[MessageEvent]] = asyncio.Queue()
+        normalized_mode = str(result_mode or "xml_plaintext").strip() or "xml_plaintext"
+        if normalized_mode not in _ALLOWED_RESULT_MODES:
+            normalized_mode = "xml_plaintext"
         async with self._lock:
             self._channels[message_id] = queue
             self._meta[message_id] = MessageChannelMeta(
@@ -189,6 +211,8 @@ class MessageEventBroker:
                 conversation_id=conversation_id,
                 request_id=str(request_id or ""),
                 created_at=datetime.utcnow(),
+                result_mode=normalized_mode,
+                effective_result_mode=None if normalized_mode == "auto" else normalized_mode,
             )
         return queue
 
@@ -401,38 +425,101 @@ class MessageEventBroker:
         if queue:
             meta = self._meta.get(message_id)
             if meta:
-                # SSE 对外 SSOT：所有事件默认包含 message_id/request_id；content_delta 自动补齐 seq。
+                # SSE 对外 SSOT：所有事件默认包含 message_id/request_id；content_delta/upstream_raw 自动补齐 seq。
                 event.data.setdefault("message_id", message_id)
                 request_id = get_current_request_id()
                 if request_id:
                     event.data.setdefault("request_id", request_id)
-                if event.event == "content_delta":
-                    # ThinkingML 流式最小纠错：保证“拼接后的 reply”也符合结构契约。
-                    delta = event.data.get("delta")
-                    if isinstance(delta, str) and delta:
-                        fixed = self._sanitize_thinkingml_delta(meta, delta)
-                        event.data["delta"] = fixed
-                        if not fixed:
-                            # 本次 chunk 仅用于跨边界识别标签前缀，不对外发送空 delta。
-                            return
-                    meta.delta_seq += 1
-                    event.data.setdefault("seq", meta.delta_seq)
-                elif event.event in {"completed", "error"}:
-                    # flush：输出最后残留的前缀（最多 9 个字符），避免拼接后丢失。
-                    pending = meta.thinkingml_pending
-                    if pending:
-                        meta.thinkingml_pending = ""
+
+                async def _enqueue(e: MessageEvent) -> None:
+                    if e.event == "upstream_raw":
+                        meta.raw_seq += 1
+                        e.data.setdefault("seq", meta.raw_seq)
+                    if e.event == "content_delta":
+                        # ThinkingML 流式最小纠错：保证“拼接后的 reply”也符合结构契约。
+                        delta = e.data.get("delta")
+                        if isinstance(delta, str) and delta:
+                            fixed = self._sanitize_thinkingml_delta(meta, delta)
+                            e.data["delta"] = fixed
+                            if not fixed:
+                                # 本次 chunk 仅用于跨边界识别标签前缀，不对外发送空 delta。
+                                return
                         meta.delta_seq += 1
-                        flush_event = MessageEvent(
-                            event="content_delta",
-                            data={
-                                "message_id": message_id,
-                                "request_id": request_id or "",
-                                "seq": meta.delta_seq,
-                                "delta": pending,
-                            },
-                        )
-                        await queue.put(flush_event)
+                        e.data.setdefault("seq", meta.delta_seq)
+                    elif e.event in {"completed", "error"}:
+                        # flush：输出最后残留的前缀（最多 9 个字符），避免拼接后丢失。
+                        pending = meta.thinkingml_pending
+                        if pending:
+                            meta.thinkingml_pending = ""
+                            meta.delta_seq += 1
+                            flush_event = MessageEvent(
+                                event="content_delta",
+                                data={
+                                    "message_id": message_id,
+                                    "request_id": request_id or "",
+                                    "seq": meta.delta_seq,
+                                    "delta": pending,
+                                },
+                            )
+                            await queue.put(flush_event)
+
+                        # auto：completed/error 时确保写入最终 effective（便于 App 对账/诊断）
+                        if meta.result_mode == "auto":
+                            meta.effective_result_mode = meta.effective_result_mode or (
+                                "raw_passthrough" if meta.auto_pending_raw_events else "xml_plaintext"
+                            )
+                        e.data.setdefault("result_mode_effective", meta.effective_result_mode)
+
+                    if e.event in {"completed", "error"}:
+                        meta.terminal_event = e
+                    await queue.put(e)
+
+                # 明确模式下的最小过滤（订阅端也会做白名单；这里避免无意义入队）。
+                if meta.result_mode == "raw_passthrough" and event.event == "content_delta":
+                    return
+                if meta.result_mode == "xml_plaintext" and event.event == "upstream_raw":
+                    return
+
+                # auto：优先 xml_plaintext（只要出现 content_delta 即判定并丢弃 raw），否则在 raw 连续出现时尽早切换 raw_passthrough。
+                if meta.result_mode == "auto" and event.event == "upstream_raw":
+                    if meta.effective_result_mode == "xml_plaintext":
+                        return
+                    if meta.effective_result_mode != "raw_passthrough":
+                        raw = event.data.get("raw")
+                        raw_len = len(raw) if isinstance(raw, str) else 0
+                        meta.auto_pending_raw_events.append(event)
+                        meta.auto_pending_raw_chars += raw_len
+                        if (
+                            len(meta.auto_pending_raw_events) < _AUTO_PENDING_RAW_MAX_FRAMES
+                            and meta.auto_pending_raw_chars < _AUTO_PENDING_RAW_MAX_CHARS
+                        ):
+                            return
+
+                        meta.effective_result_mode = "raw_passthrough"
+                        pending = meta.auto_pending_raw_events
+                        meta.auto_pending_raw_events = []
+                        meta.auto_pending_raw_chars = 0
+                        for pending_event in pending:
+                            await _enqueue(pending_event)
+                        return
+
+                if meta.result_mode == "auto" and event.event == "content_delta":
+                    meta.effective_result_mode = "xml_plaintext"
+                    meta.auto_pending_raw_events = []
+                    meta.auto_pending_raw_chars = 0
+
+                if meta.result_mode == "auto" and event.event in {"completed", "error"} and meta.auto_pending_raw_events:
+                    # 若到终止仍未出现 content_delta，则选择 raw 并 flush 缓冲帧。
+                    meta.effective_result_mode = meta.effective_result_mode or "raw_passthrough"
+                    pending = meta.auto_pending_raw_events
+                    meta.auto_pending_raw_events = []
+                    meta.auto_pending_raw_chars = 0
+                    for pending_event in pending:
+                        await _enqueue(pending_event)
+
+                await _enqueue(event)
+                return
+
             if meta and event.event in {"completed", "error"}:
                 meta.terminal_event = event
             await queue.put(event)
@@ -801,6 +888,50 @@ class AIService:
     def new_message_id() -> str:
         return uuid4().hex
 
+    @staticmethod
+    def _build_chat_record_messages(message: AIMessageInput, reply_text: str) -> list[dict[str, str]]:
+        """为 Provider 持久化构建 messages（SSOT）。"""
+
+        normalized: list[dict[str, str]] = []
+
+        raw_messages = getattr(message, "messages", None)
+        if isinstance(raw_messages, list):
+            for item in raw_messages:
+                if not isinstance(item, dict):
+                    continue
+                role = str(item.get("role") or "").strip()
+                content = item.get("content")
+                if not role or not isinstance(content, str):
+                    continue
+                content = content.strip()
+                if not content:
+                    continue
+                # 对话记录只落 user/assistant，避免 system prompt 混入“可见对话”
+                if role == "system":
+                    continue
+                normalized.append({"role": role, "content": content})
+
+        user_text = str((message.text or "")).strip()
+        if user_text:
+            if not normalized or normalized[-1].get("role") != "user" or normalized[-1].get("content") != user_text:
+                normalized.append({"role": "user", "content": user_text})
+
+        assistant_text = str((reply_text or "")).strip()
+        if assistant_text:
+            if (
+                not normalized
+                or normalized[-1].get("role") != "assistant"
+                or normalized[-1].get("content") != assistant_text
+            ):
+                normalized.append({"role": "assistant", "content": assistant_text})
+
+        # 兜底：去掉连续重复（避免 text 与 messages 同时存在时产生双写）
+        deduped: list[dict[str, str]] = []
+        for item in normalized:
+            if not deduped or deduped[-1] != item:
+                deduped.append(item)
+        return deduped
+
     async def run_conversation(
         self,
         message_id: str,
@@ -809,6 +940,17 @@ class AIService:
         broker: MessageEventBroker,
     ) -> None:
         request_id = get_current_request_id()
+        # SSOT：优先使用 broker.meta（创建消息时固化）；仅在缺失时回退到 message/metadata
+        requested_result_mode = ""
+        meta = broker.get_meta(message_id)
+        if meta is not None:
+            requested_result_mode = str(getattr(meta, "result_mode", "") or "").strip()
+        if not requested_result_mode:
+            requested_result_mode = str(getattr(message, "result_mode", "") or "").strip()
+        if not requested_result_mode:
+            requested_result_mode = str((message.metadata or {}).get("result_mode") or "").strip()
+        if requested_result_mode not in _ALLOWED_RESULT_MODES:
+            requested_result_mode = "xml_plaintext"
 
         await broker.publish(
             message_id,
@@ -908,12 +1050,27 @@ class AIService:
                 if endpoint_id_used is not None:
                     metadata.setdefault("endpoint_id", endpoint_id_used)
 
+                messages_for_record = self._build_chat_record_messages(message, reply_text)
+                if not messages_for_record:
+                    save_history = False
+                user_message = str((message.text or "")).strip()
+                if not user_message:
+                    for item in reversed(messages_for_record):
+                        if item.get("role") == "user":
+                            user_message = str(item.get("content") or "")
+                            break
+                ai_reply = str((reply_text or "")).strip()
+
+            if save_history:
                 record = {
                     "message_id": message_id,
                     "conversation_id": message.conversation_id,
                     "user_id": user.uid,
-                    "user_message": message.text or "",
-                    "ai_reply": reply_text,
+                    "user_type": getattr(user, "user_type", None),
+                    "messages": messages_for_record,
+                    # 兼容：历史测试/调用方仍依赖这两个字段（SSOT 仍以 messages 为准）。
+                    "user_message": user_message,
+                    "ai_reply": ai_reply,
                     "metadata": metadata,
                 }
                 try:
@@ -928,6 +1085,7 @@ class AIService:
                     data={
                         "message_id": message_id,
                         "request_id": request_id,
+                        "result_mode": requested_result_mode,
                         "provider": provider_used,
                         "resolved_model": model_used,
                         "endpoint_id": endpoint_id_used,
@@ -952,6 +1110,7 @@ class AIService:
                         "message": str(exc) or type(exc).__name__,
                         # 兼容旧客户端：保留 legacy 字段
                         "error": str(exc) or type(exc).__name__,
+                        "result_mode": requested_result_mode,
                         "provider": provider_used,
                         "resolved_model": model_used,
                         "endpoint_id": endpoint_id_used,
@@ -970,6 +1129,7 @@ class AIService:
                         "message": str(exc) or type(exc).__name__,
                         # 兼容旧客户端：保留 legacy 字段
                         "error": str(exc) or type(exc).__name__,
+                        "result_mode": requested_result_mode,
                         "provider": provider_used,
                         "resolved_model": model_used,
                         "endpoint_id": endpoint_id_used,
@@ -1035,6 +1195,18 @@ class AIService:
         Optional[dict[str, Any]],
     ]:
         request_id = get_current_request_id()
+        # SSOT：优先使用 broker.meta（创建消息时固化）；仅在缺失时回退到 message/metadata
+        requested_result_mode = ""
+        meta = broker.get_meta(message_id)
+        if meta is not None:
+            requested_result_mode = str(getattr(meta, "result_mode", "") or "").strip()
+        if not requested_result_mode:
+            requested_result_mode = str(getattr(message, "result_mode", "") or "").strip()
+        if not requested_result_mode:
+            requested_result_mode = str((message.metadata or {}).get("result_mode") or "").strip()
+        if requested_result_mode not in _ALLOWED_RESULT_MODES:
+            requested_result_mode = "xml_plaintext"
+        emit_raw = requested_result_mode in {"raw_passthrough", "auto"}
 
         if self._ai_config_service is None:
             reply_text = await self._call_openai_completion_settings(message)
@@ -1155,6 +1327,14 @@ class AIService:
                 timeout = selected_endpoint.get("timeout") or self._settings.http_timeout_seconds
 
                 async def _publish(event: str, data: dict[str, Any]) -> None:
+                    if event == "content_delta":
+                        delta = data.get("delta")
+                        logger.info(
+                            "[AI_CHUNK_RECEIVED] ts=%s message_id=%s chunk_len=%s",
+                            int(time.time() * 1000),
+                            message_id,
+                            len(delta) if isinstance(delta, str) else 0,
+                        )
                     await broker.publish(message_id, MessageEvent(event=event, data=data))
 
                 reply_text, response_payload, upstream_request_id, provider_metadata = await adapter.stream(
@@ -1163,6 +1343,7 @@ class AIService:
                     payload=provider_payload,
                     timeout=timeout,
                     publish=_publish,
+                    emit_raw=emit_raw,
                 )
             elif effective_dialect == "openai.responses":
                 reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_openai_responses_streaming(
@@ -1171,6 +1352,7 @@ class AIService:
                     provider_payload,
                     message_id=message_id,
                     broker=broker,
+                    emit_raw=emit_raw,
                 )
             elif effective_dialect == "gemini.generate_content":
                 reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_gemini_generate_content_streaming(
@@ -1180,6 +1362,7 @@ class AIService:
                     model=str(selected_model or ""),
                     message_id=message_id,
                     broker=broker,
+                    emit_raw=emit_raw,
                 )
             else:
                 reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_openai_chat_completions_streaming(
@@ -1188,6 +1371,7 @@ class AIService:
                     provider_payload,
                     message_id=message_id,
                     broker=broker,
+                    emit_raw=emit_raw,
                 )
         else:
             if dialect == "anthropic.messages":
@@ -1197,6 +1381,7 @@ class AIService:
                     openai_req,
                     message_id=message_id,
                     broker=broker,
+                    emit_raw=emit_raw,
                 )
             elif dialect == "openai.responses":
                 reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_openai_responses_streaming(
@@ -1205,6 +1390,7 @@ class AIService:
                     openai_req,
                     message_id=message_id,
                     broker=broker,
+                    emit_raw=emit_raw,
                 )
             elif dialect == "gemini.generate_content":
                 reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_gemini_generate_content_streaming(
@@ -1214,6 +1400,7 @@ class AIService:
                     model=str(selected_model or ""),
                     message_id=message_id,
                     broker=broker,
+                    emit_raw=emit_raw,
                 )
             else:
                 reply_text, response_payload, upstream_request_id, provider_metadata = await self._call_openai_chat_completions_streaming(
@@ -1222,6 +1409,7 @@ class AIService:
                     openai_req,
                     message_id=message_id,
                     broker=broker,
+                    emit_raw=emit_raw,
                 )
 
         return (
@@ -1768,6 +1956,7 @@ class AIService:
         *,
         message_id: str,
         broker: MessageEventBroker,
+        emit_raw: bool = False,
     ) -> tuple[str, str, Optional[str], Optional[dict[str, Any]]]:
         """OpenAI Chat Completions 真流式（provider adapter）。"""
 
@@ -1775,6 +1964,14 @@ class AIService:
         timeout = endpoint.get("timeout") or self._settings.http_timeout_seconds
 
         async def _publish(event: str, data: dict[str, Any]) -> None:
+            if event == "content_delta":
+                delta = data.get("delta")
+                logger.info(
+                    "[AI_CHUNK_RECEIVED] ts=%s message_id=%s chunk_len=%s",
+                    int(time.time() * 1000),
+                    message_id,
+                    len(delta) if isinstance(delta, str) else 0,
+                )
             await broker.publish(message_id, MessageEvent(event=event, data=data))
 
         return await adapter.stream(
@@ -1783,6 +1980,7 @@ class AIService:
             openai_req=openai_req,
             timeout=timeout,
             publish=_publish,
+            emit_raw=emit_raw,
         )
 
     async def _call_anthropic_messages_streaming(
@@ -1793,6 +1991,7 @@ class AIService:
         *,
         message_id: str,
         broker: MessageEventBroker,
+        emit_raw: bool = False,
     ) -> tuple[str, str, Optional[str], Optional[dict[str, Any]]]:
         """Claude Messages 真流式（provider adapter）。"""
 
@@ -1803,6 +2002,14 @@ class AIService:
         payload["stream"] = True
 
         async def _publish(event: str, data: dict[str, Any]) -> None:
+            if event == "content_delta":
+                delta = data.get("delta")
+                logger.info(
+                    "[AI_CHUNK_RECEIVED] ts=%s message_id=%s chunk_len=%s",
+                    int(time.time() * 1000),
+                    message_id,
+                    len(delta) if isinstance(delta, str) else 0,
+                )
             await broker.publish(message_id, MessageEvent(event=event, data=data))
 
         return await adapter.stream(
@@ -1811,6 +2018,7 @@ class AIService:
             payload=payload,
             timeout=timeout,
             publish=_publish,
+            emit_raw=emit_raw,
         )
 
     async def _call_openai_responses_streaming(
@@ -1821,11 +2029,20 @@ class AIService:
         *,
         message_id: str,
         broker: MessageEventBroker,
+        emit_raw: bool = False,
     ) -> tuple[str, str, Optional[str], Optional[dict[str, Any]]]:
         adapter = get_provider_adapter("openai.responses")
         timeout = endpoint.get("timeout") or self._settings.http_timeout_seconds
 
         async def _publish(event: str, data: dict[str, Any]) -> None:
+            if event == "content_delta":
+                delta = data.get("delta")
+                logger.info(
+                    "[AI_CHUNK_RECEIVED] ts=%s message_id=%s chunk_len=%s",
+                    int(time.time() * 1000),
+                    message_id,
+                    len(delta) if isinstance(delta, str) else 0,
+                )
             await broker.publish(message_id, MessageEvent(event=event, data=data))
 
         return await adapter.stream(
@@ -1834,6 +2051,7 @@ class AIService:
             payload=payload,
             timeout=timeout,
             publish=_publish,
+            emit_raw=emit_raw,
         )
 
     async def _call_gemini_generate_content_streaming(
@@ -1845,11 +2063,20 @@ class AIService:
         model: str,
         message_id: str,
         broker: MessageEventBroker,
+        emit_raw: bool = False,
     ) -> tuple[str, str, Optional[str], Optional[dict[str, Any]]]:
         adapter = get_provider_adapter("gemini.generate_content")
         timeout = endpoint.get("timeout") or self._settings.http_timeout_seconds
 
         async def _publish(event: str, data: dict[str, Any]) -> None:
+            if event == "content_delta":
+                delta = data.get("delta")
+                logger.info(
+                    "[AI_CHUNK_RECEIVED] ts=%s message_id=%s chunk_len=%s",
+                    int(time.time() * 1000),
+                    message_id,
+                    len(delta) if isinstance(delta, str) else 0,
+                )
             await broker.publish(message_id, MessageEvent(event=event, data=data))
 
         return await adapter.stream(
@@ -1859,6 +2086,7 @@ class AIService:
             payload=payload,
             timeout=timeout,
             publish=_publish,
+            emit_raw=emit_raw,
         )
 
     async def _call_anthropic_messages(
