@@ -73,6 +73,9 @@ e2e/real_ai_conversation/artifacts/*
 e2e/real_user_ai_conversation/artifacts/*
 !e2e/real_user_ai_conversation/artifacts/.gitkeep
 
+# Prompt/Protocol 调参器产物（脱敏但不需要入库）
+e2e/prompt_protocol_tuner/artifacts/*
+
 # ============ 前端 ============
 node_modules/
 ./*node_modules

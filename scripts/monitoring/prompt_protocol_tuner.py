@@ -116,6 +116,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--runs", type=int, default=_as_int(os.getenv("E2E_RUNS"), 1))
     parser.add_argument("--throttle-seconds", type=float, default=_as_float(os.getenv("E2E_THROTTLE_SECONDS", 0.35), 0.35))
     parser.add_argument("--stream-timeout", type=float, default=_as_float(os.getenv("E2E_STREAM_TIMEOUT", 180), 180))
+    parser.add_argument(
+        "--line-timeout",
+        type=float,
+        default=_as_float(os.getenv("E2E_LINE_TIMEOUT", 20), 20),
+        help="SSE 单行最大等待时间（避免慢模型 TTFT 导致误判 empty_reply）。默认 20s。",
+    )
     parser.add_argument("--max-events", type=int, default=_as_int(os.getenv("E2E_MAX_EVENTS", 4000), 4000))
 
     parser.add_argument(
@@ -174,29 +180,105 @@ async def _ensure_prompts_activated(
 
     profile, serp_prompt, tool_prompt = _load_prompt_assets()
     tools_schema = _parse_tools_from_tool_md(tool_prompt)
+    profile_version = str((profile or {}).get("version") or "").strip() or "v1"
 
-    # prompt SSOT：沿用现有 E2E 脚本的命名约定（避免影子 prompt）。
-    # 说明：若后端接口策略变更，这里会尽早 fail，避免“以为激活了但实际没生效”。
-    payload = {
-        "name": "standard_serp_v2",
-        "profile": profile,
-        "system_prompt": serp_prompt,
-        "tools_prompt": tool_prompt,
-        "tools_json": json.dumps(tools_schema, ensure_ascii=False),
-        "is_active": True,
-    }
-    request_id = uuid.uuid4().hex
-    resp = await client.post(
-        "/llm/prompts/upsert-and-activate",
-        json=payload,
-        headers={**auth_headers, REQUEST_ID_HEADER: request_id},
-        timeout=30.0,
+    async def upsert_prompt(
+        *,
+        name: str,
+        prompt_type: str,
+        content: str,
+        tools_json: Any | None = None,
+    ) -> int:
+        # 1) 查找同名 prompt（只取第一页；调参器不会制造大量同名记录）
+        request_id = uuid.uuid4().hex
+        resp = await client.get(
+            "/llm/prompts",
+            params={"keyword": name, "prompt_type": prompt_type, "page": 1, "page_size": 50},
+            headers={**auth_headers, REQUEST_ID_HEADER: request_id},
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        payload = resp.json() or {}
+        items = payload.get("data") if isinstance(payload, dict) else None
+        if isinstance(items, dict) and "data" in items:
+            items = items["data"]
+        prompt_id: int | None = None
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("name") or "").strip() != name:
+                    continue
+                if str(item.get("prompt_type") or "").strip() != prompt_type:
+                    continue
+                candidate = item.get("id")
+                if isinstance(candidate, int) and candidate > 0:
+                    prompt_id = candidate
+                    break
+
+        body: dict[str, Any] = {
+            "name": name,
+            "version": profile_version,
+            "category": "standard_serp_v2",
+            "description": f"Seeded from assets/prompts ({prompt_type})",
+            "prompt_type": prompt_type,
+            "content": content,
+            "is_active": False,
+        }
+        if tools_json is not None:
+            body["tools_json"] = tools_json
+
+        if prompt_id is None:
+            # create
+            request_id = uuid.uuid4().hex
+            created = await client.post(
+                "/llm/prompts",
+                json=body,
+                headers={**auth_headers, REQUEST_ID_HEADER: request_id},
+                timeout=30.0,
+            )
+            created.raise_for_status()
+            data = created.json().get("data") if isinstance(created.json(), dict) else None
+            prompt_id = int((data or {}).get("id") or 0)
+            if not prompt_id:
+                raise RuntimeError("prompt_create_missing_id")
+        else:
+            # update
+            request_id = uuid.uuid4().hex
+            updated = await client.put(
+                f"/llm/prompts/{prompt_id}",
+                json=body,
+                headers={**auth_headers, REQUEST_ID_HEADER: request_id},
+                timeout=30.0,
+            )
+            updated.raise_for_status()
+
+        # activate
+        request_id = uuid.uuid4().hex
+        activated = await client.post(
+            f"/llm/prompts/{prompt_id}/activate",
+            headers={**auth_headers, REQUEST_ID_HEADER: request_id},
+            timeout=30.0,
+        )
+        activated.raise_for_status()
+        return int(prompt_id)
+
+    system_id = await upsert_prompt(
+        name="standard_serp_v2_system",
+        prompt_type="system",
+        content=serp_prompt,
     )
-    resp.raise_for_status()
-    _print(f"[prompts] activated name=standard_serp_v2 request_id={request_id}", verbose=verbose)
+    tools_id = await upsert_prompt(
+        name="standard_serp_v2_tools",
+        prompt_type="tools",
+        content=tool_prompt,
+        tools_json=tools_schema,
+    )
+    _print(f"[prompts] activated system_id={system_id} tools_id={tools_id}", verbose=verbose)
 
     return {
-        "name": "standard_serp_v2",
+        "system_id": system_id,
+        "tools_id": tools_id,
         "profile_sha256": _sha256(json.dumps(profile, ensure_ascii=False, sort_keys=True)),
         "system_prompt_sha256": _sha256(serp_prompt),
         "tools_prompt_sha256": _sha256(tool_prompt),
@@ -228,6 +310,7 @@ async def _collect_sse_reply(
     url: str,
     headers: dict[str, str],
     stream_timeout: float,
+    line_timeout: float,
     max_events: int,
 ) -> tuple[list[dict[str, Any]], str, Optional[dict[str, Any]], Optional[dict[str, Any]]]:
     events: list[dict[str, Any]] = []
@@ -259,7 +342,7 @@ async def _collect_sse_reply(
         lines = response.aiter_lines()
         for _ in range(max_events * 8):
             try:
-                line = await asyncio.wait_for(lines.__anext__(), timeout=8.0)
+                line = await asyncio.wait_for(lines.__anext__(), timeout=max(float(line_timeout), 0.5))
             except StopAsyncIteration:
                 break
             except asyncio.TimeoutError:
@@ -333,6 +416,7 @@ async def _run_case(
     tools_schema: list[dict[str, Any]],
     system_prompt: str,
     stream_timeout: float,
+    line_timeout: float,
     max_events: int,
     artifacts_dir: Path,
     verbose: bool,
@@ -371,8 +455,53 @@ async def _run_case(
         headers={**auth_headers, REQUEST_ID_HEADER: create_request_id},
         timeout=60.0,
     )
-    created.raise_for_status()
-    obj = created.json() or {}
+    created_body: Any = None
+    try:
+        created_body = created.json()
+    except Exception:
+        created_body = created.text
+
+    if created.status_code >= 400:
+        # 结构化失败：尽量提取可读原因（不输出敏感信息）
+        reason = f"http_{created.status_code}"
+        if isinstance(created_body, dict):
+            detail = created_body.get("detail")
+            if isinstance(detail, dict):
+                reason = str(detail.get("code") or reason)
+            elif isinstance(detail, str) and detail.strip():
+                reason = detail.strip()
+            msg = created_body.get("msg")
+            if isinstance(msg, str) and msg.strip():
+                reason = f"{reason}:{msg.strip()}"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        out_path = artifacts_dir / f"tuner_{ts}_{model}_{case.prompt_mode}_{case.result_mode}_{case.tool_choice}_create_failed.json"
+        out_path.write_text(
+            json.dumps(
+                {
+                    "ok": False,
+                    "reason": reason,
+                    "model": model,
+                    "prompt_mode": case.prompt_mode,
+                    "result_mode": case.result_mode,
+                    "tool_choice": case.tool_choice,
+                    "create_request_id": create_request_id,
+                    "status_code": created.status_code,
+                    "body": created_body if isinstance(created_body, (dict, list, str)) else str(created_body),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        flag = "FAIL"
+        _print(
+            f"{flag} model={model} prompt_mode={case.prompt_mode} result_mode={case.result_mode} tool_choice={case.tool_choice} reason={reason} artifact={out_path}",
+            verbose=verbose,
+        )
+        return False, reason
+
+    obj = created_body or {}
     message_id = str(obj.get("message_id") or "")
     conversation_id = str(obj.get("conversation_id") or "")
     if not message_id:
@@ -388,11 +517,13 @@ async def _run_case(
         url=events_url,
         headers={**auth_headers, "Accept": "text/event-stream", REQUEST_ID_HEADER: stream_request_id},
         stream_timeout=stream_timeout,
+        line_timeout=line_timeout,
         max_events=max_events,
     )
 
     ok = False
     reason = "unknown"
+    debug_excerpt: dict[str, Any] | None = None
     if error is not None:
         ok = False
         reason = str(error.get("code") or "sse_error")
@@ -403,6 +534,22 @@ async def _run_case(
         else:
             ok = True
             reason = "ok"
+
+    if not ok and isinstance(reply_accum, str) and reply_accum:
+        try:
+            t_close = reply_accum.find("</thinking>")
+            f_open = reply_accum.find("<final>")
+            if t_close >= 0 and f_open >= 0 and f_open > t_close:
+                between = reply_accum[t_close + len("</thinking>") : f_open]
+                left = max(0, t_close - 80)
+                right = min(len(reply_accum), f_open + 80)
+                debug_excerpt = {
+                    "between_len": len(between),
+                    "between_preview": between.strip().replace("\n", "\\n")[:160],
+                    "boundary_preview": reply_accum[left:right].replace("\n", "\\n")[:260],
+                }
+        except Exception:
+            debug_excerpt = None
 
     # artifacts（脱敏）
     artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -421,6 +568,7 @@ async def _run_case(
         "message_id": message_id,
         "conversation_id": conversation_id,
         "reply_len": len(reply_accum),
+        "debug_excerpt": debug_excerpt,
         "completed": completed,
         "error": error,
         "events": safe_events,
@@ -510,6 +658,7 @@ async def main() -> int:
                             tools_schema=tools_schema,
                             system_prompt=system_prompt,
                             stream_timeout=float(args.stream_timeout),
+                            line_timeout=float(args.line_timeout),
                             max_events=int(args.max_events),
                             artifacts_dir=artifacts_dir,
                             verbose=verbose,
@@ -555,4 +704,3 @@ async def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(asyncio.run(main()))
-
