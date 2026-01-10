@@ -11,6 +11,7 @@ from httpx import AsyncClient
 
 from app import app as fastapi_app
 from app.auth import AuthenticatedUser
+from scripts.monitoring.local_mock_ai_conversation_e2e import _validate_thinkingml
 
 
 def _make_async_lines(lines: list[str]):
@@ -45,6 +46,24 @@ def _mock_httpx_streaming_sse(mock_httpx: MagicMock, *, lines: list[str], header
 
     mock_httpx.return_value.__aenter__.return_value.stream = MagicMock(return_value=stream_ctx)
 
+
+def _build_valid_thinkingml_reply(*, normalize_title_variants: bool = True) -> str:
+    title_open = "<Title>" if normalize_title_variants else "<title>"
+    title_close = "</Title>" if normalize_title_variants else "</title>"
+    return (
+        "<thinking>\n"
+        '<phase id="1">\n'
+        f"{title_open}理解需求{title_close}\n"
+        "这里提到 <final> / </final> 作为示例（应被转义为纯文本）。\n"
+        "</phase>\n"
+        "</thinking>\n"
+        "<final>\n"
+        "OK\n"
+        "<!-- <serp_queries>\n"
+        '["三分化训练计划怎么安排"]\n'
+        "</serp_queries> -->\n"
+        "</final>"
+    )
 
 def _mock_httpx_streaming_json_bytes(
     mock_httpx: MagicMock,
@@ -204,12 +223,9 @@ async def test_sse_xml_plaintext_streaming_contains_xml_tags(async_client: Async
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
             mock_get_verifier.return_value = mock_verifier
 
+            reply = _build_valid_thinkingml_reply(normalize_title_variants=True)
             lines = [
-                'data: {"choices":[{"delta":{"content":"<final>"}}]}',
-                "",
-                'data: {"choices":[{"delta":{"content":"OK"}}]}',
-                "",
-                'data: {"choices":[{"delta":{"content":"</final>"}}]}',
+                f'data: {json.dumps({"choices":[{"delta":{"content":reply}}]}, ensure_ascii=False)}',
                 "",
                 "data: [DONE]",
                 "",
@@ -246,8 +262,8 @@ async def test_sse_xml_plaintext_streaming_contains_xml_tags(async_client: Async
                 deltas = [e["data"]["delta"] for e in events if e["event"] == "content_delta" and isinstance(e["data"], dict)]
                 assert len(deltas) >= 2
                 assembled = "".join(deltas)
-                assert "<final>" in assembled
-                assert "</final>" in assembled
+                ok, reason = _validate_thinkingml(assembled)
+                assert ok, reason
     finally:
         await _cleanup_openai_endpoint_mapping(endpoint_id, mapping_id)
 
@@ -261,10 +277,9 @@ async def test_sse_raw_passthrough_streams_upstream_raw_frames(async_client: Asy
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
             mock_get_verifier.return_value = mock_verifier
 
+            reply = _build_valid_thinkingml_reply(normalize_title_variants=False)
             lines = [
-                'data: {"choices":[{"delta":{"content":"<final>"}}]}',
-                "",
-                'data: {"choices":[{"delta":{"content":"OK"}}]}',
+                f'data: {json.dumps({"choices":[{"delta":{"content":reply}}]}, ensure_ascii=False)}',
                 "",
                 "data: [DONE]",
                 "",
@@ -313,8 +328,8 @@ async def test_sse_xml_plaintext_non_sse_response_is_rechunked(async_client: Asy
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
             mock_get_verifier.return_value = mock_verifier
 
-            big_text = "<final>" + ("A" * 180) + "</final>"
-            payload = {"choices": [{"message": {"content": big_text}}]}
+            reply = _build_valid_thinkingml_reply(normalize_title_variants=False) + ("\n" + ("A" * 180))
+            payload = {"choices": [{"message": {"content": reply}}]}
 
             with patch("app.services.providers.openai_chat_completions.httpx.AsyncClient") as mock_httpx:
                 _mock_httpx_streaming_json_bytes(mock_httpx, json_obj=payload, chunk_size=25)
@@ -337,8 +352,8 @@ async def test_sse_xml_plaintext_non_sse_response_is_rechunked(async_client: Asy
                 deltas = [e for e in events if e["event"] == "content_delta"]
                 assert len(deltas) > 1
                 assembled = "".join(e["data"]["delta"] for e in deltas if isinstance(e["data"], dict))
-                assert assembled.startswith("<final>")
-                assert assembled.endswith("</final>")
+                ok, reason = _validate_thinkingml(assembled)
+                assert ok, reason
     finally:
         await _cleanup_openai_endpoint_mapping(endpoint_id, mapping_id)
 
@@ -352,8 +367,8 @@ async def test_sse_raw_passthrough_non_sse_response_streams_raw_chunks(async_cli
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
             mock_get_verifier.return_value = mock_verifier
 
-            big_text = "<final>" + ("B" * 120) + "</final>"
-            payload = {"choices": [{"message": {"content": big_text}}]}
+            reply = _build_valid_thinkingml_reply(normalize_title_variants=False) + ("\n" + ("B" * 120))
+            payload = {"choices": [{"message": {"content": reply}}]}
 
             with patch("app.services.providers.openai_chat_completions.httpx.AsyncClient") as mock_httpx:
                 _mock_httpx_streaming_json_bytes(mock_httpx, json_obj=payload, chunk_size=20)
@@ -389,10 +404,9 @@ async def test_sse_auto_prefers_xml_plaintext_when_text_available(async_client: 
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
             mock_get_verifier.return_value = mock_verifier
 
+            reply = _build_valid_thinkingml_reply(normalize_title_variants=True)
             lines = [
-                'data: {"choices":[{"delta":{"content":"<final>"}}]}',
-                "",
-                'data: {"choices":[{"delta":{"content":"OK"}}]}',
+                f'data: {json.dumps({"choices":[{"delta":{"content":reply}}]}, ensure_ascii=False)}',
                 "",
                 "data: [DONE]",
                 "",
@@ -420,6 +434,12 @@ async def test_sse_auto_prefers_xml_plaintext_when_text_available(async_client: 
                 assert "content_delta" in names
                 assert "completed" in names
                 assert "upstream_raw" not in names
+
+                deltas = [e["data"]["delta"] for e in events if e["event"] == "content_delta" and isinstance(e["data"], dict)]
+                assert deltas
+                assembled = "".join(deltas)
+                ok, reason = _validate_thinkingml(assembled)
+                assert ok, reason
     finally:
         await _cleanup_openai_endpoint_mapping(endpoint_id, mapping_id)
 
