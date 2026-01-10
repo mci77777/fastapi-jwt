@@ -204,6 +204,8 @@ Open http://localhost:3101/dashboard
 
 用途：在你不断调整 `assets/prompts/*`（或后端 prompt SSOT）以及不同调用协议（server/passthrough、tool_choice、result_mode）时，**批量跑一组组合**并用 `docs/ai预期响应结构.md`（ThinkingML v4.5）做“硬验收”。
 
+配套（Web 手工对账）：见 `docs/sse/WEB_DEBUG.md`（菜单：`AI 模型管理` → `JWT 测试`）。
+
 默认行为：
 - 先用 admin JWT 写入并 activate `assets/prompts/serp_prompt.md` + `assets/prompts/tool.md`（SSOT）
 - 然后对每个 mapped model 依次跑协议组合：`POST /messages` → `GET /events` 拼接 reply → `_validate_thinkingml`

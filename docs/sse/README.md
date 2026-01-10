@@ -2,6 +2,7 @@
 
 ## 最新
 - `2026-01-07/`：Cloud SSE 统一事件 + 4 dialect payload 模式 + E2E 验收
+- Web 调试点：`WEB_DEBUG.md`（真流式探针 + ThinkingML 校验）
 
 ## 对接必读
 - `../api-contracts/README.md`
