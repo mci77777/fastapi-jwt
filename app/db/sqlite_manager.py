@@ -197,6 +197,17 @@ CREATE TABLE IF NOT EXISTS app_user_admin_settings (
 
 CREATE INDEX IF NOT EXISTS idx_app_user_admin_settings_updated_at ON app_user_admin_settings(updated_at DESC);
 
+-- LLM / App 输出策略配置（Dashboard 本地 SSOT；不与 Supabase 混用）
+-- value_json: 存储 JSON 字面量（例如 "xml_plaintext"/"raw_passthrough"/"auto"）
+CREATE TABLE IF NOT EXISTS llm_app_settings (
+    key TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_app_settings_updated_at ON llm_app_settings(updated_at DESC);
+
 -- Official Exercise Library snapshots (versioned seed payloads)
 CREATE TABLE IF NOT EXISTS exercise_library_snapshots (
     version INTEGER PRIMARY KEY,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any, Literal, Optional
 
@@ -13,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.auth import AuthenticatedUser, get_current_user
 from app.core.middleware import get_current_request_id
 from app.core.sse_guard import get_sse_guard
+from app.db.sqlite_manager import get_sqlite_manager
 
 from app.settings.config import get_settings
 from app.services.ai_service import AIService
@@ -31,6 +33,11 @@ from .llm_common import (
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 logger = logging.getLogger(__name__)
+
+_DEFAULT_LLM_APP_CONFIG: dict[str, Any] = {
+    # App 默认 SSE 输出模式：xml_plaintext=解析后纯文本（含 XML 标签）；raw_passthrough=上游 RAW 透明转发；auto=自动判断
+    "default_result_mode": "xml_plaintext",
+}
 
 
 class APIEndpointBase(BaseModel):
@@ -81,6 +88,78 @@ class BlockedModelUpdate(BaseModel):
 
 class BlockedModelsUpdateRequest(BaseModel):
     updates: list[BlockedModelUpdate] = Field(default_factory=list)
+
+async def _get_llm_app_config(request: Request) -> dict[str, Any]:
+    db = get_sqlite_manager(request.app)
+    rows = await db.fetchall("SELECT key, value_json FROM llm_app_settings ORDER BY key ASC", ())
+    merged: dict[str, Any] = dict(_DEFAULT_LLM_APP_CONFIG)
+    for row in rows:
+        key = str(row.get("key") or "").strip()
+        if not key:
+            continue
+        raw = row.get("value_json")
+        if raw is None:
+            continue
+        try:
+            value = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            value = raw
+        merged[key] = value
+
+    mode = str(merged.get("default_result_mode") or "").strip()
+    if mode not in {"xml_plaintext", "raw_passthrough", "auto"}:
+        mode = "xml_plaintext"
+    merged["default_result_mode"] = mode
+    return merged
+
+
+async def _set_llm_app_config(request: Request, values: dict[str, Any]) -> dict[str, Any]:
+    allowed_keys = {"default_result_mode"}
+    db = get_sqlite_manager(request.app)
+    for key, value in values.items():
+        if key not in allowed_keys:
+            continue
+        try:
+            value_json = json.dumps(value, ensure_ascii=False)
+        except Exception:
+            value_json = json.dumps(str(value), ensure_ascii=False)
+        await db.execute(
+            """
+            INSERT INTO llm_app_settings(key, value_json, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+              value_json = excluded.value_json,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            (str(key), value_json),
+        )
+    return await _get_llm_app_config(request)
+
+
+@router.get("/app/config", response_model=None)
+async def get_llm_app_config(
+    request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
+) -> dict[str, Any]:
+    data = await _get_llm_app_config(request)
+    return create_response(data=data, msg="ok")
+
+
+class LlmAppConfigUpsertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    default_result_mode: Literal["xml_plaintext", "raw_passthrough", "auto"] | None = Field(default=None)
+
+
+@router.post("/app/config", response_model=None)
+async def upsert_llm_app_config(
+    payload: LlmAppConfigUpsertRequest,
+    request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
+) -> dict[str, Any]:
+    values = {k: v for k, v in payload.model_dump().items() if v is not None}
+    data = await _set_llm_app_config(request, values)
+    return create_response(data=data, msg="updated")
 
 
 @router.post("/sse/force-disconnect")

@@ -16,6 +16,7 @@ import {
   NSwitch,
   NTag,
   NTooltip,
+  useMessage,
 } from 'naive-ui'
 
 import CommonPage from '@/components/page/CommonPage.vue'
@@ -33,6 +34,7 @@ defineOptions({ name: 'AIConfigModels' })
 const vPermission = resolveDirective('permission')
 const $table = ref(null)
 const router = useRouter()
+const message = useMessage()
 
 const supabaseStatus = ref(null)
 const supabaseLoading = ref(false)
@@ -40,6 +42,50 @@ const bulkSyncing = ref(null)
 const bulkChecking = ref(false)
 const syncingRowId = ref(null)
 const checkingRowId = ref(null)
+
+// LLM App config（默认 SSE 输出模式）
+const llmAppConfigLoading = ref(false)
+const llmAppConfigSaving = ref(false)
+const llmAppDefaultResultMode = ref('xml_plaintext')
+const llmAppResultModeOptions = [
+  { label: 'XML 纯文本（content_delta）', value: 'xml_plaintext' },
+  { label: 'RAW 透明转发（upstream_raw）', value: 'raw_passthrough' },
+  { label: 'AUTO（自动判断）', value: 'auto' },
+]
+
+async function loadLlmAppConfig() {
+  llmAppConfigLoading.value = true
+  try {
+    const res = await api.getLlmAppConfig()
+    const data = res?.data?.data || res?.data || {}
+    const mode = String(data?.default_result_mode || '').trim()
+    llmAppDefaultResultMode.value = ['xml_plaintext', 'raw_passthrough', 'auto'].includes(mode)
+      ? mode
+      : 'xml_plaintext'
+  } catch (error) {
+    message.error(error?.message || '加载 App 输出模式配置失败')
+  } finally {
+    llmAppConfigLoading.value = false
+  }
+}
+
+async function handleSaveLlmAppConfig() {
+  llmAppConfigSaving.value = true
+  try {
+    const mode = String(llmAppDefaultResultMode.value || '').trim()
+    const res = await api.upsertLlmAppConfig({ default_result_mode: mode })
+    const data = res?.data?.data || res?.data || {}
+    const saved = String(data?.default_result_mode || '').trim()
+    llmAppDefaultResultMode.value = ['xml_plaintext', 'raw_passthrough', 'auto'].includes(saved)
+      ? saved
+      : mode
+    message.success('已更新 App 默认输出模式')
+  } catch (error) {
+    message.error(error?.message || '保存 App 输出模式配置失败')
+  } finally {
+    llmAppConfigSaving.value = false
+  }
+}
 
 const queryItems = ref({ keyword: null, only_active: null })
 
@@ -640,6 +686,7 @@ const columns = [
 ]
 
 onMounted(async () => {
+  await loadLlmAppConfig()
   await loadSupabaseStatus()
   await loadMonitorStatus()
   $table.value?.handleSearch()
@@ -701,6 +748,26 @@ onBeforeUnmount(() => {
           <NButton text type="primary" @click="handleGoMapping">去模型映射</NButton>
         </div>
       </NAlert>
+
+      <NCard :loading="llmAppConfigLoading" title="App SSE 输出模式（默认）" size="small">
+        <NSpace align="center" wrap>
+          <NSelect
+            v-model:value="llmAppDefaultResultMode"
+            :options="llmAppResultModeOptions"
+            style="min-width: 280px"
+          />
+          <NButton type="primary" :loading="llmAppConfigSaving" @click="handleSaveLlmAppConfig">
+            保存
+          </NButton>
+          <NTag round :bordered="false" :type="llmAppDefaultResultMode === 'raw_passthrough' ? 'warning' : 'success'">
+            {{ llmAppDefaultResultMode }}
+          </NTag>
+        </NSpace>
+        <NAlert type="warning" :bordered="false" class="mt-2">
+          App 侧若不传 <code>result_mode</code>，后端将按此默认值决定输出：
+          <code>xml_plaintext</code>（解析后带 XML 标签的纯文本流）或 <code>raw_passthrough</code>（上游 RAW 透明流）。
+        </NAlert>
+      </NCard>
 
       <NCard :loading="supabaseLoading" title="Supabase 状态" size="small">
         <template #header-extra>

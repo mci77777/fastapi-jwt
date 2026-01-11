@@ -489,3 +489,65 @@ async def test_sse_auto_falls_back_to_raw_passthrough_when_unparseable(async_cli
                 assert data.get("result_mode_effective") == "raw_passthrough"
     finally:
         await _cleanup_openai_endpoint_mapping(endpoint_id, mapping_id)
+
+
+@pytest.mark.asyncio
+async def test_messages_default_result_mode_from_dashboard_config(async_client: AsyncClient, mock_jwt_token: str):
+    """当客户端不传 result_mode 时，应使用 Dashboard 可配置的默认值（SSOT: /llm/app/config）。"""
+
+    endpoint_id, mapping_id = await _setup_openai_endpoint_mapping()
+    try:
+        with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+            mock_verifier = MagicMock()
+            mock_verifier.verify_token.return_value = AuthenticatedUser(
+                uid="test-admin-uid",
+                claims={"user_metadata": {"username": "admin", "is_admin": True}},
+            )
+            mock_get_verifier.return_value = mock_verifier
+
+            updated = await async_client.post(
+                "/api/v1/llm/app/config",
+                headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": "rid-config"},
+                json={"default_result_mode": "raw_passthrough"},
+            )
+            assert updated.status_code == status.HTTP_200_OK
+            assert (updated.json().get("data") or {}).get("default_result_mode") == "raw_passthrough"
+
+            reply = _build_valid_thinkingml_reply(normalize_title_variants=False)
+            with patch("app.services.providers.openai_chat_completions.httpx.AsyncClient") as mock_httpx:
+                _mock_httpx_streaming_json_bytes(
+                    mock_httpx,
+                    json_obj={"choices": [{"message": {"content": reply}}]},
+                    chunk_size=18,
+                    headers={"x-request-id": "upstream-rid"},
+                )
+
+                created = await async_client.post(
+                    "/api/v1/messages",
+                    headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": "rid-create"},
+                    json={"text": "hi", "model": "gpt"},
+                )
+                assert created.status_code == status.HTTP_202_ACCEPTED
+                message_id = created.json()["message_id"]
+                conversation_id = created.json()["conversation_id"]
+
+                events = await _collect_sse_events(
+                    async_client,
+                    f"/api/v1/messages/{message_id}/events?conversation_id={conversation_id}",
+                    headers={"Authorization": f"Bearer {mock_jwt_token}", "Accept": "text/event-stream"},
+                )
+
+                names = [e["event"] for e in events]
+                assert "upstream_raw" in names
+                assert "content_delta" not in names
+                assert "completed" in names
+
+            restored = await async_client.post(
+                "/api/v1/llm/app/config",
+                headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": "rid-config-restore"},
+                json={"default_result_mode": "xml_plaintext"},
+            )
+            assert restored.status_code == status.HTTP_200_OK
+
+    finally:
+        await _cleanup_openai_endpoint_mapping(endpoint_id, mapping_id)

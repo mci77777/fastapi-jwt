@@ -35,6 +35,24 @@ _FREE_TIER_DAILY_MODEL_LIMITS: dict[str, int | None] = {
     "gemini": 20,
 }
 
+async def _get_llm_app_default_result_mode(request: Request) -> str:
+    """App 默认 SSE 输出模式（Dashboard 可配置；SSOT：llm_app_settings.default_result_mode）。"""
+
+    db = get_sqlite_manager(request.app)
+    row = await db.fetchone("SELECT value_json FROM llm_app_settings WHERE key = ?", ("default_result_mode",))
+    raw = row.get("value_json") if isinstance(row, dict) else None
+    mode = ""
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+            mode = str(parsed or "").strip()
+        except Exception:
+            mode = raw.strip().strip('"')
+    mode = mode or "xml_plaintext"
+    if mode not in {"xml_plaintext", "raw_passthrough", "auto"}:
+        mode = "xml_plaintext"
+    return mode
+
 
 def _normalize_quota_model_key(model_name: str) -> str:
     raw = str(model_name or "").strip().lower()
@@ -357,6 +375,15 @@ async def create_message(
         conversation_id = str(uuid.uuid4())
 
     is_payload_mode = payload.payload is not None
+    requested_result_mode = (
+        payload.result_mode
+        or (payload.metadata or {}).get("result_mode")
+        or (payload.metadata or {}).get("resultMode")
+        or None
+    )
+    if not requested_result_mode:
+        requested_result_mode = await _get_llm_app_default_result_mode(request)
+
     if is_payload_mode:
         dialect = str(payload.dialect or "").strip()
         if not dialect:
@@ -416,6 +443,7 @@ async def create_message(
             metadata=payload.metadata,
             # payload 模式：服务端不注入默认 prompt/tools（以 payload 为准）
             skip_prompt=True,
+            result_mode=str(requested_result_mode),
             model=requested_model,
             dialect=dialect,
             payload=sanitized_payload,
@@ -476,10 +504,7 @@ async def create_message(
             conversation_id=conversation_id,
             metadata=payload.metadata,
             skip_prompt=payload.skip_prompt,
-            result_mode=payload.result_mode
-            or (payload.metadata or {}).get("result_mode")
-            or (payload.metadata or {}).get("resultMode")
-            or None,
+            result_mode=str(requested_result_mode),
             model=requested_model,
             messages=normalized_messages,
             system_prompt=normalized_system_prompt,
@@ -495,12 +520,7 @@ async def create_message(
         owner_user_id=current_user.uid,
         conversation_id=conversation_id,
         request_id=request_id or "",
-        result_mode=(
-            payload.result_mode
-            or (payload.metadata or {}).get("result_mode")
-            or (payload.metadata or {}).get("resultMode")
-            or "xml_plaintext"
-        ),
+        result_mode=str(requested_result_mode),
     )
 
     async def runner() -> None:

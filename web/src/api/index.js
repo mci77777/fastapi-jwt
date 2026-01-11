@@ -99,6 +99,9 @@ export default {
   startMonitor: (intervalSeconds) =>
     request.post('/llm/monitor/start', { interval_seconds: intervalSeconds }),
   stopMonitor: () => request.post('/llm/monitor/stop'),
+  // llm app config (default SSE output mode)
+  getLlmAppConfig: () => request.get('/llm/app/config'),
+  upsertLlmAppConfig: (data = {}) => request.post('/llm/app/config', data),
   // llm prompts
   getAIPrompts: (params = {}) => request.get('/llm/prompts', { params }),
   getAIPromptDetail: (promptId) => request.get(`/llm/prompts/${promptId}`),
