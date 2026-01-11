@@ -1,5 +1,5 @@
 <template>
-  <n-card title="模型管理与观测" size="small" :bordered="true">
+  <n-card title="模型管理与观测" size="small" :bordered="false" class="model-observability-card">
     <n-space vertical :size="12">
       <n-alert type="info" :bordered="false" show-icon>
         观测链路：映射模型 → 实际模型 → API 供应商 → health/status。屏蔽为服务端强制生效（解析时跳过被屏蔽模型）。
@@ -297,3 +297,21 @@ onMounted(() => {
   refreshAll()
 })
 </script>
+
+<style scoped>
+.model-observability-card {
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  box-shadow: var(--dash-shadow);
+  overflow: hidden;
+}
+
+.model-observability-card :deep(.n-card-header) {
+  border-bottom: 1px solid var(--dash-divider);
+}
+
+.model-observability-card :deep(.n-card__content) {
+  background: transparent;
+}
+</style>
