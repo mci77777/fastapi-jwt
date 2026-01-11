@@ -71,6 +71,46 @@ _STREAM_SANITIZE_TAGS = (
 )
 
 _ALLOWED_RESULT_MODES = {"xml_plaintext", "raw_passthrough", "auto"}
+# App 侧默认 SSE 输出模式（SSOT：若未配置 llm_app_settings.default_result_mode，则回退到此默认值）。
+# 目标：App 端消费 `content_delta` 真流式；`completed.reply` 仅作晚订阅/兜底。
+DEFAULT_LLM_APP_RESULT_MODE = "xml_plaintext"
+
+# SSE 拆分转发（端到端兜底）：即使上游一次性返回大块文本/RAW，也不应下游只收到“单个超长 token”。
+# 注意：此拆分仅影响 SSE 对外输出，不改变拼接后的全文语义。
+STREAM_CHUNK_THRESHOLD_CHARS = 256
+STREAM_CHUNK_SIZE_CHARS = 128
+_STREAM_CHUNK_BREAKPOINTS = ("\n", "。", "？", "！", ".", "?", "!", " ", "\t")
+
+
+def _split_text_for_streaming(text: str, *, max_size: int) -> list[str]:
+    if not text:
+        return []
+    size = max(int(max_size or 0), 1)
+    if len(text) <= size:
+        return [text]
+
+    min_pos = max(1, size // 2)
+    chunks: list[str] = []
+    remaining = text
+    while remaining:
+        if len(remaining) <= size:
+            chunks.append(remaining)
+            break
+
+        split_pos: int | None = None
+        for sep in _STREAM_CHUNK_BREAKPOINTS:
+            idx = remaining.rfind(sep, 0, size)
+            if idx >= min_pos:
+                split_pos = idx + len(sep)
+                break
+
+        if not split_pos:
+            split_pos = size
+
+        chunks.append(remaining[:split_pos])
+        remaining = remaining[split_pos:]
+
+    return [c for c in chunks if c]
 # auto 模式：在“能解析出文本”与“仅能拿到 raw”之间做最小判定。
 # 规则：先缓冲少量 upstream_raw；若很快出现 content_delta 则丢弃 raw 并选择 xml_plaintext；
 # 若 raw 连续出现且始终没有 content_delta，则尽早切换到 raw_passthrough 并 flush 已缓冲 raw，避免“只在末尾一次性出现”。
@@ -433,6 +473,19 @@ class MessageEventBroker:
 
                 async def _enqueue(e: MessageEvent) -> None:
                     if e.event == "upstream_raw":
+                        raw = e.data.get("raw")
+                        if isinstance(raw, str) and len(raw) > STREAM_CHUNK_THRESHOLD_CHARS:
+                            parts = _split_text_for_streaming(raw, max_size=STREAM_CHUNK_SIZE_CHARS)
+                            if len(parts) > 1:
+                                base = dict(e.data)
+                                for part in parts:
+                                    meta.raw_seq += 1
+                                    data = dict(base)
+                                    data["raw"] = part
+                                    data["seq"] = meta.raw_seq
+                                    await queue.put(MessageEvent(event="upstream_raw", data=data))
+                                return
+
                         meta.raw_seq += 1
                         e.data.setdefault("seq", meta.raw_seq)
                     if e.event == "content_delta":
@@ -444,6 +497,17 @@ class MessageEventBroker:
                             if not fixed:
                                 # 本次 chunk 仅用于跨边界识别标签前缀，不对外发送空 delta。
                                 return
+                            if len(fixed) > STREAM_CHUNK_THRESHOLD_CHARS:
+                                parts = _split_text_for_streaming(fixed, max_size=STREAM_CHUNK_SIZE_CHARS)
+                                if len(parts) > 1:
+                                    base = dict(e.data)
+                                    for part in parts:
+                                        meta.delta_seq += 1
+                                        data = dict(base)
+                                        data["delta"] = part
+                                        data["seq"] = meta.delta_seq
+                                        await queue.put(MessageEvent(event="content_delta", data=data))
+                                    return
                         meta.delta_seq += 1
                         e.data.setdefault("seq", meta.delta_seq)
                     elif e.event in {"completed", "error"}:

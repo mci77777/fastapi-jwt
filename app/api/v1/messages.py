@@ -18,7 +18,7 @@ from app.auth import AuthenticatedUser, get_current_user
 from app.core.middleware import get_current_request_id, reset_current_request_id, set_current_request_id
 from app.core.sse_guard import check_sse_concurrency, unregister_sse_connection
 from app.db.sqlite_manager import get_sqlite_manager
-from app.services.ai_service import AIMessageInput, AIService, MessageEvent, MessageEventBroker
+from app.services.ai_service import DEFAULT_LLM_APP_RESULT_MODE, AIMessageInput, AIService, MessageEvent, MessageEventBroker
 from app.services.entitlement_service import EntitlementService
 from app.settings.config import get_settings
 
@@ -48,9 +48,9 @@ async def _get_llm_app_default_result_mode(request: Request) -> str:
             mode = str(parsed or "").strip()
         except Exception:
             mode = raw.strip().strip('"')
-    mode = mode or "raw_passthrough"
+    mode = mode or DEFAULT_LLM_APP_RESULT_MODE
     if mode not in {"xml_plaintext", "raw_passthrough", "auto"}:
-        mode = "raw_passthrough"
+        mode = DEFAULT_LLM_APP_RESULT_MODE
     return mode
 
 

@@ -17,7 +17,7 @@ from app.core.sse_guard import get_sse_guard
 from app.db.sqlite_manager import get_sqlite_manager
 
 from app.settings.config import get_settings
-from app.services.ai_service import AIService
+from app.services.ai_service import DEFAULT_LLM_APP_RESULT_MODE, AIService
 from app.services.llm_model_registry import LlmModelRegistry
 
 from .llm_common import (
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_LLM_APP_CONFIG: dict[str, Any] = {
     # App 默认 SSE 输出模式：raw_passthrough=上游 RAW 透明转发；xml_plaintext=解析后纯文本（含 XML 标签）；auto=自动判断
-    "default_result_mode": "raw_passthrough",
+    "default_result_mode": DEFAULT_LLM_APP_RESULT_MODE,
 }
 
 
