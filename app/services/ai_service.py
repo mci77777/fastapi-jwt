@@ -962,6 +962,14 @@ class AIService:
 
         start_time = perf_counter()
         success = False
+        requested_model_key_for_stats = ""
+        if isinstance(message.model, str) and message.model.strip():
+            requested_model_key_for_stats = message.model.strip()
+            if ":" in requested_model_key_for_stats:
+                _, suffix = requested_model_key_for_stats.split(":", 1)
+                suffix = suffix.strip()
+                if suffix:
+                    requested_model_key_for_stats = suffix
         model_used: Optional[str] = None
         endpoint_id_used: Optional[int] = None
         request_payload: Optional[str] = None
@@ -1138,7 +1146,8 @@ class AIService:
             )
         finally:
             latency_ms = (perf_counter() - start_time) * 1000
-            await self._record_ai_request(user.uid, endpoint_id_used, model_used, latency_ms, success)
+            stats_model = requested_model_key_for_stats or model_used
+            await self._record_ai_request(user.uid, endpoint_id_used, stats_model, latency_ms, success)
 
             # Prometheus：会话延迟与成功率（按 model/user_type/status 维度）
             try:

@@ -477,6 +477,8 @@ async def main() -> int:
                                 "model": model_key,
                                 "text": "给我一份三分化训练方案（新手友好）。",
                                 "metadata": {"save_history": False, "client": "local_mock_e2e"},
+                                # 本脚本验证的是 ThinkingML 结构与 content_delta 拼装，因此显式使用 xml_plaintext（避免受 Dashboard 默认值影响）
+                                "result_mode": "xml_plaintext",
                                 "tool_choice": "auto",
                             },
                         )

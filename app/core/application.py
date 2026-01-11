@@ -116,7 +116,12 @@ async def lifespan(app: FastAPI):
 
     # Dashboard 服务层（Phase 1）
     app.state.log_collector = LogCollector(max_size=100)
-    app.state.metrics_collector = MetricsCollector(sqlite_manager, app.state.endpoint_monitor)
+    app.state.metrics_collector = MetricsCollector(
+        sqlite_manager,
+        app.state.endpoint_monitor,
+        model_mapping_service=app.state.model_mapping_service,
+        llm_model_registry=app.state.llm_model_registry,
+    )
     app.state.dashboard_broker = DashboardBroker(app.state.metrics_collector)
     app.state.sync_service = SyncService(sqlite_manager)
 

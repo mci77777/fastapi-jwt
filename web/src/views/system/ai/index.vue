@@ -46,7 +46,7 @@ const checkingRowId = ref(null)
 // LLM App config（默认 SSE 输出模式）
 const llmAppConfigLoading = ref(false)
 const llmAppConfigSaving = ref(false)
-const llmAppDefaultResultMode = ref('xml_plaintext')
+const llmAppDefaultResultMode = ref('raw_passthrough')
 const llmAppResultModeOptions = [
   { label: 'XML 纯文本（content_delta）', value: 'xml_plaintext' },
   { label: 'RAW 透明转发（upstream_raw）', value: 'raw_passthrough' },
@@ -61,7 +61,7 @@ async function loadLlmAppConfig() {
     const mode = String(data?.default_result_mode || '').trim()
     llmAppDefaultResultMode.value = ['xml_plaintext', 'raw_passthrough', 'auto'].includes(mode)
       ? mode
-      : 'xml_plaintext'
+      : 'raw_passthrough'
   } catch (error) {
     message.error(error?.message || '加载 App 输出模式配置失败')
   } finally {

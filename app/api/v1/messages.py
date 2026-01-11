@@ -48,9 +48,9 @@ async def _get_llm_app_default_result_mode(request: Request) -> str:
             mode = str(parsed or "").strip()
         except Exception:
             mode = raw.strip().strip('"')
-    mode = mode or "xml_plaintext"
+    mode = mode or "raw_passthrough"
     if mode not in {"xml_plaintext", "raw_passthrough", "auto"}:
-        mode = "xml_plaintext"
+        mode = "raw_passthrough"
     return mode
 
 

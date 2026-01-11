@@ -5,13 +5,15 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import httpx
 
 from app.core.metrics import auth_requests_total
 from app.db.sqlite_manager import SQLiteManager
 from app.services.monitor_service import EndpointMonitor
+from app.services.model_mapping_service import ModelMappingService, normalize_scope_type
+from app.services.llm_model_registry import LlmModelRegistry
 from app.settings.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -20,9 +22,17 @@ logger = logging.getLogger(__name__)
 class MetricsCollector:
     """聚合 Dashboard 统计数据，提供统一查询接口。"""
 
-    def __init__(self, db_manager: SQLiteManager, endpoint_monitor: EndpointMonitor) -> None:
+    def __init__(
+        self,
+        db_manager: SQLiteManager,
+        endpoint_monitor: EndpointMonitor,
+        model_mapping_service: Optional[ModelMappingService] = None,
+        llm_model_registry: Optional[LlmModelRegistry] = None,
+    ) -> None:
         self._db = db_manager
         self._monitor = endpoint_monitor
+        self._mapping_service = model_mapping_service
+        self._registry = llm_model_registry
 
     async def aggregate_stats(self, time_window: str = "24h") -> Dict[str, Any]:
         """聚合所有统计数据。
@@ -38,6 +48,7 @@ class MetricsCollector:
             "ai_requests": await self._get_ai_requests(time_window),
             "token_usage": await self._get_token_usage(time_window),
             "api_connectivity": await self._get_api_connectivity(),
+            "mapped_models": await self._get_mapped_models_summary(),
             "jwt_availability": await self._get_jwt_availability(),
         }
 
@@ -136,6 +147,52 @@ class MetricsCollector:
             "success": int(result["total_success"] or 0),
             "error": int(result["total_error"] or 0),
             "avg_latency_ms": round(result["avg_latency"] or 0, 2),
+        }
+
+    async def _get_mapped_models_summary(self) -> Dict[str, Any]:
+        """聚合映射模型可用性摘要（Dashboard 展示用）。"""
+
+        if not isinstance(self._mapping_service, ModelMappingService) or not isinstance(self._registry, LlmModelRegistry):
+            return {"total": 0, "available": 0, "unavailable": 0, "availability_rate": 0.0}
+
+        try:
+            mappings = await self._mapping_service.list_mappings()
+        except Exception:
+            mappings = []
+
+        scope_priority = ("mapping", "global")
+        keys: set[str] = set()
+        for item in mappings:
+            if not isinstance(item, dict):
+                continue
+            scope_type = normalize_scope_type(item.get("scope_type"))
+            if scope_type not in scope_priority:
+                continue
+            if not bool(item.get("is_active", True)):
+                continue
+            key = str(item.get("scope_key") or "").strip()
+            if key:
+                keys.add(key)
+
+        total = len(keys)
+        if total <= 0:
+            return {"total": 0, "available": 0, "unavailable": 0, "availability_rate": 0.0}
+
+        available = 0
+        for key in sorted(keys):
+            try:
+                await self._registry.resolve_model_key(key)
+                available += 1
+            except Exception:
+                continue
+
+        unavailable = max(total - available, 0)
+        availability_rate = round((available / total) * 100.0, 2) if total > 0 else 0.0
+        return {
+            "total": total,
+            "available": available,
+            "unavailable": unavailable,
+            "availability_rate": availability_rate,
         }
 
     async def _get_api_connectivity(self) -> Dict[str, Any]:

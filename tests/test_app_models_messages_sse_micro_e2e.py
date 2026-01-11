@@ -158,6 +158,7 @@ class TestAppModelsMicroE2E:
                             "metadata": {"client_message_id": "msg_HNXN78", "model": "xai"},
                             "skip_prompt": False,
                             "model": "xai",
+                            "result_mode": "xml_plaintext",
                             "messages": None,
                             "system_prompt": "You are GymBro's AI assistant.",
                             "tools": None,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, status
@@ -15,7 +15,9 @@ from app.auth.jwt_verifier import get_jwt_verifier
 from app.log import logger
 from app.services.dashboard_broker import DashboardBroker
 from app.services.log_collector import LogCollector
+from app.services.llm_model_registry import LlmModelRegistry
 from app.services.metrics_collector import MetricsCollector
+from app.services.model_mapping_service import ModelMappingService, normalize_scope_type
 
 router = APIRouter(tags=["dashboard"])
 
@@ -149,6 +151,7 @@ class DashboardStatsResponse(BaseModel):
     ai_requests: Dict[str, Any] = Field(..., description="AI 请求统计")
     token_usage: Optional[int] = Field(None, description="Token 使用量（后续追加）")
     api_connectivity: Dict[str, Any] = Field(..., description="API 连通性")
+    mapped_models: Dict[str, Any] = Field(..., description="映射模型可用性摘要")
     jwt_availability: Dict[str, Any] = Field(..., description="JWT 可获取性")
 
 
@@ -253,6 +256,163 @@ async def get_ai_requests(
     collector: MetricsCollector = request.app.state.metrics_collector
     stats = await collector._get_ai_requests(time_window)
     return {"time_window": time_window, **stats}
+
+
+def _calculate_start_date(time_window: str) -> str:
+    """计算按天聚合统计的起始日期（ISO 8601 日期字符串）。"""
+    now = datetime.now()
+    if time_window == "7d":
+        start_time = now - timedelta(days=7)
+    else:
+        start_time = now - timedelta(hours=24)
+    return start_time.date().isoformat()
+
+@router.get("/stats/mapped-models")
+async def get_mapped_models_stats(
+    request: Request,
+    time_window: str = Query("24h", regex="^(24h|7d)$", description="时间窗口（按天聚合：24h/7d）"),
+    include_inactive: bool = Query(default=False, description="是否包含未激活映射（默认否）"),  # noqa: B008
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """获取映射模型可用性 + 调用统计（Dashboard 使用）。"""
+
+    mapping_service = getattr(request.app.state, "model_mapping_service", None)
+    registry = getattr(request.app.state, "llm_model_registry", None)
+    if not isinstance(mapping_service, ModelMappingService) or not isinstance(registry, LlmModelRegistry):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="service_unavailable")
+
+    try:
+        mappings = await mapping_service.list_mappings()
+    except Exception:
+        mappings = []
+
+    scope_priority = ("mapping", "global")
+    selected_by_key: dict[str, dict[str, Any]] = {}
+    best_score: dict[str, tuple[int, str]] = {}
+
+    for item in mappings:
+        if not isinstance(item, dict):
+            continue
+        scope_type = normalize_scope_type(item.get("scope_type"))
+        if scope_type not in scope_priority:
+            continue
+        if not include_inactive and not bool(item.get("is_active", True)):
+            continue
+
+        scope_key = str(item.get("scope_key") or "").strip()
+        if not scope_key:
+            continue
+
+        pri = scope_priority.index(scope_type) if scope_type in scope_priority else 99
+        updated_at = str(item.get("updated_at") or "")
+
+        current = best_score.get(scope_key)
+        if current is None or pri < current[0] or (pri == current[0] and updated_at > current[1]):
+            best_score[scope_key] = (pri, updated_at)
+            selected_by_key[scope_key] = item
+
+    keys = sorted(selected_by_key.keys())
+
+    # 聚合调用统计（按“客户端请求的 model key”口径）
+    start_date = _calculate_start_date(time_window)
+    db = get_sqlite_manager(request.app)
+    raw_rows = await db.fetchall(
+        """
+        SELECT
+            CASE
+              WHEN instr(model, ':') > 0 THEN substr(model, instr(model, ':') + 1)
+              ELSE model
+            END as model_key,
+            SUM(count) as calls_total,
+            COUNT(DISTINCT user_id) as unique_users,
+            SUM(success_count) as success_total,
+            SUM(error_count) as error_total,
+            SUM(total_latency_ms) as latency_total
+        FROM ai_request_stats
+        WHERE request_date >= ?
+        GROUP BY model_key
+        """,
+        [start_date],
+    )
+
+    stats_by_key: dict[str, dict[str, Any]] = {}
+    for row in raw_rows:
+        model_key = str(row.get("model_key") or "").strip()
+        if not model_key:
+            continue
+        stats_by_key[model_key] = {
+            "calls_total": int(row.get("calls_total") or 0),
+            "unique_users": int(row.get("unique_users") or 0),
+            "success_total": int(row.get("success_total") or 0),
+            "error_total": int(row.get("error_total") or 0),
+            "latency_total": float(row.get("latency_total") or 0.0),
+        }
+
+    def _finalize_stats(model_key: str) -> dict[str, Any]:
+        bucket = stats_by_key.get(model_key)
+        if not bucket:
+            return {"calls_total": 0, "unique_users": 0, "success_rate": 0.0, "avg_latency_ms": 0.0}
+
+        calls_total = int(bucket.get("calls_total") or 0)
+        success_total = int(bucket.get("success_total") or 0)
+        latency_total = float(bucket.get("latency_total") or 0.0)
+        unique_users = int(bucket.get("unique_users") or 0)
+
+        success_rate = round((success_total / calls_total) * 100.0, 2) if calls_total > 0 else 0.0
+        avg_latency_ms = round((latency_total / calls_total), 2) if calls_total > 0 else 0.0
+        return {
+            "calls_total": calls_total,
+            "unique_users": int(unique_users),
+            "success_rate": success_rate,
+            "avg_latency_ms": avg_latency_ms,
+        }
+
+    rows: list[dict[str, Any]] = []
+    available = 0
+    for key in keys:
+        selected = selected_by_key.get(key) or {}
+        scope_type = normalize_scope_type(selected.get("scope_type"))
+        row: dict[str, Any] = {
+            "model_key": key,
+            "scope_type": scope_type or None,
+            "availability": False,
+            "availability_reason": None,
+            "provider": None,
+            "dialect": None,
+            "resolved_model": None,
+            "endpoint_id": None,
+            "endpoint_name": None,
+            **_finalize_stats(key),
+        }
+
+        try:
+            route = await registry.resolve_model_key(key)
+            row["availability"] = True
+            row["availability_reason"] = "ok"
+            row["provider"] = route.provider
+            row["dialect"] = route.dialect
+            row["resolved_model"] = route.resolved_model
+            row["endpoint_id"] = route.endpoint_id
+            row["endpoint_name"] = route.endpoint.get("name")
+            available += 1
+        except Exception as exc:
+            row["availability"] = False
+            row["availability_reason"] = (str(exc) or type(exc).__name__)[:200]
+
+        rows.append(row)
+
+    total = len(keys)
+    unavailable = max(total - available, 0)
+    availability_rate = round((available / total) * 100.0, 2) if total > 0 else 0.0
+
+    return {
+        "time_window": time_window,
+        "total": total,
+        "available": available,
+        "unavailable": unavailable,
+        "availability_rate": availability_rate,
+        "rows": rows,
+    }
 
 
 @router.get("/stats/api-connectivity")

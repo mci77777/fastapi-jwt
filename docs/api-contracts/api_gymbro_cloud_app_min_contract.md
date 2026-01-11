@@ -74,8 +74,9 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
 
 `POST /api/v1/messages` 支持可选字段 `result_mode`：
 
-- `xml_plaintext`（默认）：服务端解析上游响应，SSE 推送 `event: content_delta`（`delta` 为纯文本，允许包含 `<final>...</final>` 等 XML 标签）。
-- `raw_passthrough`：服务端透明转发上游 RAW，SSE 推送 `event: upstream_raw`（App 可自行回放/解析；仍会收到 `completed/error`）。
+- 若不传 `result_mode`：服务端按 Dashboard 配置的默认值决定（SSOT：`GET /api/v1/llm/app/config` 的 `default_result_mode`；无配置时默认为 `raw_passthrough`）。
+- `raw_passthrough`（默认）：服务端透明转发上游 RAW，SSE 推送 `event: upstream_raw`（App 可自行回放/解析；仍会收到 `completed/error`）。
+- `xml_plaintext`：服务端解析上游响应，SSE 推送 `event: content_delta`（`delta` 为纯文本，允许包含 `<final>...</final>` 等 XML 标签）。
 - `auto`：服务端自动判定（优先 `xml_plaintext`；若无法产出 `content_delta` 则降级为 `raw_passthrough`）。
 
 ### 权限等级与配额（SSOT）

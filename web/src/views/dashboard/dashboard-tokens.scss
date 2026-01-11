@@ -1,0 +1,46 @@
+.dashboard-container {
+  color-scheme: light;
+
+  /* Apple-like neutrals (light) */
+  --dash-bg: #f5f5f7;
+  --dash-surface: rgba(255, 255, 255, 0.72);
+  --dash-surface-solid: #ffffff;
+  --dash-border: rgba(0, 0, 0, 0.08);
+
+  --dash-text: #1d1d1f;
+  --dash-text-secondary: #6e6e73;
+
+  --dash-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 14px 38px rgba(0, 0, 0, 0.06);
+  --dash-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.08), 0 20px 60px rgba(0, 0, 0, 0.1);
+
+  --dash-radius: 20px;
+
+  --dash-divider: rgba(0, 0, 0, 0.08);
+  --dash-item-bg: rgba(0, 0, 0, 0.02);
+  --dash-item-hover-bg: rgba(0, 0, 0, 0.04);
+
+  /* Status tones */
+  --dash-good: #34c759;
+  --dash-warn: #ff9500;
+  --dash-bad: #ff3b30;
+}
+
+.dark .dashboard-container {
+  color-scheme: dark;
+
+  /* Apple-like neutrals (dark) */
+  --dash-bg: #101014;
+  --dash-surface: rgba(28, 28, 30, 0.72);
+  --dash-surface-solid: #1c1c1e;
+  --dash-border: rgba(255, 255, 255, 0.12);
+
+  --dash-text: rgba(255, 255, 255, 0.92);
+  --dash-text-secondary: rgba(255, 255, 255, 0.62);
+
+  --dash-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 18px 55px rgba(0, 0, 0, 0.5);
+  --dash-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.4), 0 22px 70px rgba(0, 0, 0, 0.6);
+
+  --dash-divider: rgba(255, 255, 255, 0.12);
+  --dash-item-bg: rgba(255, 255, 255, 0.06);
+  --dash-item-hover-bg: rgba(255, 255, 255, 0.1);
+}

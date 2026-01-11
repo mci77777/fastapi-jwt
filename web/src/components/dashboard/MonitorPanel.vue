@@ -3,7 +3,7 @@ import { NGrid, NGridItem, NCard } from 'naive-ui'
 import UserActivityChart from '@/components/dashboard/UserActivityChart.vue'
 import LogWindow from '@/components/dashboard/LogWindow.vue'
 import ServerLoadCard from '@/components/dashboard/ServerLoadCard.vue'
-import EndpointConnectivityCard from '@/components/dashboard/EndpointConnectivityCard.vue'
+import MappedModelStatusCard from '@/components/dashboard/MappedModelStatusCard.vue'
 
 const props = defineProps({
   chartData: Array,
@@ -53,7 +53,7 @@ const handleMetricsUpdate = (val) => emit('metrics-update', val)
 
     <!-- Middle Row: Connectivity -->
     <div class="glass-panel p-4">
-        <EndpointConnectivityCard />
+        <MappedModelStatusCard />
     </div>
 
     <!-- Bottom Row: Logs -->

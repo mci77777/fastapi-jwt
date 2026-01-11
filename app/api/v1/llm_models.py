@@ -35,8 +35,8 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 logger = logging.getLogger(__name__)
 
 _DEFAULT_LLM_APP_CONFIG: dict[str, Any] = {
-    # App 默认 SSE 输出模式：xml_plaintext=解析后纯文本（含 XML 标签）；raw_passthrough=上游 RAW 透明转发；auto=自动判断
-    "default_result_mode": "xml_plaintext",
+    # App 默认 SSE 输出模式：raw_passthrough=上游 RAW 透明转发；xml_plaintext=解析后纯文本（含 XML 标签）；auto=自动判断
+    "default_result_mode": "raw_passthrough",
 }
 
 
@@ -108,7 +108,7 @@ async def _get_llm_app_config(request: Request) -> dict[str, Any]:
 
     mode = str(merged.get("default_result_mode") or "").strip()
     if mode not in {"xml_plaintext", "raw_passthrough", "auto"}:
-        mode = "xml_plaintext"
+        mode = "raw_passthrough"
     merged["default_result_mode"] = mode
     return merged
 

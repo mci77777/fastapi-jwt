@@ -155,6 +155,7 @@ class TestRequestIdSSOT:
                     json={
                         "text": "Hello",
                         "model": "global:global",
+                        "result_mode": "xml_plaintext",
                         "system_prompt": "You are a helpful assistant.",
                         "tools": [{"type": "function", "function": {"name": "noop", "parameters": {"type": "object"}}}],
                         "tool_choice": "auto",
@@ -248,7 +249,13 @@ class TestRequestIdSSOT:
                 create = await async_client.post(
                     "/api/v1/messages",
                     headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": request_id},
-                    json={"text": "Hello", "model": mapping_id, "tools": [{"type": "function", "function": {"name": "noop"}}], "tool_choice": "auto"},
+                    json={
+                        "text": "Hello",
+                        "model": mapping_id,
+                        "result_mode": "xml_plaintext",
+                        "tools": [{"type": "function", "function": {"name": "noop"}}],
+                        "tool_choice": "auto",
+                    },
                 )
                 assert create.status_code == status.HTTP_202_ACCEPTED
                 message_id = create.json()["message_id"]

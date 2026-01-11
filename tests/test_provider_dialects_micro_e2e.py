@@ -188,6 +188,7 @@ async def test_payload_mode_4_dialects_smoke(async_client, mock_jwt_token: str, 
                         "model": model_key,
                         "dialect": dialect,
                         "payload": payload,
+                        "result_mode": "xml_plaintext",
                         "metadata": {"save_history": False, "client": "pytest"},
                     },
                 )
@@ -206,4 +207,3 @@ async def test_payload_mode_4_dialects_smoke(async_client, mock_jwt_token: str, 
                 assert "completed" in names
     finally:
         fastapi_app.state.entitlement_service = prev_service
-

@@ -401,7 +401,8 @@ async def test_sse_auto_prefers_xml_plaintext_when_text_available(async_client: 
     try:
         with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
             mock_verifier = MagicMock()
-            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
+            # 避免与其他用例共享同一 uid 导致日配额计数串扰
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-auto-xml", claims={})
             mock_get_verifier.return_value = mock_verifier
 
             reply = _build_valid_thinkingml_reply(normalize_title_variants=True)
@@ -450,7 +451,8 @@ async def test_sse_auto_falls_back_to_raw_passthrough_when_unparseable(async_cli
     try:
         with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
             mock_verifier = MagicMock()
-            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
+            # 避免与其他用例共享同一 uid 导致日配额计数串扰
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-auto-raw", claims={})
             mock_get_verifier.return_value = mock_verifier
 
             raw = b'{"choices":[{"message":{"content":"<final>OK</final>"}}'  # 故意缺失结尾括号 -> invalid JSON

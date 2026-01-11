@@ -20,6 +20,19 @@
         @update:value="handleMappedModelChange"
       />
 
+      <NSpace align="center" justify="space-between">
+        <NText depth="3">App 输出模式</NText>
+        <NSelect
+          v-model:value="llmAppDefaultResultMode"
+          :options="llmAppResultModeOptions"
+          :loading="llmAppConfigLoading"
+          :disabled="loading || llmAppConfigLoading || llmAppConfigSaving"
+          size="small"
+          style="min-width: 180px"
+          @update:value="handleSaveLlmAppConfig"
+        />
+      </NSpace>
+
       <div v-if="!compact && currentEndpoint" class="model-info">
         <NText depth="3" style="font-size: 12px">
           {{ currentEndpoint.base_url }}
@@ -41,6 +54,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { NCard, NSelect, NSpace, NText, NTag, useMessage } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
+import api from '@/api'
 
 defineOptions({ name: 'ModelSwitcher' })
 
@@ -64,6 +78,16 @@ const selectedEndpointId = ref(null)
 const selectedMappedModel = ref('')
 const actionLoading = ref(false)
 const loading = computed(() => modelsLoading.value || actionLoading.value || mappingsLoading.value)
+
+// LLM App config（默认 SSE 输出模式；持久化 SSOT：llm_app_settings.default_result_mode）
+const llmAppConfigLoading = ref(false)
+const llmAppConfigSaving = ref(false)
+const llmAppDefaultResultMode = ref('raw_passthrough') // xml_plaintext | raw_passthrough | auto
+const llmAppResultModeOptions = [
+  { label: 'RAW 透明转发（upstream_raw）', value: 'raw_passthrough' },
+  { label: 'XML 纯文本（content_delta）', value: 'xml_plaintext' },
+  { label: 'AUTO（自动判断）', value: 'auto' },
+]
 
 // 状态映射
 const statusType = {
@@ -91,6 +115,46 @@ const endpointOptions = computed(() => {
 const currentEndpoint = computed(() => {
   return (models.value || []).find((m) => m.id === selectedEndpointId.value)
 })
+
+async function loadLlmAppConfig() {
+  llmAppConfigLoading.value = true
+  try {
+    const res = await api.getLlmAppConfig()
+    const data = res?.data?.data || res?.data || {}
+    const mode = String(data?.default_result_mode || '').trim()
+    llmAppDefaultResultMode.value = ['xml_plaintext', 'raw_passthrough', 'auto'].includes(mode)
+      ? mode
+      : 'raw_passthrough'
+  } catch (error) {
+    message.error(error?.message || '加载 App 输出模式失败')
+  } finally {
+    llmAppConfigLoading.value = false
+  }
+}
+
+async function handleSaveLlmAppConfig(mode) {
+  const next = String(mode || '').trim()
+  if (!['xml_plaintext', 'raw_passthrough', 'auto'].includes(next)) return
+
+  const prev = llmAppDefaultResultMode.value
+  llmAppDefaultResultMode.value = next
+
+  llmAppConfigSaving.value = true
+  try {
+    const res = await api.upsertLlmAppConfig({ default_result_mode: next })
+    const data = res?.data?.data || res?.data || {}
+    const saved = String(data?.default_result_mode || '').trim()
+    llmAppDefaultResultMode.value = ['xml_plaintext', 'raw_passthrough', 'auto'].includes(saved)
+      ? saved
+      : next
+    message.success('已更新 App 默认输出模式')
+  } catch (error) {
+    llmAppDefaultResultMode.value = prev
+    message.error(error?.message || '保存 App 输出模式失败')
+  } finally {
+    llmAppConfigSaving.value = false
+  }
+}
 
 function buildMappedModelOptionsForEndpoint(endpoint) {
   const items = Array.isArray(mappings.value) ? mappings.value : []
@@ -263,6 +327,7 @@ async function initializeModels() {
 
 onMounted(() => {
   initializeModels()
+  loadLlmAppConfig()
 })
 </script>
 

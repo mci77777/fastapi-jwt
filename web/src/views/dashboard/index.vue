@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { useMessage, NModal } from 'naive-ui'
+import { useMessage, NButton, NSpace, NModal } from 'naive-ui'
 import { getToken } from '@/utils'
 
 // Dashboard Components
@@ -10,7 +10,7 @@ import ControlCenter from '@/components/dashboard/ControlCenter.vue'
 import WebSocketClient from '@/components/dashboard/WebSocketClient.vue'
 import PollingConfig from '@/components/dashboard/PollingConfig.vue'
 import StatDetailModal from '@/components/dashboard/StatDetailModal.vue'
-import ApiConnectivityModal from '@/components/dashboard/ApiConnectivityModal.vue'
+import MappedModelsModal from '@/components/dashboard/MappedModelsModal.vue'
 import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
 import ModelObservabilityCard from '@/components/dashboard/ModelObservabilityCard.vue'
 import ModelSwitcher from '@/components/dashboard/ModelSwitcher.vue'
@@ -36,7 +36,7 @@ const statsLoading = ref(false)
 const logsLoading = ref(false)
 const showConfigModal = ref(false)
 const showStatDetailModal = ref(false)
-const showApiModal = ref(false)
+const showMappedModelsModal = ref(false)
 const showSupabaseModal = ref(false)
 const selectedStat = ref(null)
 
@@ -72,11 +72,11 @@ const stats = ref([
   {
     id: 4,
     icon: 'signal',
-    label: 'API 连通性',
+    label: '映射模型可用性',
     value: '0/0',
     trend: 0,
     color: '#00bcd4',
-    detail: 'AI 供应商在线状态（/v1/models 探针）',
+    detail: '映射模型是否可路由（resolve_model_key）+ 调用聚合',
   },
   {
     id: 5,
@@ -187,6 +187,23 @@ const dashboardConfig = ref({
   log_retention_size: 100,
 })
 
+const connectionBadge = computed(() => {
+  const status = String(connectionStatus.value || 'disconnected')
+  if (status === 'connected') {
+    return { label: '实时', tone: 'good' }
+  }
+  if (status === 'polling') {
+    return { label: '轮询', tone: 'warn' }
+  }
+  if (status === 'connecting') {
+    return { label: '连接中', tone: 'neutral' }
+  }
+  if (status === 'error') {
+    return { label: '异常', tone: 'bad' }
+  }
+  return { label: '断开', tone: 'neutral' }
+})
+
 // WebSocket URL
 const wsUrl = computed(() => {
   const token = getToken()
@@ -213,13 +230,11 @@ async function loadDashboardStats() {
     stats.value[0].value = data.daily_active_users || 0
     stats.value[1].value = data.ai_requests?.total || 0
     stats.value[2].value = data.token_usage ?? '--'
-    stats.value[3].value = `${data.api_connectivity?.healthy_endpoints || 0}/${
-      data.api_connectivity?.total_endpoints || 0
-    }`
+    stats.value[3].value = `${data.mapped_models?.available || 0}/${data.mapped_models?.total || 0}`
     stats.value[4].value = `${data.jwt_availability?.success_rate?.toFixed(1) || 0}%`
 
-    if (data.api_connectivity) {
-      const rate = data.api_connectivity.connectivity_rate || 0
+    if (data.mapped_models) {
+      const rate = data.mapped_models.availability_rate || 0
       stats.value[3].trend = rate - 100
     }
   } catch (error) {
@@ -307,9 +322,7 @@ function handleWebSocketMessage(data) {
     stats.value[0].value = statsData.daily_active_users || 0
     stats.value[1].value = statsData.ai_requests?.total || 0
     stats.value[2].value = statsData.token_usage ?? '--'
-    stats.value[3].value = `${statsData.api_connectivity?.healthy_endpoints || 0}/${
-      statsData.api_connectivity?.total_endpoints || 0
-    }`
+    stats.value[3].value = `${statsData.mapped_models?.available || 0}/${statsData.mapped_models?.total || 0}`
     stats.value[4].value = `${statsData.jwt_availability?.success_rate?.toFixed(1) || 0}%`
   }
 }
@@ -375,7 +388,7 @@ function stopPolling() {
  */
 function handleStatClick(stat) {
   if (stat.id === 4) {
-    showApiModal.value = true
+    showMappedModelsModal.value = true
   } else {
     selectedStat.value = stat
     showStatDetailModal.value = true
@@ -401,6 +414,12 @@ function handleLogRefresh() {
  */
 function handleTimeRangeChange(range) {
   chartTimeRange.value = range
+  loadChartData()
+}
+
+function refreshDashboard() {
+  loadDashboardStats()
+  loadRecentLogs()
   loadChartData()
 }
 
@@ -458,54 +477,88 @@ onBeforeUnmount(() => {
       @error="handleWebSocketError"
     />
 
-    <!-- Header Stats -->
-    <StatsBanner 
-      :stats="stats" 
-      :loading="statsLoading" 
-      @stat-click="handleStatClick" 
-    />
+    <!-- Header -->
+    <div class="dash-header">
+      <div class="dash-title">
+        <div class="dash-title-text">Dashboard</div>
+        <div class="dash-subtitle">系统概览 · 观测 · 操作</div>
+      </div>
+      <div class="dash-actions">
+        <div class="dash-connection" :data-tone="connectionBadge.tone">
+          <span class="dash-connection-dot" />
+          <span class="dash-connection-text">{{ connectionBadge.label }}</span>
+        </div>
+        <NSpace :size="8">
+          <NButton size="small" secondary :loading="statsLoading || logsLoading" @click="refreshDashboard">
+            刷新
+          </NButton>
+          <NButton size="small" secondary @click="showConfigModal = true">设置</NButton>
+        </NSpace>
+      </div>
+    </div>
+
+    <!-- Overview -->
+    <div class="dash-section">
+      <div class="dash-section-head">
+        <div class="dash-section-title">概览</div>
+      </div>
+      <StatsBanner :stats="stats" :loading="statsLoading" @stat-click="handleStatClick" />
+    </div>
 
     <!-- Main Grid Layout -->
     <div class="main-grid">
-       <!-- Left: Monitoring Panel (75%) -->
-       <div class="monitor-area">
-          <div class="glass-panel main-controls">
-            <div class="controls-header">
-              <div class="controls-title">核心配置</div>
-              <div class="controls-subtitle">AI 供应商 / 映射模型 / Prompt</div>
-            </div>
-            <div class="controls-grid">
-              <ModelSwitcher :compact="false" />
-              <PromptSelector :compact="false" />
-            </div>
-          </div>
-          <MonitorPanel 
-            :chart-data="chartData"
-            :chart-time-range="chartTimeRange"
-            :stats-loading="statsLoading"
-            :logs="logs"
-            :logs-loading="logsLoading"
-            :dashboard-config="dashboardConfig"
-            @time-range-change="handleTimeRangeChange"
-            @log-click="() => {}"
-            @log-filter-change="handleLogFilterChange"
-            @log-refresh="handleLogRefresh"
-            @metrics-update="handleMetricsUpdate"
-          />
-       </div>
+      <!-- Left: Observability -->
+      <div class="monitor-area">
+        <div class="dash-section-head">
+          <div class="dash-section-title">观测</div>
+        </div>
+        <MonitorPanel
+          :chart-data="chartData"
+          :chart-time-range="chartTimeRange"
+          :stats-loading="statsLoading"
+          :logs="logs"
+          :logs-loading="logsLoading"
+          :dashboard-config="dashboardConfig"
+          @time-range-change="handleTimeRangeChange"
+          @log-click="() => {}"
+          @log-filter-change="handleLogFilterChange"
+          @log-refresh="handleLogRefresh"
+          @metrics-update="handleMetricsUpdate"
+        />
+      </div>
 
-       <!-- Right: Control Center (25%) -->
-       <div class="control-area">
-          <ControlCenter 
-            :quick-access-cards="quickAccessCards"
-            @update:quick-access-cards="saveCardOrder"
-            @reset-layout="resetCardOrder"
-            @show-supabase-modal="showSupabaseModal = true"
-          />
-       </div>
+      <!-- Right: Actions -->
+      <div class="control-area">
+        <div class="dash-section-head">
+          <div class="dash-section-title">操作</div>
+        </div>
+
+        <div class="glass-panel main-controls">
+          <div class="controls-header">
+            <div class="controls-title">核心配置</div>
+            <div class="controls-subtitle">AI 供应商 / 映射模型 / Prompt</div>
+          </div>
+          <div class="controls-grid">
+            <ModelSwitcher :compact="false" />
+            <PromptSelector :compact="false" />
+          </div>
+        </div>
+
+        <ControlCenter
+          :quick-access-cards="quickAccessCards"
+          @update:quick-access-cards="saveCardOrder"
+          @reset-layout="resetCardOrder"
+          @show-supabase-modal="showSupabaseModal = true"
+        />
+      </div>
     </div>
 
-    <ModelObservabilityCard />
+    <div class="dash-section">
+      <div class="dash-section-head">
+        <div class="dash-section-title">模型与映射</div>
+      </div>
+      <ModelObservabilityCard />
+    </div>
 
     <!-- Dialogs -->
     <PollingConfig
@@ -514,7 +567,7 @@ onBeforeUnmount(() => {
       @save="handleConfigSave"
     />
     <StatDetailModal v-model:show="showStatDetailModal" :stat="selectedStat" />
-    <ApiConnectivityModal v-model:show="showApiModal" />
+    <MappedModelsModal v-model:show="showMappedModelsModal" />
     <NModal
       v-model:show="showSupabaseModal"
       preset="card"
@@ -530,27 +583,105 @@ onBeforeUnmount(() => {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
+@use './dashboard-tokens.scss';
+
 .dashboard-container {
   display: flex;
   flex-direction: column;
   gap: 24px;
   padding: 24px;
   min-height: 100vh;
-  background: var(--claude-bg-warm);
-  /* Optional: mesh gradient background for premium feel */
-  background-image: 
-      radial-gradient(at 0% 0%, rgba(200, 220, 255, 0.3) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgba(255, 220, 200, 0.3) 0px, transparent 50%);
+  background: var(--dash-bg);
+}
+
+.dash-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dash-title-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--dash-text);
+  line-height: 1.2;
+}
+
+.dash-subtitle {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--dash-text-secondary);
+}
+
+.dash-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dash-connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--dash-text);
+  font-size: 12px;
+}
+
+.dash-connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dash-text-secondary);
+}
+
+.dash-connection[data-tone='good'] .dash-connection-dot {
+  background: var(--dash-good);
+}
+
+.dash-connection[data-tone='warn'] .dash-connection-dot {
+  background: var(--dash-warn);
+}
+
+.dash-connection[data-tone='bad'] .dash-connection-dot {
+  background: var(--dash-bad);
+}
+
+.dash-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dash-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dash-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dash-text-secondary);
 }
 
 .glass-panel {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--dash-surface);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  border-radius: var(--dash-radius);
+  border: 1px solid var(--dash-border);
+  box-shadow: var(--dash-shadow);
   overflow: hidden;
 }
 
@@ -568,12 +699,12 @@ onBeforeUnmount(() => {
 .controls-title {
   font-size: 14px;
   font-weight: 700;
-  color: var(--claude-black);
+  color: var(--dash-text);
 }
 
 .controls-subtitle {
   font-size: 12px;
-  color: var(--claude-text-gray);
+  color: var(--dash-text-secondary);
 }
 
 .controls-grid {
@@ -593,6 +724,13 @@ onBeforeUnmount(() => {
 @media (max-width: 1200px) {
   .main-grid {
     grid-template-columns: 1fr;
+  }
+  .dash-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .dash-actions {
+    justify-content: space-between;
   }
   .controls-grid {
     grid-template-columns: 1fr;

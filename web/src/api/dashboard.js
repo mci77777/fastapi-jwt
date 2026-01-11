@@ -86,6 +86,17 @@ export function getAiRequests(params = {}) {
 }
 
 /**
+ * 获取映射模型可用性与调用统计（Dashboard）
+ * @param {Object} params - 查询参数
+ * @param {string} params.time_window - 时间窗口 ('24h' | '7d')
+ * @param {boolean} params.include_inactive - 是否包含未激活映射
+ * @returns {Promise} 映射模型统计数据
+ */
+export function getMappedModelsStats(params = {}) {
+  return request.get('/stats/mapped-models', { params })
+}
+
+/**
  * 获取 API 连通性状态
  * @returns {Promise} API 连通性数据
  */
