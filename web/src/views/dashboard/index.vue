@@ -593,6 +593,7 @@ onBeforeUnmount(() => {
   padding: 24px;
   min-height: 100vh;
   background: var(--dash-bg);
+  color: var(--dash-text);
 }
 
 .dash-header {

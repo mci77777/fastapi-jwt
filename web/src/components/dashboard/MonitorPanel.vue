@@ -71,18 +71,18 @@ const handleMetricsUpdate = (val) => emit('metrics-update', val)
 
 <style scoped>
 .glass-panel {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--dash-surface);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  border-radius: var(--dash-radius);
+  border: 1px solid var(--dash-border);
+  box-shadow: var(--dash-shadow);
   overflow: hidden;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .glass-panel:hover {
-    box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.08); 
+    box-shadow: var(--dash-shadow-hover); 
 }
 
 .chart-container {

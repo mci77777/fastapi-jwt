@@ -94,14 +94,14 @@ const handleReset = () => {
 
 <style scoped>
 .control-center {
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--dash-surface);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--dash-radius);
+  border: 1px solid var(--dash-border);
   padding: 24px;
   height: 100%;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); 
+  box-shadow: var(--dash-shadow);
 }
 
 .quick-access-item {
@@ -110,16 +110,16 @@ const handleReset = () => {
   gap: 12px;
   padding: 10px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--dash-item-bg);
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .quick-access-item:hover {
-  background: white;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  background: var(--dash-item-hover-bg);
   transform: translateY(-1px);
+  border-color: var(--dash-divider);
 }
 
 .icon-box {
@@ -133,8 +133,8 @@ const handleReset = () => {
 
 .ghost-item {
   opacity: 0.5;
-  background: #f0f0f0;
-  border: 1px dashed #ccc;
+  background: var(--dash-item-bg);
+  border: 1px dashed var(--dash-border);
 }
 
 .system-action-card {
@@ -143,15 +143,15 @@ const handleReset = () => {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: white;
+  background: var(--dash-surface-solid);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s;
-  border: 1px solid rgba(0,0,0,0.05);
+  border: 1px solid var(--dash-border);
 }
 
 .system-action-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-  transform: translateY(-2px);
+  box-shadow: var(--dash-shadow);
+  transform: translateY(-1px);
 }
 </style>
