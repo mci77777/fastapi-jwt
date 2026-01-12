@@ -16,6 +16,43 @@ from app.services.ai_service import MessageEvent
 from scripts.monitoring.local_mock_ai_conversation_e2e import _validate_thinkingml
 
 
+def _assert_status_routed_fields(events: list[dict[str, Any]]) -> None:
+    routed = next(
+        (
+            e
+            for e in events
+            if e.get("event") == "status"
+            and isinstance(e.get("data"), dict)
+            and (e.get("data") or {}).get("state") == "routed"
+        ),
+        None,
+    )
+    assert isinstance(routed, dict), "missing status(state=routed)"
+    data = routed.get("data")
+    assert isinstance(data, dict)
+    for key in ("provider", "resolved_model", "endpoint_id", "upstream_request_id"):
+        assert key in data
+
+
+def _assert_completed_required_fields(events: list[dict[str, Any]]) -> dict[str, Any]:
+    completed = next((e for e in events if e.get("event") == "completed"), None)
+    assert isinstance(completed, dict), "missing completed"
+    data = completed.get("data")
+    assert isinstance(data, dict)
+    for key in (
+        "reply",
+        "reply_len",
+        "provider",
+        "resolved_model",
+        "endpoint_id",
+        "result_mode",
+        "result_mode_effective",
+        "request_id",
+    ):
+        assert key in data
+    return data
+
+
 def _make_async_lines(lines: list[str]):
     async def gen():
         for line in lines:
@@ -264,6 +301,12 @@ async def test_sse_xml_plaintext_streaming_contains_xml_tags(async_client: Async
                 assert "completed" in names
                 assert "upstream_raw" not in names
 
+                _assert_status_routed_fields(events)
+                completed_data = _assert_completed_required_fields(events)
+                assert completed_data.get("result_mode") == "xml_plaintext"
+                assert completed_data.get("result_mode_effective") == "xml_plaintext"
+                assert completed_data.get("request_id") == "rid-create"
+
                 deltas = [
                     e["data"]["delta"]
                     for e in events
@@ -323,6 +366,11 @@ async def test_sse_raw_passthrough_streaming_sends_raw_content_delta(async_clien
                 assert "content_delta" in names
                 assert "completed" in names
                 assert "upstream_raw" not in names
+
+                _assert_status_routed_fields(events)
+                completed_data = _assert_completed_required_fields(events)
+                assert completed_data.get("result_mode") == "raw_passthrough"
+                assert completed_data.get("result_mode_effective") == "raw_passthrough"
 
                 deltas = [e["data"]["delta"] for e in events if e["event"] == "content_delta" and isinstance(e["data"], dict)]
                 assert len(deltas) >= 2

@@ -467,7 +467,7 @@ class MessageEventBroker:
             if meta:
                 # SSE 对外 SSOT：所有事件默认包含 message_id/request_id；content_delta/upstream_raw 自动补齐 seq。
                 event.data.setdefault("message_id", message_id)
-                request_id = get_current_request_id()
+                request_id = get_current_request_id() or str(getattr(meta, "request_id", "") or "").strip()
                 if request_id:
                     event.data.setdefault("request_id", request_id)
 
@@ -1108,6 +1108,10 @@ class AIService:
                 candidate = str(getattr(meta, "effective_result_mode", "") or "").strip() if meta is not None else ""
                 if candidate in {"xml_plaintext", "raw_passthrough"}:
                     effective_mode = candidate
+                elif meta is not None and getattr(meta, "auto_pending_raw_events", None):
+                    effective_mode = "raw_passthrough"
+                else:
+                    effective_mode = "xml_plaintext"
             if effective_mode != "raw_passthrough":
                 reply_text = _sanitize_thinkingml_reply(reply_text)
 
@@ -1169,6 +1173,7 @@ class AIService:
                         "message_id": message_id,
                         "request_id": request_id,
                         "result_mode": requested_result_mode,
+                        "result_mode_effective": effective_mode,
                         "provider": provider_used,
                         "resolved_model": model_used,
                         "endpoint_id": endpoint_id_used,
