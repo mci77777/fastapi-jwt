@@ -21,16 +21,6 @@ PublishFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TEXT_CHUNK_SIZE = 24
-
-
-def _iter_text_chunks(text: str, *, chunk_size: int = _DEFAULT_TEXT_CHUNK_SIZE):
-    if not text:
-        return
-    size = max(int(chunk_size or _DEFAULT_TEXT_CHUNK_SIZE), 1)
-    for index in range(0, len(text), size):
-        yield text[index : index + size]
-
 
 class OpenAIResponsesAdapter:
     dialect = "openai.responses"
@@ -129,8 +119,7 @@ class OpenAIResponsesAdapter:
                                 payload_out = {"stream": False, "raw_len": len(raw), "raw_only": True}
                                 return "", json.dumps(payload_out, ensure_ascii=False), upstream_request_id, None
                             raise ProviderError("upstream_empty_content")
-                        for chunk in _iter_text_chunks(text):
-                            await publish("content_delta", {"delta": chunk})
+                        await publish("content_delta", {"delta": text})
                         return text, json.dumps(data, ensure_ascii=False), upstream_request_id, None
 
                     async for event_name, raw_text in iter_sse_frames(response):
@@ -160,14 +149,12 @@ class OpenAIResponsesAdapter:
                             delta = obj.get("delta")
                             if isinstance(delta, str) and delta:
                                 reply_parts.append(delta)
-                                for chunk in _iter_text_chunks(delta):
-                                    await publish("content_delta", {"delta": chunk})
+                                await publish("content_delta", {"delta": delta})
                                 continue
                             text = obj.get("text")
                             if isinstance(text, str) and text:
                                 reply_parts.append(text)
-                                for chunk in _iter_text_chunks(text):
-                                    await publish("content_delta", {"delta": chunk})
+                                await publish("content_delta", {"delta": text})
                                 continue
 
                         if event_type.endswith(".completed") or event_type == "response.completed":

@@ -21,16 +21,6 @@ PublishFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TEXT_CHUNK_SIZE = 24
-
-
-def _iter_text_chunks(text: str, *, chunk_size: int = _DEFAULT_TEXT_CHUNK_SIZE):
-    if not text:
-        return
-    size = max(int(chunk_size or _DEFAULT_TEXT_CHUNK_SIZE), 1)
-    for index in range(0, len(text), size):
-        yield text[index : index + size]
-
 
 class OpenAIChatCompletionsAdapter:
     dialect = "openai.chat_completions"
@@ -174,8 +164,7 @@ class OpenAIChatCompletionsAdapter:
                             raise ProviderError("upstream_empty_content")
 
                         reply_text = str(content).strip()
-                        for chunk in _iter_text_chunks(reply_text):
-                            await publish("content_delta", {"delta": chunk})
+                        await publish("content_delta", {"delta": reply_text})
                         return reply_text, json.dumps(data, ensure_ascii=False), upstream_request_id, None
 
                     async for event_name, raw_text in iter_sse_frames(response):
@@ -217,11 +206,15 @@ class OpenAIChatCompletionsAdapter:
                         if isinstance(function_call, dict) and function_call.get("name"):
                             saw_function_call = True
 
+                        reasoning = delta.get("reasoning_content")
+                        if isinstance(reasoning, str) and reasoning:
+                            reply_parts.append(reasoning)
+                            await publish("content_delta", {"delta": reasoning})
+
                         text = delta.get("content")
                         if isinstance(text, str) and text:
                             reply_parts.append(text)
-                            for chunk in _iter_text_chunks(text):
-                                await publish("content_delta", {"delta": chunk})
+                            await publish("content_delta", {"delta": text})
 
                     reply_text = "".join(reply_parts).strip()
                     if reply_text:

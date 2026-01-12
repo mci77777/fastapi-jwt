@@ -72,8 +72,8 @@ _STREAM_SANITIZE_TAGS = (
 
 _ALLOWED_RESULT_MODES = {"xml_plaintext", "raw_passthrough", "auto"}
 # App 侧默认 SSE 输出模式（SSOT：若未配置 llm_app_settings.default_result_mode，则回退到此默认值）。
-# 目标：App 端消费 `content_delta` 真流式；`completed.reply` 仅作晚订阅/兜底。
-DEFAULT_LLM_APP_RESULT_MODE = "xml_plaintext"
+# 目标：默认“原始内容”流式转发到 App（`content_delta` 真流式）；`completed.reply` 仅作晚订阅/兜底。
+DEFAULT_LLM_APP_RESULT_MODE = "raw_passthrough"
 
 # SSE 拆分转发（端到端兜底）：即使上游一次性返回大块文本/RAW，也不应下游只收到“单个超长 token”。
 # 注意：此拆分仅影响 SSE 对外输出，不改变拼接后的全文语义。
@@ -489,10 +489,15 @@ class MessageEventBroker:
                         meta.raw_seq += 1
                         e.data.setdefault("seq", meta.raw_seq)
                     if e.event == "content_delta":
-                        # ThinkingML 流式最小纠错：保证“拼接后的 reply”也符合结构契约。
+                        # xml_plaintext：ThinkingML 流式最小纠错，保证“拼接后的 reply”符合结构契约。
+                        # raw_passthrough：必须保持原始 token，不做纠错/替换。
                         delta = e.data.get("delta")
                         if isinstance(delta, str) and delta:
-                            fixed = self._sanitize_thinkingml_delta(meta, delta)
+                            sanitize_delta = (
+                                str(getattr(meta, "result_mode", "") or "").strip() != "raw_passthrough"
+                                and str(getattr(meta, "effective_result_mode", "") or "").strip() != "raw_passthrough"
+                            )
+                            fixed = self._sanitize_thinkingml_delta(meta, delta) if sanitize_delta else delta
                             e.data["delta"] = fixed
                             if not fixed:
                                 # 本次 chunk 仅用于跨边界识别标签前缀，不对外发送空 delta。
@@ -539,8 +544,6 @@ class MessageEventBroker:
                     await queue.put(e)
 
                 # 明确模式下的最小过滤（订阅端也会做白名单；这里避免无意义入队）。
-                if meta.result_mode == "raw_passthrough" and event.event == "content_delta":
-                    return
                 if meta.result_mode == "xml_plaintext" and event.event == "upstream_raw":
                     return
 
@@ -1014,7 +1017,7 @@ class AIService:
         if not requested_result_mode:
             requested_result_mode = str((message.metadata or {}).get("result_mode") or "").strip()
         if requested_result_mode not in _ALLOWED_RESULT_MODES:
-            requested_result_mode = "xml_plaintext"
+            requested_result_mode = DEFAULT_LLM_APP_RESULT_MODE
 
         await broker.publish(
             message_id,
@@ -1098,7 +1101,15 @@ class AIService:
                 provider_used,
             )
 
-            reply_text = _sanitize_thinkingml_reply(reply_text)
+            # SSOT：raw_passthrough 必须保持原始内容；xml_plaintext 则做最小结构修复。
+            effective_mode = requested_result_mode
+            if effective_mode == "auto":
+                meta = broker.get_meta(message_id)
+                candidate = str(getattr(meta, "effective_result_mode", "") or "").strip() if meta is not None else ""
+                if candidate in {"xml_plaintext", "raw_passthrough"}:
+                    effective_mode = candidate
+            if effective_mode != "raw_passthrough":
+                reply_text = _sanitize_thinkingml_reply(reply_text)
 
             save_history = bool((message.metadata or {}).get("save_history", True))
             # 兼容：Supabase Provider 强依赖 UUID（user_id/conversation_id），而本地 admin/test token 可能是非 UUID。
@@ -1278,8 +1289,9 @@ class AIService:
         if not requested_result_mode:
             requested_result_mode = str((message.metadata or {}).get("result_mode") or "").strip()
         if requested_result_mode not in _ALLOWED_RESULT_MODES:
-            requested_result_mode = "xml_plaintext"
-        emit_raw = requested_result_mode in {"raw_passthrough", "auto"}
+            requested_result_mode = DEFAULT_LLM_APP_RESULT_MODE
+        # 仅 auto 模式需要透传 upstream_raw 用于判定/诊断；raw_passthrough 输出仍走 content_delta（不额外发送 upstream_raw）。
+        emit_raw = requested_result_mode == "auto"
 
         if self._ai_config_service is None:
             reply_text = await self._call_openai_completion_settings(message)

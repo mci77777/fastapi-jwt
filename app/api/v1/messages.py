@@ -36,21 +36,26 @@ _FREE_TIER_DAILY_MODEL_LIMITS: dict[str, int | None] = {
 }
 
 async def _get_llm_app_default_result_mode(request: Request) -> str:
-    """App 默认 SSE 输出模式（Dashboard 可配置；SSOT：llm_app_settings.default_result_mode）。"""
+    """App 默认 SSE 输出模式（SSOT：App 不传 result_mode 时按 llm_app_settings 持久化配置）。"""
 
     db = get_sqlite_manager(request.app)
-    row = await db.fetchone("SELECT value_json FROM llm_app_settings WHERE key = ?", ("default_result_mode",))
-    raw = row.get("value_json") if isinstance(row, dict) else None
+    row = await db.fetchone(
+        "SELECT value_json FROM llm_app_settings WHERE key = ? LIMIT 1",
+        ("default_result_mode",),
+    )
+
     mode = ""
-    if isinstance(raw, str) and raw.strip():
+    raw = row.get("value_json") if isinstance(row, dict) else None
+    if raw is not None:
         try:
-            parsed = json.loads(raw)
-            mode = str(parsed or "").strip()
+            value = json.loads(raw) if isinstance(raw, str) else raw
         except Exception:
-            mode = raw.strip().strip('"')
-    mode = mode or DEFAULT_LLM_APP_RESULT_MODE
+            value = raw
+        mode = str(value or "").strip()
+
     if mode not in {"xml_plaintext", "raw_passthrough", "auto"}:
         mode = DEFAULT_LLM_APP_RESULT_MODE
+
     return mode
 
 
@@ -579,7 +584,7 @@ async def stream_message_events(
     # 输出事件白名单：避免客户端在某模式下收到无意义事件（同时降低敏感数据暴露面）。
     def _current_allowed_events() -> set[str]:
         if result_mode == "raw_passthrough":
-            return {"status", "heartbeat", "upstream_raw", "completed", "error"}
+            return {"status", "heartbeat", "content_delta", "completed", "error"}
         if result_mode != "auto":  # xml_plaintext
             return {"status", "heartbeat", "content_delta", "completed", "error"}
         # auto：若已判定 effective，则动态收敛到单一输出
@@ -587,7 +592,7 @@ async def stream_message_events(
         if meta is not None:
             effective = str(getattr(meta, "effective_result_mode", "") or "").strip()
         if effective == "raw_passthrough":
-            return {"status", "heartbeat", "upstream_raw", "completed", "error"}
+            return {"status", "heartbeat", "content_delta", "upstream_raw", "completed", "error"}
         if effective == "xml_plaintext":
             return {"status", "heartbeat", "content_delta", "completed", "error"}
         return {"status", "heartbeat", "content_delta", "upstream_raw", "completed", "error"}

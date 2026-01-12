@@ -222,10 +222,13 @@ async def test_sse_xml_plaintext_streaming_contains_xml_tags(async_client: Async
     try:
         with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
             mock_verifier = MagicMock()
-            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
+            # 避免与其他用例共享同一 uid 导致日配额计数串扰
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-xml-stream", claims={})
             mock_get_verifier.return_value = mock_verifier
 
             reply = _build_valid_thinkingml_reply(normalize_title_variants=True)
+            # 触发 broker 的超长拆分（>256 chars -> 多条 content_delta），避免依赖 provider 侧分块实现。
+            reply = reply.replace("\n<!-- <serp_queries>", "\n" + ("A" * 400) + "\n<!-- <serp_queries>")
             lines = [
                 f'data: {json.dumps({"choices":[{"delta":{"content":reply}}]}, ensure_ascii=False)}',
                 "",
@@ -261,7 +264,11 @@ async def test_sse_xml_plaintext_streaming_contains_xml_tags(async_client: Async
                 assert "completed" in names
                 assert "upstream_raw" not in names
 
-                deltas = [e["data"]["delta"] for e in events if e["event"] == "content_delta" and isinstance(e["data"], dict)]
+                deltas = [
+                    e["data"]["delta"]
+                    for e in events
+                    if e["event"] == "content_delta" and isinstance(e["data"], dict)
+                ]
                 assert len(deltas) >= 2
                 assembled = "".join(deltas)
                 ok, reason = _validate_thinkingml(assembled)
@@ -271,7 +278,7 @@ async def test_sse_xml_plaintext_streaming_contains_xml_tags(async_client: Async
 
 
 @pytest.mark.asyncio
-async def test_sse_raw_passthrough_streams_upstream_raw_frames(async_client: AsyncClient, mock_jwt_token: str):
+async def test_sse_raw_passthrough_streaming_sends_raw_content_delta(async_client: AsyncClient, mock_jwt_token: str):
     endpoint_id, mapping_id = await _setup_openai_endpoint_mapping()
     try:
         with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
@@ -279,7 +286,9 @@ async def test_sse_raw_passthrough_streams_upstream_raw_frames(async_client: Asy
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
             mock_get_verifier.return_value = mock_verifier
 
-            reply = _build_valid_thinkingml_reply(normalize_title_variants=False)
+            reply = _build_valid_thinkingml_reply(normalize_title_variants=True)
+            # 触发 broker 的超长拆分（>256 chars -> 多条 content_delta），避免依赖 provider 侧分块实现。
+            reply = reply.replace("\n<!-- <serp_queries>", "\n" + ("A" * 400) + "\n<!-- <serp_queries>")
             lines = [
                 f'data: {json.dumps({"choices":[{"delta":{"content":reply}}]}, ensure_ascii=False)}',
                 "",
@@ -311,12 +320,17 @@ async def test_sse_raw_passthrough_streams_upstream_raw_frames(async_client: Asy
                 )
 
                 names = [e["event"] for e in events]
-                assert "upstream_raw" in names
+                assert "content_delta" in names
                 assert "completed" in names
-                assert "content_delta" not in names
+                assert "upstream_raw" not in names
 
-                raws = [e["data"].get("raw") for e in events if e["event"] == "upstream_raw" and isinstance(e["data"], dict)]
-                assert len([r for r in raws if isinstance(r, str) and r]) >= 2
+                deltas = [e["data"]["delta"] for e in events if e["event"] == "content_delta" and isinstance(e["data"], dict)]
+                assert len(deltas) >= 2
+                assembled = "".join(deltas)
+                # raw_passthrough：不做 ThinkingML/标签纠错（例如 thinking 内的 <final> 字面量不会被转义）
+                assert "这里提到 <final>" in assembled
+                assert "这里提到 &lt;final&gt;" not in assembled
+                assert "<Title>" in assembled
     finally:
         await _cleanup_openai_endpoint_mapping(endpoint_id, mapping_id)
 
@@ -369,7 +383,7 @@ async def test_sse_raw_passthrough_non_sse_response_streams_raw_chunks(async_cli
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
             mock_get_verifier.return_value = mock_verifier
 
-            reply = _build_valid_thinkingml_reply(normalize_title_variants=False) + ("\n" + ("B" * 120))
+            reply = _build_valid_thinkingml_reply(normalize_title_variants=True) + ("\n" + ("B" * 400))
             payload = {"choices": [{"message": {"content": reply}}]}
 
             with patch("app.services.providers.openai_chat_completions.httpx.AsyncClient") as mock_httpx:
@@ -390,9 +404,15 @@ async def test_sse_raw_passthrough_non_sse_response_streams_raw_chunks(async_cli
                     headers={"Authorization": f"Bearer {mock_jwt_token}", "Accept": "text/event-stream"},
                 )
 
-                raws = [e for e in events if e["event"] == "upstream_raw"]
-                assert len(raws) > 1
-                assert "completed" in [e["event"] for e in events]
+                names = [e["event"] for e in events]
+                assert "content_delta" in names
+                assert "completed" in names
+                assert "upstream_raw" not in names
+
+                deltas = [e for e in events if e["event"] == "content_delta" and isinstance(e.get("data"), dict)]
+                assert len(deltas) > 1
+                assembled = "".join(e["data"]["delta"] for e in deltas)
+                assert "这里提到 <final>" in assembled
     finally:
         await _cleanup_openai_endpoint_mapping(endpoint_id, mapping_id)
 
@@ -408,6 +428,8 @@ async def test_sse_auto_prefers_xml_plaintext_when_text_available(async_client: 
             mock_get_verifier.return_value = mock_verifier
 
             reply = _build_valid_thinkingml_reply(normalize_title_variants=True)
+            # 触发 broker 的超长拆分（>256 chars -> 多条 content_delta），避免依赖 provider 侧分块实现。
+            reply = reply.replace("\n<!-- <serp_queries>", "\n" + ("A" * 400) + "\n<!-- <serp_queries>")
             lines = [
                 f'data: {json.dumps({"choices":[{"delta":{"content":reply}}]}, ensure_ascii=False)}',
                 "",
@@ -496,10 +518,10 @@ async def test_sse_auto_falls_back_to_raw_passthrough_when_unparseable(async_cli
 
 
 @pytest.mark.asyncio
-async def test_messages_default_result_mode_without_dashboard_config_is_xml_plaintext(
+async def test_messages_default_result_mode_without_dashboard_config_defaults_to_raw_passthrough(
     async_client: AsyncClient, mock_jwt_token: str
 ):
-    """当客户端不传 result_mode 且 Dashboard 未配置时，应默认走 xml_plaintext（对 App 侧真流式友好）。"""
+    """当客户端不传 result_mode 且未配置 default_result_mode 时，应回退 raw_passthrough（原始内容流式转发）。"""
 
     endpoint_id, mapping_id = await _setup_openai_endpoint_mapping()
     try:
@@ -515,6 +537,8 @@ async def test_messages_default_result_mode_without_dashboard_config_is_xml_plai
             )
 
             reply = _build_valid_thinkingml_reply(normalize_title_variants=True)
+            # 触发 broker 的超长拆分（>256 chars -> 多条 content_delta），避免依赖 provider 侧分块实现。
+            reply = reply.replace("\n<!-- <serp_queries>", "\n" + ("A" * 400) + "\n<!-- <serp_queries>")
             lines = [
                 f'data: {json.dumps({"choices":[{"delta":{"content":reply}}]}, ensure_ascii=False)}',
                 "",
@@ -547,13 +571,16 @@ async def test_messages_default_result_mode_without_dashboard_config_is_xml_plai
 
                 deltas = [e["data"]["delta"] for e in events if e["event"] == "content_delta" and isinstance(e["data"], dict)]
                 assert len(deltas) >= 2
+                assembled = "".join(deltas)
+                assert "这里提到 <final>" in assembled
+                assert "<Title>" in assembled
     finally:
         await _cleanup_openai_endpoint_mapping(endpoint_id, mapping_id)
 
 
 @pytest.mark.asyncio
 async def test_messages_default_result_mode_from_dashboard_config(async_client: AsyncClient, mock_jwt_token: str):
-    """当客户端不传 result_mode 时，应使用 Dashboard 可配置的默认值（SSOT: /llm/app/config）。"""
+    """当客户端不传 result_mode 时，应遵循持久化配置 default_result_mode。"""
 
     endpoint_id, mapping_id = await _setup_openai_endpoint_mapping()
     try:
@@ -568,12 +595,12 @@ async def test_messages_default_result_mode_from_dashboard_config(async_client: 
             updated = await async_client.post(
                 "/api/v1/llm/app/config",
                 headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": "rid-config"},
-                json={"default_result_mode": "raw_passthrough"},
+                json={"default_result_mode": "xml_plaintext"},
             )
             assert updated.status_code == status.HTTP_200_OK
-            assert (updated.json().get("data") or {}).get("default_result_mode") == "raw_passthrough"
+            assert (updated.json().get("data") or {}).get("default_result_mode") == "xml_plaintext"
 
-            reply = _build_valid_thinkingml_reply(normalize_title_variants=False)
+            reply = _build_valid_thinkingml_reply(normalize_title_variants=True) + ("\n" + ("C" * 400))
             with patch("app.services.providers.openai_chat_completions.httpx.AsyncClient") as mock_httpx:
                 _mock_httpx_streaming_json_bytes(
                     mock_httpx,
@@ -598,14 +625,22 @@ async def test_messages_default_result_mode_from_dashboard_config(async_client: 
                 )
 
                 names = [e["event"] for e in events]
-                assert "upstream_raw" in names
-                assert "content_delta" not in names
+                assert "content_delta" in names
                 assert "completed" in names
+                assert "upstream_raw" not in names
+                assembled = "".join(
+                    e["data"]["delta"] for e in events if e["event"] == "content_delta" and isinstance(e.get("data"), dict)
+                )
+                assert "这里提到 &lt;final&gt;" in assembled
+                assert "<title>" in assembled
+                assert "<Title>" not in assembled
+                ok, reason = _validate_thinkingml(assembled)
+                assert ok, reason
 
             restored = await async_client.post(
                 "/api/v1/llm/app/config",
                 headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": "rid-config-restore"},
-                json={"default_result_mode": "xml_plaintext"},
+                json={"default_result_mode": "raw_passthrough"},
             )
             assert restored.status_code == status.HTTP_200_OK
 
@@ -653,7 +688,7 @@ async def test_broker_rechunks_large_content_delta_into_multiple_sse_events(asyn
 
 @pytest.mark.asyncio
 async def test_broker_rechunks_large_upstream_raw_into_multiple_sse_events(async_client: AsyncClient, mock_jwt_token: str):
-    """raw_passthrough 下，超长 upstream_raw 也应拆分输出，避免单帧过大导致“看起来不流式”。"""
+    """auto/raw 下，超长 upstream_raw 也应拆分输出，避免单帧过大导致“看起来不流式”。"""
 
     message_id = f"test-chunk-raw-{uuid.uuid4().hex}"
     conversation_id = str(uuid.uuid4())
@@ -669,7 +704,7 @@ async def test_broker_rechunks_large_upstream_raw_into_multiple_sse_events(async
             owner_user_id="test-user-123",
             conversation_id=conversation_id,
             request_id="",
-            result_mode="raw_passthrough",
+            result_mode="auto",
         )
 
         big_raw = "event:message\n" + ("X" * 4096) + "\n"

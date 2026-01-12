@@ -19,7 +19,8 @@ data: <one-line-json>
 
 ```
 
-其中 `<event_name>` 是 GymBro 自定义事件（统一对外）：`status` / `content_delta` / `upstream_raw` / `completed` / `error` / `heartbeat`。
+其中 `<event_name>` 是 GymBro 自定义事件（统一对外）：`status` / `content_delta` / `upstream_raw` / `completed` / `error` / `heartbeat`。  
+**App 端最小必实现集合（推荐）**：`status` / `content_delta` / `completed` / `error` / `heartbeat`（`upstream_raw` 仅用于调试/诊断，可忽略）。
 
 > 重要：**最终答案（reply）优先由 `content_delta.delta` 流式拼接得到（SSOT）**；`completed.reply` 仅作兜底（例如晚订阅/漏订阅）。
 
@@ -27,12 +28,12 @@ data: <one-line-json>
 
 ## 1.1 SSE 输出模式（SSOT）
 
-`POST /api/v1/messages` 可指定 `result_mode`（创建消息时固化，订阅侧只读）：
+`POST /api/v1/messages` 可指定 `result_mode`（创建消息时固化，订阅侧只读；**App 端默认不传**）：
 
-- **默认值**：当客户端未显式传 `result_mode` 且 Dashboard 未配置 `llm_app_settings.default_result_mode` 时，服务端默认使用 `xml_plaintext`（对 App 侧“真流式拼接”更友好）。
-- `xml_plaintext`：服务端解析上游响应，向 App 发送 `content_delta`（`delta` 为纯文本，允许包含 XML 标签如 `<final>...</final>`）。
-- `raw_passthrough`：服务端透明转发上游 RAW，向 App 发送 `upstream_raw`（App 侧可自行回放/解析；仍会收到 `completed/error` 终止事件）。
-- `auto`：服务端自动判定（优先 `xml_plaintext`；若长期无法产出 `content_delta`，则降级为 `raw_passthrough`）。
+- **默认值**：当客户端未显式传 `result_mode` 时，服务端使用持久化配置 `llm_app_settings.default_result_mode`（可由管理端 `POST /api/v1/llm/app/config` 设置）；未配置时回退 `raw_passthrough`。
+- `raw_passthrough`（默认）：服务端解析上游响应并提取 token 文本，按原样以 `content_delta` 流式输出（不做 ThinkingML 纠错/标签归一化）。
+- `xml_plaintext`：服务端解析上游响应并以 `content_delta` 流式输出，同时做 ThinkingML 最小纠错/标签归一化，保证结构契约稳定（允许包含 `<final>...</final>` 等 XML 标签）。
+- `auto`：服务端自动判定（优先 `xml_plaintext`；若无法产出 `content_delta`，则降级为 `raw_passthrough`；必要时可能产生 `upstream_raw` 诊断帧）。
 
 ### 1.2 现状：后端会“拆分转发”超长块（避免单个超长 SSE 事件）
 
@@ -134,19 +135,19 @@ export interface HeartbeatEventData {
 
 ---
 
-## 3) “流式 + 原始内容”的落地方式（推荐）
+## 3) “流式内容”的落地方式（App 最小实现）
 
-移动端建议同时维护两份 SSOT：
+移动端最小建议只维护 1 份 SSOT：
 
 1. **流式文本 SSOT**：`reply_text = concat(content_delta.delta by seq)`
-2. **RAW SSOT**（用于对账/回放/上报）：`raw_frames[] = ["event: ...\\ndata: ...\\n\\n", ...]`
+
+可选（仅调试/诊断）：若你需要对账上游 RAW，可额外维护 `raw_frames[]`（依赖 `upstream_raw` 事件；App 端通常不需要实现）。
 
 兜底策略：
 - 若只收到 `completed`（未收到 `content_delta`），则用 `completed.reply` 作为 `reply_text`。
 - 若收到 `error`，本次对话以失败终止（即使之前已收到部分 `content_delta`）。
 
-> 注意：在 `raw_passthrough` 模式下，仍可能收到 `completed.reply`（历史兼容兜底字段），但 **不建议用它作为“流式展示”来源**；
-> App 侧若想做“实时显示/对账”，应以 `upstream_raw.raw` 的增量拼接为准。
+> 注意：App 侧默认不传 `result_mode`，服务端默认使用持久化配置（未配置则 `raw_passthrough`）；因此正常只需要处理 `content_delta`。
 
 ---
 

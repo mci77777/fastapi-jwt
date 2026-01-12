@@ -20,16 +20,6 @@ PublishFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TEXT_CHUNK_SIZE = 24
-
-
-def _iter_text_chunks(text: str, *, chunk_size: int = _DEFAULT_TEXT_CHUNK_SIZE):
-    if not text:
-        return
-    size = max(int(chunk_size or _DEFAULT_TEXT_CHUNK_SIZE), 1)
-    for index in range(0, len(text), size):
-        yield text[index : index + size]
-
 
 class GeminiGenerateContentAdapter:
     dialect = "gemini.generate_content"
@@ -113,8 +103,7 @@ class GeminiGenerateContentAdapter:
                             payload_out = {"stream": False, "raw_len": len(raw), "raw_only": True}
                             return "", json.dumps(payload_out, ensure_ascii=False), None, None
                         raise ProviderError("upstream_empty_content")
-                    for chunk in _iter_text_chunks(text):
-                        await publish("content_delta", {"delta": chunk})
+                    await publish("content_delta", {"delta": text})
                     return text, json.dumps(data, ensure_ascii=False), None, None
 
                 async for event_name, raw_text in iter_sse_frames(response):
@@ -135,8 +124,7 @@ class GeminiGenerateContentAdapter:
                     text = _extract_text_from_chunk(obj)
                     if text:
                         reply_parts.append(text)
-                        for chunk in _iter_text_chunks(text):
-                            await publish("content_delta", {"delta": chunk})
+                        await publish("content_delta", {"delta": text})
 
         reply_text = "".join(reply_parts).strip()
         if not reply_text:

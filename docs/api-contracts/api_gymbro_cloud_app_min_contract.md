@@ -74,10 +74,10 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
 
 `POST /api/v1/messages` 支持可选字段 `result_mode`：
 
-- 若不传 `result_mode`：服务端按 Dashboard 配置的默认值决定（SSOT：`GET /api/v1/llm/app/config` 的 `default_result_mode`；无配置时默认为 `raw_passthrough`）。
-- `raw_passthrough`（默认）：服务端透明转发上游 RAW，SSE 推送 `event: upstream_raw`（App 可自行回放/解析；仍会收到 `completed/error`）。
-- `xml_plaintext`：服务端解析上游响应，SSE 推送 `event: content_delta`（`delta` 为纯文本，允许包含 `<final>...</final>` 等 XML 标签）。
-- `auto`：服务端自动判定（优先 `xml_plaintext`；若无法产出 `content_delta` 则降级为 `raw_passthrough`）。
+- 若不传 `result_mode`：服务端使用持久化配置 `llm_app_settings.default_result_mode`（管理端 `/api/v1/llm/app/config` 可设置）；未配置则回退 `raw_passthrough`。
+- `raw_passthrough`（默认）：服务端解析上游响应并提取 token 文本，按原样以 `event: content_delta` 流式输出（不做 ThinkingML 纠错/标签归一化）。
+- `xml_plaintext`：服务端解析上游响应并以 `event: content_delta` 流式输出，同时做 ThinkingML 最小纠错/标签归一化，保证结构契约稳定（允许包含 `<final>...</final>` 等 XML 标签）。
+- `auto`：服务端自动判定（优先 `xml_plaintext`；若无法产出 `content_delta` 则降级为 `raw_passthrough`；必要时可能产生 `event: upstream_raw` 诊断帧）。
 
 ### 权限等级与配额（SSOT）
 
@@ -269,7 +269,7 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
 
 ## 3) SSE 订阅：`GET /api/v1/messages/{message_id}/events`
 
-用途：流式接收模型输出（`content_delta` 或 `upstream_raw`）与最终结果（`completed`）。
+用途：流式接收模型输出（`content_delta`）与最终结果（`completed`；`upstream_raw` 仅 auto/诊断用）。
 
 ### Headers（最小）
 
@@ -292,7 +292,7 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
 - `event: heartbeat`：`{"message_id":"...","request_id":"...","ts":1736253242000}`
 
 > `result_mode=xml_plaintext` 时，reply 优先由 `content_delta.delta` 拼接得到；`completed.reply` 仅作兜底（例如晚订阅/漏订阅）。结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。  
-> `result_mode=raw_passthrough` 时，以 `upstream_raw.raw` 为准（透明转发）；`completed.reply` 可能为空（仅用于终止与对账）。
+> `result_mode=raw_passthrough` 时，reply 同样以 `content_delta.delta` 拼接为准（透明转发 token 文本，不做 XML/ThinkingML 修复）；`completed.reply` 仅作兜底与对账。
 
 ### SSE 事件字典（SSOT，可机读）
 

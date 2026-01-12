@@ -19,7 +19,7 @@
 
 ### `result_mode`
 - `xml_plaintext`：后端在 SSE 中输出 `event: content_delta`，拼接得到的 reply 为 **纯文本**，并包含 `<thinking>...</thinking><final>...</final>` 等标签（用于 App 直接渲染/校验）。
-- `raw_passthrough`：后端输出 `event: upstream_raw`（上游原始流片段），用于定位「上游是否真的在流式输出」。
+- `raw_passthrough`：后端在 SSE 中输出 `event: content_delta`，但 **不做 ThinkingML 纠错/标签归一化**（用于对账“原始 token 文本”与上游真实输出）。
 - `auto`：后端自动选择；页面会显示 `effective: ...`，并在 `completed`/`error` 带回 `result_mode_effective`。
 
 ### `prompt_mode`
@@ -57,4 +57,3 @@
 </serp_queries> -->
 4) 不要解释协议，不要使用 Markdown 代码块包裹 XML；若无法满足，输出 <<ParsingError>>
 ```
-
