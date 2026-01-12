@@ -29,9 +29,19 @@ data: <one-line-json>
 
 `POST /api/v1/messages` 可指定 `result_mode`（创建消息时固化，订阅侧只读）：
 
+- **默认值**：当客户端未显式传 `result_mode` 且 Dashboard 未配置 `llm_app_settings.default_result_mode` 时，服务端默认使用 `xml_plaintext`（对 App 侧“真流式拼接”更友好）。
 - `xml_plaintext`：服务端解析上游响应，向 App 发送 `content_delta`（`delta` 为纯文本，允许包含 XML 标签如 `<final>...</final>`）。
 - `raw_passthrough`：服务端透明转发上游 RAW，向 App 发送 `upstream_raw`（App 侧可自行回放/解析；仍会收到 `completed/error` 终止事件）。
 - `auto`：服务端自动判定（优先 `xml_plaintext`；若长期无法产出 `content_delta`，则降级为 `raw_passthrough`）。
+
+### 1.2 现状：后端会“拆分转发”超长块（避免单个超长 SSE 事件）
+
+问题场景（历史）：上游可能一次性返回一整段大文本（例如 3k+ chars），若后端直接透传为单个 `content_delta`/`upstream_raw`，App 侧会呈现“像单个大 token 一次性到达”，无法体现流式体验。
+
+现状（已落地的服务端兜底策略）：
+- 对 `content_delta.delta` 与 `upstream_raw.raw`：当单次字段长度 > `256` 字符时，服务端会在 SSE 输出前按断点优先拆分为多个事件，每块目标大小约 `128` 字符。
+- 拆分仅影响“分帧”，**不会改变最终拼接后的全文语义**；客户端按 `seq`（或到达顺序）拼接即可还原。
+- 断点优先级：`\n` → `。？！` → `.?!` → 空格/制表符 → 固定位置兜底。
 
 ---
 
@@ -78,7 +88,7 @@ export interface ContentDeltaEventData {
   message_id: string;
   request_id?: string;
   seq: number; // 从 1 开始单调递增
-  delta: string; // 追加到 reply_text
+  delta: string; // 追加到 reply_text（可能被服务端拆分为多段）
 }
 
 export interface UpstreamRawEventData {
@@ -87,7 +97,7 @@ export interface UpstreamRawEventData {
   seq: number; // 从 1 开始单调递增（RAW 序列）
   dialect?: string | null; // openai.chat_completions/openai.responses/anthropic.messages/gemini.generate_content
   upstream_event?: string | null; // 上游 SSE 的 event 名（若上游未使用 event 行则为 null）
-  raw: string; // 上游 data 文本（不含 "data:" 前缀）
+  raw: string; // 上游 data 文本（不含 "data:" 前缀；可能被服务端拆分为多段）
 }
 
 export interface CompletedEventData {
@@ -135,6 +145,9 @@ export interface HeartbeatEventData {
 - 若只收到 `completed`（未收到 `content_delta`），则用 `completed.reply` 作为 `reply_text`。
 - 若收到 `error`，本次对话以失败终止（即使之前已收到部分 `content_delta`）。
 
+> 注意：在 `raw_passthrough` 模式下，仍可能收到 `completed.reply`（历史兼容兜底字段），但 **不建议用它作为“流式展示”来源**；
+> App 侧若想做“实时显示/对账”，应以 `upstream_raw.raw` 的增量拼接为准。
+
 ---
 
 ## 4) 近期完成的 E2E 样本（含 prompt 注入）与“映射模型”结果标注
@@ -181,6 +194,24 @@ data: {"message_id":"f5a03dc5a6d240afa2a4fe6ce77328eb","request_id":"5bccf6cd-ca
 ```text
 event: error
 data: {"code":"internal_error","message":"Client error '403 Forbidden' for url 'https://api.x.ai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403","error":"Client error '403 Forbidden' for url 'https://api.x.ai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403","provider":null,"resolved_model":null,"endpoint_id":null,"message_id":"c48cf46dd2b146b08d75406ba228d852","request_id":"75820944-acfe-4656-acc1-1a45536c9e1e"}
+```
+
+### 4.5 RAW（SSE 行协议）示例：超长块被服务端拆分（示意）
+
+> 说明：以下为“分帧形态示意”，用于帮助 App 侧对齐“拆分转发”现状；实际 delta 文本内容以真实业务为准。
+
+```text
+event: content_delta
+data: {"message_id":"msg_xxx","request_id":"rid_xxx","seq":1,"delta":"<thinking>\\n<phase id=\\\"1\\\">\\n<title>..."}
+
+event: content_delta
+data: {"message_id":"msg_xxx","request_id":"rid_xxx","seq":2,"delta":"...（中间略）..."}
+
+event: content_delta
+data: {"message_id":"msg_xxx","request_id":"rid_xxx","seq":3,"delta":"...\\n</final>"}
+
+event: completed
+data: {"message_id":"msg_xxx","request_id":"rid_xxx","reply_len":3799,"reply":"<thinking>...<final>...</final>"}
 ```
 
 ---
