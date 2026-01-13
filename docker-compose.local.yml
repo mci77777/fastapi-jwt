@@ -22,6 +22,8 @@ services:
       # 后端 JWT 校验（最小可用）
       - SUPABASE_JWKS_URL=${SUPABASE_JWKS_URL}
       - SUPABASE_ISSUER=${SUPABASE_ISSUER}
+      # 可选：本地 admin/123456 登录（/api/v1/base/access_token）生成测试 JWT
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
       - JWT_AUDIENCE=${JWT_AUDIENCE:-authenticated}
 
       # 常用开关
@@ -32,6 +34,9 @@ services:
       # 可选：日志落盘
       - LOG_TO_FILE=${LOG_TO_FILE:-false}
       - LOG_FILE_PATH=${LOG_FILE_PATH:-logs/app.log}
+
+      # Agent Tools：Web 搜索（Exa，可选；也可在 Dashboard 中写入 DB 配置）
+      - EXA_API_KEY=${EXA_API_KEY}
     volumes:
       - ./logs:/opt/vue-fastapi-admin/logs
       - ./db:/opt/vue-fastapi-admin/db

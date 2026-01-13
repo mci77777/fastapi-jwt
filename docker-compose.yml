@@ -43,6 +43,8 @@ services:
       - SUPABASE_ISSUER=${SUPABASE_ISSUER}
       - SUPABASE_AUDIENCE=${SUPABASE_AUDIENCE}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      # 可选：本地 admin/123456 登录（/api/v1/base/access_token）生成测试 JWT 需要该密钥
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
 
       # Mail API（用于 /ai/jwt 真实测试用户）
       - MAIL_API_KEY=${MAIL_API_KEY}
@@ -64,6 +66,9 @@ services:
       # HTTP 配置
       - HTTP_TIMEOUT_SECONDS=10.0
       - SSE_HEARTBEAT_SECONDS=15.0
+
+      # Agent Tools：Web 搜索（Exa，可选；也可在 Dashboard 中写入 DB 配置）
+      - EXA_API_KEY=${EXA_API_KEY}
 
       # 运行态目录（SSOT：必须在 data volume 内，避免容器重启/重建丢失）
       - AI_RUNTIME_STORAGE_DIR=data/ai_runtime
