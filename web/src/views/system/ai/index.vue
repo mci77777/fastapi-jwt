@@ -53,6 +53,14 @@ const llmAppResultModeOptions = [
   { label: 'AUTO（自动判断）', value: 'auto' },
 ]
 
+// Web 搜索（Exa）配置（写入到 /api/v1/llm/app/config；后端仅返回 masked）
+const webSearchConfigSaving = ref(false)
+const webSearchEnabled = ref(false)
+const webSearchProvider = ref('exa')
+const webSearchExaApiKeyMasked = ref('')
+const webSearchExaApiKeySource = ref('none')
+const webSearchExaApiKeyInput = ref('')
+
 async function loadLlmAppConfig() {
   llmAppConfigLoading.value = true
   try {
@@ -62,6 +70,11 @@ async function loadLlmAppConfig() {
     llmAppDefaultResultMode.value = ['xml_plaintext', 'raw_passthrough', 'auto'].includes(mode)
       ? mode
       : 'raw_passthrough'
+
+    webSearchEnabled.value = Boolean(data?.web_search_enabled)
+    webSearchProvider.value = String(data?.web_search_provider || 'exa').trim().toLowerCase() || 'exa'
+    webSearchExaApiKeyMasked.value = String(data?.web_search_exa_api_key_masked || '').trim()
+    webSearchExaApiKeySource.value = String(data?.web_search_exa_api_key_source || 'none').trim()
   } catch (error) {
     message.error(error?.message || '加载 App 输出模式配置失败')
   } finally {
@@ -84,6 +97,54 @@ async function handleSaveLlmAppConfig() {
     message.error(error?.message || '保存 App 输出模式配置失败')
   } finally {
     llmAppConfigSaving.value = false
+  }
+}
+
+async function handleSaveWebSearchConfig() {
+  webSearchConfigSaving.value = true
+  try {
+    const payload = {
+      web_search_enabled: !!webSearchEnabled.value,
+      web_search_provider: 'exa',
+    }
+
+    const key = String(webSearchExaApiKeyInput.value || '').trim()
+    if (key) payload.web_search_exa_api_key = key
+
+    const res = await api.upsertLlmAppConfig(payload)
+    const data = res?.data?.data || res?.data || {}
+    webSearchEnabled.value = Boolean(data?.web_search_enabled)
+    webSearchProvider.value = String(data?.web_search_provider || 'exa').trim().toLowerCase() || 'exa'
+    webSearchExaApiKeyMasked.value = String(data?.web_search_exa_api_key_masked || '').trim()
+    webSearchExaApiKeySource.value = String(data?.web_search_exa_api_key_source || 'none').trim()
+    webSearchExaApiKeyInput.value = ''
+    message.success('已更新 Web 搜索配置')
+  } catch (error) {
+    message.error(error?.message || '保存 Web 搜索配置失败')
+  } finally {
+    webSearchConfigSaving.value = false
+  }
+}
+
+async function handleClearWebSearchConfig() {
+  webSearchConfigSaving.value = true
+  try {
+    const res = await api.upsertLlmAppConfig({
+      web_search_enabled: false,
+      web_search_provider: 'exa',
+      web_search_exa_api_key: '',
+    })
+    const data = res?.data?.data || res?.data || {}
+    webSearchEnabled.value = Boolean(data?.web_search_enabled)
+    webSearchProvider.value = String(data?.web_search_provider || 'exa').trim().toLowerCase() || 'exa'
+    webSearchExaApiKeyMasked.value = String(data?.web_search_exa_api_key_masked || '').trim()
+    webSearchExaApiKeySource.value = String(data?.web_search_exa_api_key_source || 'none').trim()
+    webSearchExaApiKeyInput.value = ''
+    message.success('已清空 Web 搜索密钥并禁用')
+  } catch (error) {
+    message.error(error?.message || '清空 Web 搜索配置失败')
+  } finally {
+    webSearchConfigSaving.value = false
   }
 }
 
@@ -767,6 +828,52 @@ onBeforeUnmount(() => {
           App 侧若不传 <code>result_mode</code>，后端将按此默认值决定输出：
           <code>xml_plaintext</code>（解析后带 XML 标签的纯文本流）或 <code>raw_passthrough</code>（上游 RAW 透明流）。
         </NAlert>
+      </NCard>
+
+      <NCard :loading="llmAppConfigLoading" title="Web 搜索（Exa）" size="small">
+        <NSpace vertical size="small">
+          <div class="flex flex-wrap items-center gap-3">
+            <NSwitch v-model:value="webSearchEnabled" :disabled="llmAppConfigLoading || webSearchConfigSaving" />
+            <NTag round :bordered="false" type="info">
+              {{ webSearchProvider || 'exa' }}
+            </NTag>
+            <NTag
+              v-if="webSearchExaApiKeyMasked"
+              round
+              :bordered="false"
+              :type="webSearchExaApiKeySource === 'env' ? 'warning' : 'success'"
+            >
+              Key: {{ webSearchExaApiKeyMasked }} ({{ webSearchExaApiKeySource }})
+            </NTag>
+            <NTag v-else round :bordered="false" type="default">
+              Key: 未配置
+            </NTag>
+          </div>
+
+          <NForm label-placement="left" label-width="120">
+            <NFormItem label="Exa API Key">
+              <NInput
+                v-model:value="webSearchExaApiKeyInput"
+                type="password"
+                placeholder="填写后保存；后端只回显 masked"
+                :disabled="llmAppConfigLoading || webSearchConfigSaving"
+              />
+            </NFormItem>
+          </NForm>
+
+          <NSpace wrap>
+            <NButton type="primary" :loading="webSearchConfigSaving" @click="handleSaveWebSearchConfig">
+              保存
+            </NButton>
+            <NButton type="error" secondary :loading="webSearchConfigSaving" @click="handleClearWebSearchConfig">
+              清空并禁用
+            </NButton>
+          </NSpace>
+
+          <NAlert type="info" :bordered="false">
+            Web 搜索默认关闭。开启后将由后端调用 Exa；建议先保存 Key 再开启，避免 run 过程中因缺少 Key 直接失败。
+          </NAlert>
+        </NSpace>
       </NCard>
 
       <NCard :loading="supabaseLoading" title="Supabase 状态" size="small">

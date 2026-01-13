@@ -10,8 +10,11 @@ import {
   NForm,
   NFormItem,
   NInput,
+  NInputNumber,
   NSelect,
   NSpace,
+  NTabPane,
+  NTabs,
   NTag,
   NText,
   useMessage,
@@ -23,7 +26,9 @@ import {
   fetchAppModels,
   listMailUsers,
   refreshMailUserToken,
+  fetchActivePromptsSnapshot,
   createMessage,
+  createAgentRun,
 } from '@/api/aiModelSuite'
 import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
 import { validateThinkingMLV45 } from '@/utils/common'
@@ -41,9 +46,12 @@ function handleSaveMailApiKey() {
 }
 
 // ---------------- JWT ----------------
-const jwtToken = ref('')
-const tokenMode = ref('') // anonymous | permanent | manual
-const tokenMeta = ref({ email: '', username: '' })
+const jwtToken = computed({
+  get: () => aiStore.jwtToken,
+  set: (value) => aiStore.setJwtTokenManual(value),
+})
+const tokenMode = computed(() => aiStore.jwtTokenMode) // anonymous | permanent | manual
+const tokenMeta = computed(() => aiStore.jwtTokenMeta || { email: '', username: '' })
 
 const creatingTestUser = ref(false)
 const creatingTestUserForce = ref(false)
@@ -65,12 +73,11 @@ const mailUserSelectOptions = computed(() =>
 )
 
 function applyJwtSession({ access_token, mode, meta }) {
-  jwtToken.value = String(access_token || '')
-  tokenMode.value = String(mode || '')
-  tokenMeta.value = {
-    email: meta?.email ? String(meta.email) : '',
-    username: meta?.username ? String(meta.username) : '',
-  }
+  aiStore.setJwtSession({
+    accessToken: access_token,
+    mode,
+    meta,
+  })
 }
 
 async function loadMailUsers() {
@@ -216,18 +223,20 @@ const sending = ref(false)
 const chatText = ref('Hello, this is a JWT SSE test message.')
 const conversationId = ref('')
 const messageId = ref('')
+const activeStreamKind = ref('messages') // messages | agent_runs
 const aiResponseText = ref('')
 const aiResponseRaw = ref('')
 const resultModeEffective = ref('')
 const lastCreateRequestId = ref('')
 const lastSseRequestId = ref('')
+const activeChatTab = ref('agent') // agent | messages
 
 // prompt / result mode
-const promptMode = ref('passthrough') // server | passthrough
+const promptMode = ref('server') // server | passthrough
 const DEFAULT_EXTRA_SYSTEM_PROMPT = `请严格按原样输出 Strict-XML（ThinkingML v4.5）：\n1) 必须输出且仅输出一个 XML 文本：<thinking>...</thinking> 紧接 <final>...</final>\n2) 只允许标签：think/serp/thinking/phase/title/final（phase 必须有 id=\"1..N\" 且递增）\n3) <final> 内容最后必须追加：\n<!-- <serp_queries>\n[\"q1\",\"q2\",\"q3\"]\n</serp_queries> -->\n4) 不要解释协议，不要使用 Markdown 代码块包裹 XML；若无法满足，输出 <<ParsingError>>`
-const extraSystemPrompt = ref(DEFAULT_EXTRA_SYSTEM_PROMPT)
+const extraSystemPrompt = ref('')
 const resultMode = ref('xml_plaintext') // xml_plaintext | raw_passthrough | auto
-const toolChoice = ref('none') // '' | none | auto（OpenAI tool_choice）
+const toolChoice = ref('') // '' | none | auto（OpenAI tool_choice）
 const autoValidateOnCompleted = ref(true)
 const thinkingmlValidation = ref({ ok: false, reason: 'empty_reply' })
 
@@ -235,6 +244,51 @@ const sseEvents = ref([])
 const streamStartedAtMs = ref(0)
 const firstDeltaAtMs = ref(0)
 const lastDeltaAtMs = ref(0)
+
+// Agent tools（请求级开关；默认遵循后端配置，避免与 Dashboard 漂移）
+const agentEnableExerciseSearch = ref(true)
+const agentExerciseTopK = ref(5)
+const agentDisableWebSearch = ref(false)
+const agentWebSearchTopK = ref(5)
+
+// Dashboard active prompts（只读预览，避免 JWT 页与 Dashboard 漂移）
+const activePromptsLoading = ref(false)
+const activePromptsSnapshot = ref(null)
+const activePromptsError = ref('')
+
+const effectiveSystemMessagePreview = computed(() =>
+  String(activePromptsSnapshot.value?.effective_system_message || '').trim()
+)
+
+async function loadActivePrompts() {
+  activePromptsLoading.value = true
+  activePromptsError.value = ''
+  try {
+    const res = await fetchActivePromptsSnapshot()
+    activePromptsSnapshot.value = res?.data ?? null
+  } catch (error) {
+    activePromptsError.value = error?.message || '加载 active prompts 失败'
+  } finally {
+    activePromptsLoading.value = false
+  }
+}
+
+function handleFillExtraPromptFromDashboard() {
+  const text = effectiveSystemMessagePreview.value
+  if (!text) {
+    message.warning('当前无可用的 Dashboard system message（请先在 Prompt 管理页启用）')
+    return
+  }
+  promptMode.value = 'passthrough'
+  extraSystemPrompt.value = text
+  message.success('已填充为 Dashboard 有效 system message（包含 tools prompt patch）')
+}
+
+function handleFillExtraPromptTemplate() {
+  promptMode.value = 'passthrough'
+  extraSystemPrompt.value = DEFAULT_EXTRA_SYSTEM_PROMPT
+  message.success('已填充默认 Strict-XML 模板')
+}
 
 function pushSseEvent(ev, receivedAtMs) {
   const entry = {
@@ -259,8 +313,14 @@ function handleSwitchToServerAndClearPrompt() {
 }
 
 function handleResetPromptDefaults() {
-  promptMode.value = 'passthrough'
-  extraSystemPrompt.value = DEFAULT_EXTRA_SYSTEM_PROMPT
+  promptMode.value = 'server'
+  extraSystemPrompt.value = ''
+  toolChoice.value = ''
+  agentEnableExerciseSearch.value = true
+  agentExerciseTopK.value = 5
+  agentDisableWebSearch.value = false
+  agentWebSearchTopK.value = 5
+  activeChatTab.value = 'agent'
 }
 
 async function handleSend() {
@@ -278,6 +338,7 @@ async function handleSend() {
   }
 
   sending.value = true
+  activeStreamKind.value = 'messages'
   aiResponseText.value = ''
   aiResponseRaw.value = ''
   messageId.value = ''
@@ -337,9 +398,74 @@ async function handleSend() {
 
     const sseRequestId = genRequestId('web-sse')
     lastSseRequestId.value = sseRequestId
-    await streamSse(messageId.value, conversationId.value, sseRequestId)
+    await streamSse(messageId.value, conversationId.value, sseRequestId, { kind: 'messages' })
   } catch (error) {
     message.error(error?.message || '发送失败')
+  } finally {
+    sending.value = false
+  }
+}
+
+async function handleSendAgentRun() {
+  if (!jwtToken.value) {
+    message.warning('请先获取 JWT Token')
+    return
+  }
+  if (!selectedModel.value) {
+    message.warning('请先选择模型（来自 /api/v1/llm/models）')
+    return
+  }
+  if (!chatText.value.trim()) {
+    message.warning('请输入对话内容')
+    return
+  }
+
+  sending.value = true
+  activeStreamKind.value = 'agent_runs'
+  aiResponseText.value = ''
+  aiResponseRaw.value = ''
+  messageId.value = ''
+  resultModeEffective.value = ''
+  sseEvents.value = []
+  streamStartedAtMs.value = 0
+  firstDeltaAtMs.value = 0
+  lastDeltaAtMs.value = 0
+  thinkingmlValidation.value = { ok: false, reason: 'empty_reply' }
+
+  try {
+    const createRequestId = genRequestId('web-agent-create')
+    lastCreateRequestId.value = createRequestId
+
+    const created = await createAgentRun({
+      model: selectedModel.value,
+      text: chatText.value.trim(),
+      conversationId: conversationId.value || null,
+      metadata: {
+        scenario: 'ai_jwt_agent_run_sse',
+        model: selectedModel.value,
+        result_mode: resultMode.value,
+        enable_exercise_search: agentEnableExerciseSearch.value,
+        exercise_top_k: agentExerciseTopK.value,
+        disable_web_search: agentDisableWebSearch.value,
+        web_search_top_k: agentWebSearchTopK.value,
+      },
+      resultMode: resultMode.value,
+      enableExerciseSearch: agentEnableExerciseSearch.value,
+      exerciseTopK: agentExerciseTopK.value,
+      enableWebSearch: agentDisableWebSearch.value ? false : undefined,
+      webSearchTopK: agentWebSearchTopK.value,
+      requestId: createRequestId,
+      accessToken: jwtToken.value,
+    })
+
+    messageId.value = created.run_id
+    conversationId.value = created.conversation_id
+
+    const sseRequestId = genRequestId('web-agent-sse')
+    lastSseRequestId.value = sseRequestId
+    await streamSse(messageId.value, conversationId.value, sseRequestId, { kind: 'agent_runs' })
+  } catch (error) {
+    message.error(error?.message || 'Agent Run 失败')
   } finally {
     sending.value = false
   }
@@ -399,12 +525,18 @@ async function consumeSseReader(reader, { url, requestId, onEvent }) {
   }
 }
 
-async function streamSse(msgId, convId, requestId) {
+async function streamSse(msgId, convId, requestId, { kind = 'messages' } = {}) {
   const baseURL = import.meta.env.VITE_BASE_API || '/api/v1'
   const normalizedBase = String(baseURL).replace(/\/+$/, '')
-  const url = convId
-    ? `${normalizedBase}/messages/${msgId}/events?conversation_id=${encodeURIComponent(convId)}`
-    : `${normalizedBase}/messages/${msgId}/events`
+  const path =
+    String(kind) === 'agent_runs'
+      ? convId
+        ? `/agent/runs/${msgId}/events?conversation_id=${encodeURIComponent(convId)}`
+        : `/agent/runs/${msgId}/events`
+      : convId
+        ? `/messages/${msgId}/events?conversation_id=${encodeURIComponent(convId)}`
+        : `/messages/${msgId}/events`
+  const url = `${normalizedBase}${path}`
 
   const response = await fetch(url, {
     method: 'GET',
@@ -502,6 +634,7 @@ async function streamSse(msgId, convId, requestId) {
 onMounted(() => {
   loadMailUsers()
   loadAppModels()
+  loadActivePrompts()
 })
 
 const sseStats = computed(() => {
@@ -543,6 +676,24 @@ const sseEventsText = computed(() => {
         brief = `seq=${data?.seq ?? '--'} len=${raw.length} "${raw.slice(0, 80).replace(/\n/g, '\\n')}"`
       } else if (ev === 'status') {
         brief = `status=${data?.status ?? '--'} effective=${data?.result_mode_effective ?? '--'}`
+      } else if (ev === 'tool_start') {
+        const tool = String(data?.tool_name || '--')
+        let args = ''
+        try {
+          args = JSON.stringify(data?.args ?? {})
+        } catch {
+          args = ''
+        }
+        if (args.length > 160) args = `${args.slice(0, 159)}…`
+        brief = `tool=${tool} args=${args}`
+      } else if (ev === 'tool_result') {
+        const tool = String(data?.tool_name || '--')
+        const ok = typeof data?.ok === 'boolean' ? data.ok : '--'
+        const ms = data?.elapsed_ms ?? '--'
+        let hint = ''
+        if (data?.result?.total !== undefined) hint = `total=${data.result.total}`
+        else if (data?.error?.code) hint = `err=${data.error.code}`
+        brief = `tool=${tool} ok=${ok} ms=${ms} ${hint}`.trim()
       } else if (ev === 'completed') {
         brief = `reply_len=${typeof data?.reply === 'string' ? data.reply.length : '--'} effective=${
           data?.result_mode_effective ?? '--'
@@ -553,6 +704,31 @@ const sseEventsText = computed(() => {
       return `${ts} ${ev} ${brief}`.trim()
     })
     .join('\n')
+})
+
+const toolEventsText = computed(() => {
+  const events = Array.isArray(sseEvents.value) ? sseEvents.value : []
+  const lines = []
+  for (const e of events) {
+    if (!e || (e.event !== 'tool_start' && e.event !== 'tool_result')) continue
+    const ts = new Date(Number(e.ts_ms || 0)).toISOString()
+    const ev = String(e.event || 'message')
+    let brief = ''
+    if (ev === 'tool_start') {
+      const tool = String(e?.data?.tool_name || '--')
+      brief = tool
+    } else if (ev === 'tool_result') {
+      const tool = String(e?.data?.tool_name || '--')
+      const ok = typeof e?.data?.ok === 'boolean' ? e.data.ok : '--'
+      const ms = e?.data?.elapsed_ms ?? '--'
+      let hint = ''
+      if (e?.data?.result?.total !== undefined) hint = `total=${e.data.result.total}`
+      else if (e?.data?.error?.code) hint = `err=${e.data.error.code}`
+      brief = `${tool} ok=${ok} ms=${ms} ${hint}`.trim()
+    }
+    lines.push(`${ts} ${ev} ${brief}`.trim())
+  }
+  return lines.join('\n')
 })
 
 function handleValidateThinkingML() {
@@ -714,14 +890,6 @@ async function handleRunSseProbe() {
 
       <NSpace align="center" wrap class="mt-3">
         <NSelect
-          v-model:value="promptMode"
-          :options="[
-            { label: '透传 prompt（passthrough）', value: 'passthrough' },
-            { label: '后端组装 prompt（server）', value: 'server' },
-          ]"
-          style="min-width: 240px"
-        />
-        <NSelect
           v-model:value="resultMode"
           :options="[
             { label: 'XML 纯文本（content_delta）', value: 'xml_plaintext' },
@@ -730,25 +898,6 @@ async function handleRunSseProbe() {
           ]"
           style="min-width: 220px"
         />
-        <NSelect
-          v-model:value="toolChoice"
-          :options="[
-            { label: 'tool_choice: 默认（不传）', value: '' },
-            { label: 'tool_choice: none（禁用 tools）', value: 'none' },
-            { label: 'tool_choice: auto', value: 'auto' },
-          ]"
-          style="min-width: 240px"
-        />
-        <NButton tertiary size="small" @click="handleSwitchToServerAndClearPrompt"
-          >切回 server + 清空</NButton
-        >
-        <NButton tertiary size="small" @click="handleResetPromptDefaults">恢复默认</NButton>
-        <NText v-if="promptMode === 'server'" depth="3"
-          >server 模式不会注入“附加 prompt”（由后端 SSOT 决定）</NText
-        >
-      </NSpace>
-
-      <NSpace align="center" wrap class="mt-2">
         <NCheckbox v-model:checked="autoValidateOnCompleted">completed 自动校验 ThinkingML</NCheckbox>
         <NButton tertiary size="small" :disabled="!aiResponseText" @click="handleValidateThinkingML"
           >立即校验</NButton
@@ -757,34 +906,139 @@ async function handleRunSseProbe() {
           ThinkingML: {{ thinkingmlValidation.reason }}
         </NTag>
         <NText depth="3" v-if="resultModeEffective">effective: {{ resultModeEffective }}</NText>
+        <NButton tertiary size="small" :loading="activePromptsLoading" @click="loadActivePrompts"
+          >刷新 Prompts（SSOT）</NButton
+        >
+        <NButton tertiary size="small" @click="handleResetPromptDefaults">恢复默认（SSOT）</NButton>
       </NSpace>
 
-      <NForm label-placement="left" label-width="100" class="mt-3">
-        <NFormItem label="附加 Prompt">
-          <NInput
-            v-model:value="extraSystemPrompt"
-            type="textarea"
-            :rows="3"
-            :disabled="promptMode === 'server'"
-            placeholder="passthrough 模式下作为 system message 发送（可包含 <...> 标签要求）"
-          />
-        </NFormItem>
-      </NForm>
+      <NAlert v-if="activePromptsError" type="error" class="mt-2">{{ activePromptsError }}</NAlert>
+      <NCard size="small" class="mt-3" title="Dashboard Prompt/Tools（SSOT 预览）">
+        <NSpace align="center" wrap>
+          <NText depth="3"
+            >system: {{ activePromptsSnapshot?.system_prompt?.name || '--' }}#{{
+              activePromptsSnapshot?.system_prompt?.id || '--'
+            }}</NText
+          >
+          <NText depth="3"
+            >tools: {{ activePromptsSnapshot?.tools_prompt?.name || '--' }}#{{
+              activePromptsSnapshot?.tools_prompt?.id || '--'
+            }}</NText
+          >
+          <NText depth="3">tools_schema: {{ activePromptsSnapshot?.tools_schema_count ?? 0 }}</NText>
+        </NSpace>
+        <NInput
+          v-if="effectiveSystemMessagePreview"
+          :value="effectiveSystemMessagePreview"
+          type="textarea"
+          :rows="6"
+          readonly
+        />
+        <NText v-else depth="3" class="mt-2">未配置 active prompts（后端会回退到最小默认值）</NText>
+      </NCard>
 
-      <NForm label-placement="left" label-width="100" class="mt-3">
-        <NFormItem label="Message">
-          <NInput v-model:value="chatText" type="textarea" :rows="3" placeholder="输入消息内容" />
-        </NFormItem>
-      </NForm>
+      <NTabs v-model:value="activeChatTab" type="line" animated class="mt-3">
+        <NTabPane name="agent" tab="Agent（后端工具）" display-directive="show">
+          <NSpace align="center" wrap>
+            <NCheckbox v-model:checked="agentEnableExerciseSearch">动作库检索</NCheckbox>
+            <NInputNumber
+              v-model:value="agentExerciseTopK"
+              :min="1"
+              :max="10"
+              :step="1"
+              size="small"
+              style="width: 120px"
+            />
+            <NCheckbox v-model:checked="agentDisableWebSearch">禁用 Web 搜索（仅请求级）</NCheckbox>
+            <NInputNumber
+              v-model:value="agentWebSearchTopK"
+              :min="1"
+              :max="10"
+              :step="1"
+              size="small"
+              :disabled="agentDisableWebSearch"
+              style="width: 120px"
+            />
+            <NText depth="3">Agent 固定使用后端 prompt（server）</NText>
+          </NSpace>
 
-      <NSpace align="center" wrap>
-        <NButton type="primary" :loading="sending" @click="handleSend">发送并拉流</NButton>
-        <NText depth="3">create request_id: {{ lastCreateRequestId || '--' }}</NText>
-        <NText depth="3">sse request_id: {{ lastSseRequestId || '--' }}</NText>
-      </NSpace>
+          <NAlert type="info" :bordered="false" class="mt-2">
+            Web 搜索是否启用/Key 来源以「系统 → AI」为主；此处仅提供请求级关闭（控成本）。
+          </NAlert>
+
+          <NForm label-placement="left" label-width="100" class="mt-3">
+            <NFormItem label="Message">
+              <NInput v-model:value="chatText" type="textarea" :rows="3" placeholder="输入消息内容" />
+            </NFormItem>
+          </NForm>
+
+          <NSpace align="center" wrap>
+            <NButton type="primary" :loading="sending" @click="handleSendAgentRun">Agent Run 并拉流</NButton>
+            <NText depth="3">create request_id: {{ lastCreateRequestId || '--' }}</NText>
+            <NText depth="3">sse request_id: {{ lastSseRequestId || '--' }}</NText>
+          </NSpace>
+        </NTabPane>
+
+        <NTabPane name="messages" tab="Messages（基线）" display-directive="show">
+          <NSpace align="center" wrap>
+            <NSelect
+              v-model:value="promptMode"
+              :options="[
+                { label: '后端组装 prompt（server）', value: 'server' },
+                { label: '透传 prompt（passthrough）', value: 'passthrough' },
+              ]"
+              style="min-width: 240px"
+            />
+            <NSelect
+              v-model:value="toolChoice"
+              :options="[
+                { label: 'tool_choice: 默认（不传）', value: '' },
+                { label: 'tool_choice: none', value: 'none' },
+                { label: 'tool_choice: auto', value: 'auto' },
+              ]"
+              style="min-width: 220px"
+            />
+            <NButton tertiary size="small" @click="handleSwitchToServerAndClearPrompt"
+              >切回 server + 清空</NButton
+            >
+            <NButton tertiary size="small" @click="handleFillExtraPromptFromDashboard"
+              >填充 Dashboard system message</NButton
+            >
+            <NButton tertiary size="small" @click="handleFillExtraPromptTemplate"
+              >填充默认 Strict-XML 模板</NButton
+            >
+            <NText v-if="promptMode === 'server'" depth="3">server 模式完全跟随后端 SSOT</NText>
+          </NSpace>
+
+          <NForm label-placement="left" label-width="100" class="mt-3">
+            <NFormItem label="附加 Prompt">
+              <NInput
+                v-model:value="extraSystemPrompt"
+                type="textarea"
+                :rows="4"
+                :disabled="promptMode === 'server'"
+                placeholder="passthrough 模式下作为 system message 发送（建议点击“填充 Dashboard system message”）"
+              />
+            </NFormItem>
+          </NForm>
+
+          <NForm label-placement="left" label-width="100" class="mt-3">
+            <NFormItem label="Message">
+              <NInput v-model:value="chatText" type="textarea" :rows="3" placeholder="输入消息内容" />
+            </NFormItem>
+          </NForm>
+
+          <NSpace align="center" wrap>
+            <NButton type="primary" :loading="sending" @click="handleSend">发送并拉流</NButton>
+            <NText depth="3">create request_id: {{ lastCreateRequestId || '--' }}</NText>
+            <NText depth="3">sse request_id: {{ lastSseRequestId || '--' }}</NText>
+          </NSpace>
+        </NTabPane>
+      </NTabs>
 
       <NAlert v-if="messageId" type="info" class="mt-3">
-        <div>message_id: {{ messageId }}</div>
+        <div v-if="activeStreamKind === 'agent_runs'">run_id: {{ messageId }}</div>
+        <div v-else>message_id: {{ messageId }}</div>
         <div>conversation_id: {{ conversationId }}</div>
       </NAlert>
 
@@ -805,6 +1059,10 @@ async function handleRunSseProbe() {
       </NCard>
       <NCard v-if="aiResponseRaw" size="small" class="mt-3" title="RAW / 诊断（upstream_raw 或 completed）">
         <NInput :value="aiResponseRaw" type="textarea" :rows="10" readonly />
+      </NCard>
+
+      <NCard v-if="toolEventsText" size="small" class="mt-3" title="工具事件（tool_*）">
+        <NInput :value="toolEventsText" type="textarea" :rows="8" readonly />
       </NCard>
 
       <NCard v-if="sseEvents.length" size="small" class="mt-3" title="SSE 事件（最近 200）">

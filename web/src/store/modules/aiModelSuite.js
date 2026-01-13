@@ -14,6 +14,29 @@ import {
 } from '@/api/aiModelSuite'
 import api from '@/api'
 
+function _safeJsonParse(value, fallback) {
+  if (typeof value !== 'string' || !value.trim()) return fallback
+  try {
+    const parsed = JSON.parse(value)
+    return parsed ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+function _normalizeJwtToken(value) {
+  // JWT 本身不包含空白；允许用户粘贴时带换行/空格，统一清理。
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, '')
+}
+
+function _normalizeJwtMeta(meta) {
+  const email = meta?.email ? String(meta.email).trim() : ''
+  const username = meta?.username ? String(meta.username).trim() : ''
+  return { email, username }
+}
+
 export const useAiModelSuiteStore = defineStore('aiModelSuite', {
   state: () => ({
     models: [],
@@ -27,6 +50,12 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
     syncingEndpoints: new Set(),
     syncAllLoading: false,
     mailApiKey: localStorage.getItem('ai_suite_mail_api_key') || '',
+    // JWT 调试页：仅用于前端调试（不影响全局登录态）
+    jwtToken: localStorage.getItem('ai_suite_jwt_token') || '',
+    jwtTokenMode: localStorage.getItem('ai_suite_jwt_token_mode') || '',
+    jwtTokenMeta: _normalizeJwtMeta(
+      _safeJsonParse(localStorage.getItem('ai_suite_jwt_token_meta'), { email: '', username: '' })
+    ),
   }),
   getters: {
     endpointOptions(state) {
@@ -150,6 +179,36 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
     setMailApiKey(key) {
       this.mailApiKey = key
       localStorage.setItem('ai_suite_mail_api_key', key)
+    },
+    setJwtSession({ accessToken, mode, meta } = {}) {
+      const token = _normalizeJwtToken(accessToken)
+      this.jwtToken = token
+      this.jwtTokenMode = String(mode || '').trim() || 'manual'
+      this.jwtTokenMeta = _normalizeJwtMeta(meta)
+      localStorage.setItem('ai_suite_jwt_token', this.jwtToken)
+      localStorage.setItem('ai_suite_jwt_token_mode', this.jwtTokenMode)
+      localStorage.setItem('ai_suite_jwt_token_meta', JSON.stringify(this.jwtTokenMeta))
+    },
+    setJwtTokenManual(rawToken) {
+      const token = _normalizeJwtToken(rawToken)
+      if (!token) {
+        this.clearJwtSession()
+        return
+      }
+      this.jwtToken = token
+      this.jwtTokenMode = 'manual'
+      this.jwtTokenMeta = { email: '', username: '' }
+      localStorage.setItem('ai_suite_jwt_token', this.jwtToken)
+      localStorage.setItem('ai_suite_jwt_token_mode', this.jwtTokenMode)
+      localStorage.setItem('ai_suite_jwt_token_meta', JSON.stringify(this.jwtTokenMeta))
+    },
+    clearJwtSession() {
+      this.jwtToken = ''
+      this.jwtTokenMode = ''
+      this.jwtTokenMeta = { email: '', username: '' }
+      localStorage.removeItem('ai_suite_jwt_token')
+      localStorage.removeItem('ai_suite_jwt_token_mode')
+      localStorage.removeItem('ai_suite_jwt_token_meta')
     },
   },
 })

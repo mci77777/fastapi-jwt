@@ -40,6 +40,7 @@ export const createAnonToken = (data = {}) => request.post('/llm/tests/anon-toke
 export const listMailUsers = (params = {}) => request.get('/llm/tests/mail-users', { params })
 export const refreshMailUserToken = (testUserId, data = {}) =>
   request.post(`/llm/tests/mail-users/${testUserId}/refresh`, data)
+export const fetchActivePromptsSnapshot = () => request.get('/llm/tests/active-prompts')
 
 // 消息与对话相关
 /**
@@ -136,6 +137,72 @@ export const createMessage = ({
     timeout: 30000,
     headers,
   })
+}
+
+// Agent Run（后端工具：Web 搜索 / 动作库检索）
+/**
+ * 创建 Agent Run（后端执行工具，App/Web 只消费 SSE 结果）
+ * @param {Object} options
+ * @param {string} options.model - 映射模型 key（来自 /api/v1/llm/models 的 data[].name）
+ * @param {string} options.text - 用户输入
+ * @param {string|null} [options.conversationId] - 会话 ID（UUID）
+ * @param {Object} [options.metadata] - 扩展元信息（用于对账/调试）
+ * @param {('xml_plaintext'|'raw_passthrough'|'auto')} [options.resultMode] - SSE 输出模式
+ * @param {string} [options.requestId] - X-Request-Id
+ * @param {string} [options.accessToken] - 覆盖 Authorization（用于 JWT 测试页）
+ * @returns {Promise<{run_id: string, message_id: string, conversation_id: string}>}
+ */
+export const createAgentRun = ({
+  model,
+  text,
+  conversationId,
+  metadata = {},
+  resultMode,
+  enableExerciseSearch,
+  exerciseTopK,
+  enableWebSearch,
+  webSearchTopK,
+  requestId,
+  accessToken,
+} = {}) => {
+  const resolvedModel = String(model || '').trim()
+  const resolvedText = String(text || '').trim()
+  if (!resolvedModel) return Promise.reject(new Error('model 不能为空（请从 /api/v1/llm/models 选择）'))
+  if (!resolvedText) return Promise.reject(new Error('text 不能为空'))
+
+  const payload = {
+    model: resolvedModel,
+    text: resolvedText,
+    conversation_id: conversationId || null,
+    metadata: {
+      source: 'web_ui',
+      timestamp: new Date().toISOString(),
+      ...metadata,
+    },
+  }
+
+  // SSE 输出模式（与 /messages 保持一致；兼容旧值）
+  const normalizedResultMode = String(resultMode || '').trim()
+  const resolvedResultMode =
+    normalizedResultMode === 'raw_passthrough' || normalizedResultMode === 'xml_plaintext' || normalizedResultMode === 'auto'
+      ? normalizedResultMode
+      : normalizedResultMode === 'raw'
+        ? 'raw_passthrough'
+        : normalizedResultMode === 'text'
+          ? 'xml_plaintext'
+          : ''
+  if (resolvedResultMode) payload.result_mode = resolvedResultMode
+
+  if (typeof enableExerciseSearch === 'boolean') payload.enable_exercise_search = enableExerciseSearch
+  if (exerciseTopK !== undefined && exerciseTopK !== null) payload.exercise_top_k = Number(exerciseTopK)
+  if (typeof enableWebSearch === 'boolean') payload.enable_web_search = enableWebSearch
+  if (webSearchTopK !== undefined && webSearchTopK !== null) payload.web_search_top_k = Number(webSearchTopK)
+
+  const headers = {}
+  if (typeof requestId === 'string' && requestId.trim()) headers['X-Request-Id'] = requestId.trim()
+  if (typeof accessToken === 'string' && accessToken.trim()) headers['Authorization'] = `Bearer ${accessToken.trim()}`
+
+  return request.post('/agent/runs', payload, { timeout: 30000, headers })
 }
 
 // API 端点连通性检测
