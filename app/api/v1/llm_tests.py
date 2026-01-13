@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from app.auth import AuthenticatedUser, get_current_user
 from app.core.middleware import get_current_request_id
 from app.db import get_sqlite_manager
+from app.services.prompt_tools_assembly import assemble_system_prompt, extract_tools_schema
 
 from .llm_common import create_response, get_mapping_service, get_service, require_llm_admin
 
@@ -32,6 +33,8 @@ class PromptTestRequest(BaseModel):
     message: str = Field(..., min_length=1, description="测试消息内容")
     model: str | None = Field(None, description="可选模型名称")
     skip_prompt: bool = False
+    # OpenAI tool_choice（仅调试用）：为保证与 /messages SSOT 一致，只有显式指定时才会下发 tools schema。
+    tool_choice: Any | None = Field(default=None)
 
 class CreateMailUserRequest(BaseModel):
     mail_api_key: Optional[str] = None
@@ -245,6 +248,7 @@ async def test_prompt(
             message=payload.message,
             model=resolved_model,
             skip_prompt=payload.skip_prompt,
+            tool_choice=payload.tool_choice,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -252,6 +256,40 @@ async def test_prompt(
             detail=create_response(code=404, msg=str(exc)),
         )
     return create_response(data=result, msg="测试成功")
+
+
+@router.get("/tests/active-prompts")
+async def get_active_prompts_snapshot(
+    request: Request,
+    _: None = Depends(require_llm_admin),  # noqa: B008
+) -> dict[str, Any]:
+    """只读：返回当前生效的 system/tools prompts 与拼接后的 system message（供 JWT/Agent 调试页展示）。"""
+
+    service = get_service(request)
+    system_prompts, _ = await service.list_prompts(only_active=True, prompt_type="system", page=1, page_size=1)
+    tools_prompts, _ = await service.list_prompts(only_active=True, prompt_type="tools", page=1, page_size=1)
+
+    system_prompt = system_prompts[0] if system_prompts else None
+    tools_prompt = tools_prompts[0] if tools_prompts else None
+
+    system_text = str(system_prompt.get("content") or "").strip() if isinstance(system_prompt, dict) else None
+    tools_text = str(tools_prompt.get("content") or "").strip() if isinstance(tools_prompt, dict) else None
+    effective_system_message = assemble_system_prompt(system_text, tools_text) or ""
+
+    tools_schema = extract_tools_schema((tools_prompt or {}).get("tools_json") if isinstance(tools_prompt, dict) else None) or []
+
+    return create_response(
+        data={
+            "system_prompt": system_prompt,
+            "tools_prompt": tools_prompt,
+            "effective_system_message": effective_system_message,
+            "tools_schema_count": len(tools_schema),
+            "notes": {
+                "tools_schema_send_rule": "与 /messages SSOT 一致：仅当请求显式指定 tool_choice 时才向上游发送 tools schema（当前后端不执行 tool_calls）。"
+            },
+        },
+        msg="ok",
+    )
 
 
 @router.post("/tests/create-mail-user")

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.gymbro.cloud/schemas/agent_run_create_request.schema.json",
+  "title": "AgentRunCreateRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "model": { "type": "string", "minLength": 1, "description": "模型白名单 key（建议使用 /api/v1/llm/models 返回的 data[].name）" },
+    "text": { "type": "string", "minLength": 1, "description": "用户输入文本" },
+    "conversation_id": { "type": ["string", "null"], "format": "uuid", "description": "会话 ID（UUID；null 或缺省表示由服务端生成）" },
+    "metadata": { "type": "object", "additionalProperties": true, "default": {}, "description": "客户端附加信息（不做字段白名单）" },
+    "result_mode": {
+      "type": "string",
+      "enum": ["xml_plaintext", "raw_passthrough", "auto"],
+      "description": "SSE 输出模式：xml_plaintext=解析后纯文本（含 XML 标签）；raw_passthrough=上游 RAW 透明转发；auto=自动选择/降级"
+    },
+    "enable_exercise_search": { "type": "boolean", "description": "是否启用动作库检索（默认 true）" },
+    "exercise_top_k": { "type": "integer", "minimum": 1, "maximum": 10, "description": "动作库检索 top_k（默认 5）" },
+    "enable_web_search": { "type": "boolean", "description": "是否启用 Web 搜索（默认跟随 Dashboard 配置；请求侧仅允许关闭）" },
+    "web_search_top_k": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Web 搜索 top_k（默认 5）" }
+  },
+  "required": ["model", "text"]
+}

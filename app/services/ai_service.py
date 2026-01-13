@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from time import perf_counter
@@ -24,6 +25,7 @@ from app.services.ai_config_service import AIConfigService
 from app.services.ai_model_rules import looks_like_embedding_model
 from app.services.ai_url import build_resolved_endpoints, normalize_ai_base_url
 from app.services.llm_model_registry import LlmModelRegistry
+from app.services.prompt_tools_assembly import assemble_system_prompt, extract_tools_schema, gate_active_tools_schema
 from app.services.providers import get_provider_adapter
 from app.services.upstream_auth import is_retryable_auth_error, iter_auth_headers, should_send_x_api_key
 from app.services.model_mapping_service import ModelMappingService, normalize_mapping_id
@@ -80,6 +82,8 @@ DEFAULT_LLM_APP_RESULT_MODE = "raw_passthrough"
 STREAM_CHUNK_THRESHOLD_CHARS = 256
 STREAM_CHUNK_SIZE_CHARS = 128
 _STREAM_CHUNK_BREAKPOINTS = ("\n", "。", "？", "！", ".", "?", "!", " ", "\t")
+
+_SERP_QUERIES_FALLBACK_BLOCK = "<!-- <serp_queries>\n[]\n</serp_queries> -->"
 
 
 def _split_text_for_streaming(text: str, *, max_size: int) -> list[str]:
@@ -152,6 +156,84 @@ def _sanitize_thinkingml_reply(reply: str) -> str:
     inner = _escape_xml_tag_literal(inner, tag=_FINAL_CLOSE)
 
     return text[:inner_start] + inner + text[thinking_end:]
+
+
+def _looks_like_thinkingml_v45(text: str) -> bool:
+    """最佳努力判定：是否具备 ThinkingML v4.5 的最小结构（不做完整校验）。"""
+
+    if not text or not text.strip():
+        return False
+
+    if text.count(_THINKING_OPEN) != 1 or text.count(_THINKING_CLOSE) != 1:
+        return False
+    if text.count(_FINAL_OPEN) != 1 or text.count(_FINAL_CLOSE) != 1:
+        return False
+
+    thinking_open = text.find(_THINKING_OPEN)
+    thinking_close = text.find(_THINKING_CLOSE)
+    final_open = text.find(_FINAL_OPEN)
+    final_close = text.rfind(_FINAL_CLOSE)
+    if thinking_open < 0 or thinking_close < 0 or final_open < 0 or final_close < 0:
+        return False
+    if thinking_open > thinking_close:
+        return False
+    if final_open > final_close:
+        return False
+    if thinking_close > final_open:
+        return False
+
+    # 最小 phase 结构（前端校验 SSOT：至少有 phase id=1 且 phase 内含 title）
+    inner_start = thinking_open + len(_THINKING_OPEN)
+    thinking_inner = text[inner_start:thinking_close]
+    if _PHASE_1_OPEN not in thinking_inner:
+        return False
+    if thinking_inner.count(_TITLE_OPEN) < 1 or thinking_inner.count(_TITLE_CLOSE) < 1:
+        return False
+
+    return True
+
+
+def _ensure_final_has_serp_queries_block(text: str) -> str:
+    """保证 <final> 末尾存在 serp_queries 注释块（缺失时追加 []）。"""
+
+    if not text or not text.strip():
+        return text
+    final_open = text.find(_FINAL_OPEN)
+    final_close = text.rfind(_FINAL_CLOSE)
+    if final_open < 0 or final_close < 0 or final_close <= final_open:
+        return text
+
+    inner_start = final_open + len(_FINAL_OPEN)
+    inner = text[inner_start:final_close]
+    stripped = inner.rstrip()
+    if "<serp_queries>" in stripped and "</serp_queries>" in stripped and stripped.endswith("-->"):
+        return text
+
+    suffix = "\n" if stripped and not stripped.endswith("\n") else ""
+    fixed_inner = f"{stripped}{suffix}{_SERP_QUERIES_FALLBACK_BLOCK}\n"
+    return text[:inner_start] + fixed_inner + text[final_close:]
+
+
+def _wrap_to_thinkingml_v45(reply: str) -> str:
+    """兜底：将任意文本包裹为 ThinkingML v4.5（用于上游不遵守 Strict XML 时保证可解析）。"""
+
+    body = str(reply or "").strip()
+    # 防止把上游输出中的 `<thinking>` 等字面量当成真实标签导致计数错误：统一转义。
+    body = body.replace("<", "&lt;").replace(">", "&gt;")
+    if body and not body.endswith("\n"):
+        body += "\n"
+    body += f"{_SERP_QUERIES_FALLBACK_BLOCK}\n"
+
+    return (
+        "<thinking>\n"
+        '  <phase id="1">\n'
+        "    <title>格式修复</title>上游输出未满足 Strict XML，已自动包裹为 ThinkingML v4.5 以保证解析。\n"
+        "  </phase>\n"
+        "</thinking>\n"
+        "<final>\n"
+        f"{body}"
+        "</final>"
+    )
 
 
 def _is_dashboard_admin_user(user: AuthenticatedUser) -> bool:
@@ -1005,6 +1087,8 @@ class AIService:
         user: AuthenticatedUser,
         message: AIMessageInput,
         broker: MessageEventBroker,
+        pre_processor: Callable[[str, AuthenticatedUser, AIMessageInput, MessageEventBroker], Awaitable[AIMessageInput]]
+        | None = None,
     ) -> None:
         request_id = get_current_request_id()
         # SSOT：优先使用 broker.meta（创建消息时固化）；仅在缺失时回退到 message/metadata
@@ -1067,6 +1151,9 @@ class AIService:
                 ),
             )
 
+            if pre_processor is not None:
+                message = await pre_processor(message_id, user, message, broker)
+
             result = await self._generate_reply(
                 message_id=message_id,
                 message=message,
@@ -1114,6 +1201,11 @@ class AIService:
                     effective_mode = "xml_plaintext"
             if effective_mode != "raw_passthrough":
                 reply_text = _sanitize_thinkingml_reply(reply_text)
+                # 兜底：上游未严格遵守 ThinkingML 时，保证 completed.reply 仍可被前端校验/解析。
+                if _looks_like_thinkingml_v45(reply_text):
+                    reply_text = _ensure_final_has_serp_queries_block(reply_text)
+                else:
+                    reply_text = _wrap_to_thinkingml_v45(reply_text)
 
             save_history = bool((message.metadata or {}).get("save_history", True))
             # 兼容：Supabase Provider 强依赖 UUID（user_id/conversation_id），而本地 admin/test token 可能是非 UUID。
@@ -1619,9 +1711,11 @@ class AIService:
 
         # KISS/兼容性：当前后端不执行 tool_calls。
         # - server 模式下，若客户端未显式指定 tool_choice，则不向上游发送 tools（避免本地代理对工具名格式校验更严格导致 400）。
-        # - 仍允许客户端在透传/显式 tool_choice 场景自行提供 tools（调用失败由上游/后端兜底）。
-        if tools_from_active_prompt and tool_choice is None:
-            resolved_tools = None
+        resolved_tools = gate_active_tools_schema(
+            tools_schema=resolved_tools,
+            tools_from_active_prompt=tools_from_active_prompt,
+            tool_choice=tool_choice,
+        )
 
         payload: dict[str, Any] = {
             "model": model,
@@ -1672,16 +1766,9 @@ class AIService:
             )
         except Exception:
             return None
-        parts: list[str] = []
-        if system_prompts:
-            content = system_prompts[0].get("content")
-            if content:
-                parts.append(str(content).strip())
-        if tools_prompts:
-            content = tools_prompts[0].get("content")
-            if content:
-                parts.append(str(content).strip())
-        return "\n\n".join([item for item in parts if item]) if parts else None
+        system_text = str(system_prompts[0].get("content") or "").strip() if system_prompts else None
+        tools_text = str(tools_prompts[0].get("content") or "").strip() if tools_prompts else None
+        return assemble_system_prompt(system_text, tools_text)
 
     async def _get_active_prompt_tools(self) -> Optional[list[Any]]:
         if self._ai_config_service is None:
@@ -1697,15 +1784,7 @@ class AIService:
             return None
         if not prompts:
             return None
-        tools_json = prompts[0].get("tools_json")
-        if isinstance(tools_json, dict):
-            raw = tools_json.get("tools")
-            if isinstance(raw, list) and raw:
-                return raw
-            return None
-        if isinstance(tools_json, list) and tools_json:
-            return tools_json
-        return None
+        return extract_tools_schema(prompts[0].get("tools_json"))
 
     async def _resolve_tools(self, tools_value: Any) -> Optional[list[Any]]:
         if tools_value is None:
@@ -1730,14 +1809,7 @@ class AIService:
         )
         if not prompts:
             return []
-        tools_json = prompts[0].get("tools_json")
-        candidates: list[Any] = []
-        if isinstance(tools_json, dict):
-            raw = tools_json.get("tools")
-            if isinstance(raw, list):
-                candidates = raw
-        elif isinstance(tools_json, list):
-            candidates = tools_json
+        candidates = extract_tools_schema(prompts[0].get("tools_json")) or []
 
         filtered: list[Any] = []
         for item in candidates:

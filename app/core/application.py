@@ -31,6 +31,7 @@ from app.services.supabase_admin import SupabaseAdminClient
 from app.services.supabase_auth_admin import SupabaseAuthAdminClient
 from app.services.supabase_keepalive import SupabaseKeepaliveService
 from app.services.sync_service import SyncService
+from app.services.web_search_service import WebSearchService
 from app.settings.config import get_settings
 
 
@@ -85,6 +86,11 @@ async def lifespan(app: FastAPI):
         await app.state.ai_config_service.ensure_env_default_endpoint()
     except Exception:
         pass
+    # 启动期兜底：若缺失 active prompts，则从 assets/prompts 种子化默认 system/tools（避免 ThinkingML/Strict-XML 链路退化）。
+    try:
+        await app.state.ai_config_service.ensure_default_prompts_seeded()
+    except Exception:
+        pass
     app.state.endpoint_monitor = EndpointMonitor(app.state.ai_config_service)
     # 预热一次端点连通性（非阻塞），避免 Dashboard 首屏长期显示 unknown/0。
     if getattr(settings, "endpoint_monitor_probe_enabled", True):
@@ -132,6 +138,10 @@ async def lifespan(app: FastAPI):
         ai_config_service=app.state.ai_config_service,
         model_mapping_service=app.state.model_mapping_service,
         llm_model_registry=app.state.llm_model_registry,
+    )
+    app.state.web_search_service = WebSearchService(
+        timeout_seconds=float(getattr(settings, "http_timeout_seconds", 10.0) or 10.0),
+        cache_ttl_seconds=300,
     )
 
     # Supabase Admin access (service role) - used by mobile APIs like /v1/me (best-effort init).

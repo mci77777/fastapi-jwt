@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -37,7 +38,31 @@ logger = logging.getLogger(__name__)
 _DEFAULT_LLM_APP_CONFIG: dict[str, Any] = {
     # App 默认 SSE 输出模式：raw_passthrough=上游 RAW 透明转发；xml_plaintext=解析后纯文本（含 XML 标签）；auto=自动判断
     "default_result_mode": DEFAULT_LLM_APP_RESULT_MODE,
+    # Agent / Tools：Web 搜索（默认关闭；可在 Dashboard 中配置）
+    "web_search_enabled": False,
+    "web_search_provider": "exa",
 }
+
+def _mask_secret(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if len(text) <= 8:
+        return "*" * len(text)
+    return f"{text[:4]}***{text[-4:]}"
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value or "").strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off", ""}:
+        return False
+    return False
 
 
 class APIEndpointBase(BaseModel):
@@ -110,11 +135,32 @@ async def _get_llm_app_config(request: Request) -> dict[str, Any]:
     if mode not in {"xml_plaintext", "raw_passthrough", "auto"}:
         mode = "raw_passthrough"
     merged["default_result_mode"] = mode
+
+    provider = str(merged.get("web_search_provider") or "exa").strip().lower() or "exa"
+    if provider != "exa":
+        provider = "exa"
+    merged["web_search_provider"] = provider
+    merged["web_search_enabled"] = _as_bool(merged.get("web_search_enabled"))
+
+    raw_key = merged.get("web_search_exa_api_key")
+    key = str(raw_key or "").strip()
+    source = "db" if key else "none"
+    if not key:
+        key = str(os.getenv("EXA_API_KEY") or "").strip()
+        source = "env" if key else "none"
+    merged.pop("web_search_exa_api_key", None)
+    merged["web_search_exa_api_key_masked"] = _mask_secret(key) if key else ""
+    merged["web_search_exa_api_key_source"] = source
     return merged
 
 
 async def _set_llm_app_config(request: Request, values: dict[str, Any]) -> dict[str, Any]:
-    allowed_keys = {"default_result_mode"}
+    allowed_keys = {
+        "default_result_mode",
+        "web_search_enabled",
+        "web_search_provider",
+        "web_search_exa_api_key",
+    }
     db = get_sqlite_manager(request.app)
     for key, value in values.items():
         if key not in allowed_keys:
@@ -149,6 +195,10 @@ class LlmAppConfigUpsertRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     default_result_mode: Literal["xml_plaintext", "raw_passthrough", "auto"] | None = Field(default=None)
+    web_search_enabled: bool | None = Field(default=None)
+    web_search_provider: Literal["exa"] | None = Field(default=None)
+    # 注意：该字段为写入专用；读取时仅返回 masked 版本，避免泄露。
+    web_search_exa_api_key: str | None = Field(default=None, min_length=0, max_length=512)
 
 
 @router.post("/app/config", response_model=None)

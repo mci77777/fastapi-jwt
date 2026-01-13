@@ -18,6 +18,8 @@ ToolCall 由系统通过 `tools` schema + `tool_calls` 机制触发与承载；�
 
 ## 3) 工具清单（英文工具名 → 中文含义）
 
+- `web_search.exa`：Web 搜索（Exa，返回少量结果摘要；用于“需要最新信息/外部事实”时）  
+  - 参数：`query`, `top_k`, `include_domains`, `exclude_domains`
 - `gymbro.exercise.search`：搜索动作库  
   - 参数：`query`, `muscle_groups`, `equipment`, `difficulty`
 - `gymbro.exercise.get_detail`：获取动作详情  

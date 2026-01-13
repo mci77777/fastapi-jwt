@@ -15,6 +15,7 @@ from .exercise_library import router as exercise_library_router
 from .admin_exercise_library import router as admin_exercise_library_router
 from .admin_user_entitlements import router as admin_user_entitlements_router
 from .admin_app_users import router as admin_app_users_router
+from .agent_runs import router as agent_runs_router
 from .seed import router as seed_router
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ v1_router.include_router(llm_router)
 v1_router.include_router(messages_router)
 v1_router.include_router(metrics_router)
 v1_router.include_router(agents_router)
+v1_router.include_router(agent_runs_router)
 v1_router.include_router(exercise_library_router)
 v1_router.include_router(admin_exercise_library_router)
 v1_router.include_router(admin_user_entitlements_router)

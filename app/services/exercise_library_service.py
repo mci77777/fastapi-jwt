@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -110,6 +111,26 @@ def _sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _norm_text(value: str) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _tokenize_query(query: str) -> list[str]:
+    q = _norm_text(query)
+    if not q:
+        return []
+    parts = [p for p in re.split(r"[\\s,;，。/|]+", q) if p]
+    # 去重但保序
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in parts:
+        if p in seen:
+            continue
+        seen.add(p)
+        out.append(p)
+    return out
+
+
 _exercise_list_adapter: TypeAdapter[list[ExerciseDto]] = TypeAdapter(list[ExerciseDto])
 
 
@@ -143,6 +164,83 @@ class ExerciseLibraryService:
         snapshot = await self._get_snapshot(version)
         items = _exercise_list_adapter.validate_python(json.loads(snapshot.payload_json))
         return items
+
+    async def get_detail(self, *, exercise_id: str, version: int | None = None) -> ExerciseDto | None:
+        """按 id 获取动作详情（best-effort）。"""
+
+        wanted = str(exercise_id or "").strip()
+        if not wanted:
+            return None
+        items = await self.get_full(version=version)
+        for item in items:
+            if str(getattr(item, "id", "") or "") == wanted:
+                return item
+        return None
+
+    async def search(
+        self,
+        *,
+        query: str,
+        muscle_groups: list[str] | None = None,
+        equipment: list[str] | None = None,
+        difficulty: str | None = None,
+        limit: int = 10,
+        version: int | None = None,
+    ) -> list[ExerciseDto]:
+        """简单搜索（KISS）：name/description token match + 过滤条件。"""
+
+        tokens = _tokenize_query(query)
+        mg = {str(x or "").strip().upper() for x in (muscle_groups or []) if str(x or "").strip()}
+        eq = {str(x or "").strip().upper() for x in (equipment or []) if str(x or "").strip()}
+        diff = str(difficulty or "").strip().upper() or ""
+
+        max_items = int(limit)
+        if max_items <= 0:
+            max_items = 10
+        if max_items > 50:
+            max_items = 50
+
+        items = await self.get_full(version=version)
+        scored: list[tuple[int, ExerciseDto]] = []
+
+        for item in items:
+            if mg and str(getattr(item, "muscleGroup", "") or "").upper() not in mg:
+                continue
+            if diff and str(getattr(item, "difficulty", "") or "").upper() != diff:
+                continue
+            if eq:
+                equipments = getattr(item, "equipment", None)
+                equipments = equipments if isinstance(equipments, list) else []
+                if not any(str(e or "").strip().upper() in eq for e in equipments):
+                    continue
+
+            score = 0
+            if tokens:
+                name = _norm_text(str(getattr(item, "name", "") or ""))
+                desc = _norm_text(str(getattr(item, "description", "") or ""))
+                for t in tokens:
+                    if not t:
+                        continue
+                    if t in name:
+                        score += 10
+                    elif t in desc:
+                        score += 3
+                if score <= 0:
+                    continue
+            else:
+                # 仅过滤条件模式：允许返回（score 用于稳定排序）
+                score = 1
+
+            scored.append((score, item))
+
+        scored.sort(
+            key=lambda pair: (
+                -pair[0],
+                -int(getattr(pair[1], "updatedAt", 0) or 0),
+                str(getattr(pair[1], "name", "") or ""),
+            )
+        )
+        return [item for _, item in scored[:max_items]]
 
     async def get_updates(self, *, from_version: int, to_version: int) -> ExerciseLibraryUpdates:
         if from_version < 0 or to_version < 0:

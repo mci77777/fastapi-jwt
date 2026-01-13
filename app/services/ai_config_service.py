@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
@@ -19,6 +20,7 @@ from app.db import SQLiteManager
 from app.settings.config import Settings
 from app.services.ai_url import build_resolved_endpoints, normalize_ai_base_url
 from app.services.upstream_auth import is_retryable_auth_error, iter_auth_headers
+from app.services.prompt_tools_assembly import assemble_system_prompt, extract_tools_schema, gate_active_tools_schema
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,52 @@ _PERPLEXITY_STATIC_MODEL_LIST: tuple[str, ...] = (
     "sonar-reasoning-pro",
     "sonar-deep-research",
 )
+
+_DEFAULT_SYSTEM_PROMPT_NAME = "gymbro-default-system-thinkingml-v45"
+_DEFAULT_TOOLS_PROMPT_NAME = "gymbro-default-tools-v1"
+_DEFAULT_SYSTEM_PROMPT_ASSET = Path("assets") / "prompts" / "serp_prompt.md"
+_DEFAULT_TOOLS_PROMPT_ASSET = Path("assets") / "prompts" / "tool.md"
+
+_TOOL_NAME_RE = re.compile(r"^\s*-\s*`([^`]+)`：\s*(.*)\s*$")
+_TOOL_PARAMS_RE = re.compile(r"参数：\s*(.*)\s*$")
+
+
+def _parse_tools_from_tool_md(tool_md: str) -> list[dict[str, Any]]:
+    """从 tool.md 解析成 OpenAI tools schema（KISS：全部参数按 string 处理）。"""
+
+    tools: list[dict[str, Any]] = []
+    current_name: str | None = None
+    current_desc: str = ""
+
+    for raw_line in (tool_md or "").splitlines():
+        line = raw_line.rstrip()
+        m = _TOOL_NAME_RE.match(line)
+        if m:
+            current_name = str(m.group(1) or "").strip()
+            current_desc = str(m.group(2) or "").strip()
+            continue
+
+        m = _TOOL_PARAMS_RE.search(line)
+        if not m or not current_name:
+            continue
+
+        params_text = str(m.group(1) or "")
+        params = [p.strip() for p in re.findall(r"`([^`]+)`", params_text) if str(p).strip()]
+        properties = {p: {"type": "string", "description": p} for p in params}
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": current_name,
+                    "description": current_desc or f"GymBro tool: {current_name}",
+                    "parameters": {"type": "object", "properties": properties, "additionalProperties": False},
+                },
+            }
+        )
+        current_name = None
+        current_desc = ""
+
+    return tools
 
 
 def _utc_now() -> str:
@@ -421,6 +469,122 @@ class AIConfigService:
             _mask_api_key(api_key),
         )
         return endpoint
+
+    async def ensure_default_prompts_seeded(self) -> dict[str, Any]:
+        """启动期兜底：若缺失 active system/tools prompts，则从 assets/prompts 种子化（不覆盖已有配置）。"""
+
+        created: dict[str, Any] = {}
+
+        def _tool_schema_name(item: Any) -> str:
+            if not isinstance(item, dict):
+                return ""
+            fn = item.get("function") if isinstance(item.get("function"), dict) else None
+            name = fn.get("name") if isinstance(fn, dict) else None
+            return str(name or "").strip()
+
+        async def _maybe_patch_default_tools_prompt(active_prompt: dict[str, Any], desired_tools_json: Any) -> Optional[dict[str, Any]]:
+            """为默认 tools prompt 做“仅追加”升级（不覆盖用户自定义 tools prompt）。"""
+
+            if not isinstance(active_prompt, dict) or not desired_tools_json:
+                return None
+            if str(active_prompt.get("name") or "").strip() != _DEFAULT_TOOLS_PROMPT_NAME:
+                return None
+
+            desired = extract_tools_schema(desired_tools_json) or []
+            existing = extract_tools_schema(active_prompt.get("tools_json")) or []
+            if not desired:
+                return None
+
+            existing_names = {_tool_schema_name(item) for item in existing if _tool_schema_name(item)}
+            to_add = [item for item in desired if _tool_schema_name(item) and _tool_schema_name(item) not in existing_names]
+            if not to_add:
+                return None
+
+            merged = list(existing) + to_add
+            updated = await self.update_prompt(int(active_prompt["id"]), {"tools_json": merged, "prompt_type": "tools"})
+            # 保持 active（update_prompt 不会改变 is_active，但这里做一次幂等确保）
+            updated = await self.activate_prompt(int(updated["id"]))
+            return updated
+
+        async def _ensure(
+            *,
+            prompt_type: str,
+            name: str,
+            asset_path: Path,
+            tools_json: Any = None,
+        ) -> Optional[dict[str, Any]]:
+            active, _ = await self.list_prompts(only_active=True, prompt_type=prompt_type, page=1, page_size=1)
+            if active:
+                # 默认 tools prompt：允许“仅追加”补齐新工具 schema（例如 web_search.exa）。
+                if prompt_type == "tools" and tools_json:
+                    patched = await _maybe_patch_default_tools_prompt(active[0], tools_json)
+                    if patched:
+                        created["tools_prompt_patched"] = patched
+                return None
+
+            row = await self._db.fetchone(
+                """
+                SELECT * FROM ai_prompts
+                WHERE name = ? AND prompt_type = ?
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+                """,
+                [name, prompt_type],
+            )
+            if row:
+                prompt = self._format_prompt_row(row)
+                updates: dict[str, Any] = {}
+                if prompt_type == "tools" and not prompt.get("tools_json") and tools_json:
+                    updates["tools_json"] = tools_json
+                    updates["prompt_type"] = "tools"
+                if updates:
+                    prompt = await self.update_prompt(int(prompt["id"]), updates)
+                prompt = await self.activate_prompt(int(prompt["id"]))
+                return prompt
+
+            try:
+                content = asset_path.read_text(encoding="utf-8").strip()
+            except Exception as exc:  # pragma: no cover
+                logger.warning("读取默认 Prompt 失败 path=%s error=%s", asset_path, exc)
+                return None
+            if not content:
+                return None
+
+            return await self.create_prompt(
+                {
+                    "name": name,
+                    "content": content,
+                    "prompt_type": prompt_type,
+                    "tools_json": tools_json,
+                    "is_active": True,
+                },
+                auto_sync=False,
+            )
+
+        system_prompt = await _ensure(
+            prompt_type="system",
+            name=_DEFAULT_SYSTEM_PROMPT_NAME,
+            asset_path=_DEFAULT_SYSTEM_PROMPT_ASSET,
+        )
+        if system_prompt:
+            created["system_prompt"] = system_prompt
+
+        tools_md = ""
+        try:
+            tools_md = _DEFAULT_TOOLS_PROMPT_ASSET.read_text(encoding="utf-8").strip()
+        except Exception:
+            tools_md = ""
+        tools_schema = _parse_tools_from_tool_md(tools_md) if tools_md else []
+        tools_prompt = await _ensure(
+            prompt_type="tools",
+            name=_DEFAULT_TOOLS_PROMPT_NAME,
+            asset_path=_DEFAULT_TOOLS_PROMPT_ASSET,
+            tools_json=tools_schema if tools_schema else None,
+        )
+        if tools_prompt:
+            created["tools_prompt"] = tools_prompt
+
+        return created
 
     async def update_endpoint(self, endpoint_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         existing = await self.get_endpoint(endpoint_id)
@@ -1554,6 +1718,7 @@ class AIConfigService:
         message: str,
         model: Optional[str] = None,
         skip_prompt: bool = False,
+        tool_choice: Any = None,
     ) -> dict[str, Any]:
         prompt = await self.get_prompt(prompt_id)
         prompt_type = prompt.get("prompt_type")
@@ -1578,8 +1743,7 @@ class AIConfigService:
                 if active_system:
                     system_prompt_text = str(active_system[0].get("content") or "").strip() or None
 
-        system_message_parts = [part for part in (system_prompt_text, tools_prompt_text) if part]
-        system_message = "\n\n".join(system_message_parts) if system_message_parts else None
+        system_message = assemble_system_prompt(system_prompt_text, tools_prompt_text)
 
         endpoint = await self.get_endpoint(endpoint_id)
         api_key = await self._get_api_key(endpoint_id)
@@ -1600,15 +1764,19 @@ class AIConfigService:
                 {"role": "user", "content": message},
             ],
         }
-        tools_payload: Optional[list[Any]] = None
-        if isinstance(tools_json, dict):
-            raw = tools_json.get("tools")
-            if isinstance(raw, list) and raw:
-                tools_payload = raw
-        elif isinstance(tools_json, list) and tools_json:
-            tools_payload = tools_json
+
+        tools_payload = extract_tools_schema(tools_json)
+        # SSOT：与 /messages 一致（默认不执行 tool_calls）。
+        # - 非 skip_prompt（server 组装）且未显式指定 tool_choice：不向上游发送 active tools schema。
+        tools_payload = gate_active_tools_schema(
+            tools_schema=tools_payload,
+            tools_from_active_prompt=not bool(skip_prompt),
+            tool_choice=tool_choice,
+        )
         if tools_payload is not None:
             payload["tools"] = tools_payload
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",

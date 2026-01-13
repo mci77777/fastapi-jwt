@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.gymbro.cloud/schemas/agent_run_sse_frame.schema.json",
+  "title": "AgentRunSseFrame",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "event": {
+      "type": "string",
+      "enum": ["status", "tool_start", "tool_result", "content_delta", "upstream_raw", "completed", "error", "heartbeat"]
+    },
+    "data": { "type": "object" }
+  },
+  "required": ["event", "data"],
+  "oneOf": [
+    {
+      "properties": { "event": { "const": "status" }, "data": { "$ref": "#/$defs/StatusData" } },
+      "required": ["event", "data"]
+    },
+    {
+      "properties": { "event": { "const": "tool_start" }, "data": { "$ref": "#/$defs/ToolStartData" } },
+      "required": ["event", "data"]
+    },
+    {
+      "properties": { "event": { "const": "tool_result" }, "data": { "$ref": "#/$defs/ToolResultData" } },
+      "required": ["event", "data"]
+    },
+    {
+      "properties": { "event": { "const": "content_delta" }, "data": { "$ref": "#/$defs/ContentDeltaData" } },
+      "required": ["event", "data"]
+    },
+    {
+      "properties": { "event": { "const": "upstream_raw" }, "data": { "$ref": "#/$defs/UpstreamRawData" } },
+      "required": ["event", "data"]
+    },
+    {
+      "properties": { "event": { "const": "completed" }, "data": { "$ref": "#/$defs/CompletedData" } },
+      "required": ["event", "data"]
+    },
+    {
+      "properties": { "event": { "const": "error" }, "data": { "$ref": "#/$defs/ErrorData" } },
+      "required": ["event", "data"]
+    },
+    {
+      "properties": { "event": { "const": "heartbeat" }, "data": { "$ref": "#/$defs/HeartbeatData" } },
+      "required": ["event", "data"]
+    }
+  ],
+  "$defs": {
+    "RequestId": { "type": "string", "minLength": 1 },
+    "MessageId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "StatusData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": { "type": "string", "enum": ["queued", "working", "routed"] },
+        "message_id": { "$ref": "#/$defs/MessageId" },
+        "request_id": { "$ref": "#/$defs/RequestId" },
+        "provider": { "type": ["string", "null"] },
+        "resolved_model": { "type": ["string", "null"] },
+        "endpoint_id": { "type": ["integer", "null"] },
+        "upstream_request_id": { "type": ["string", "null"] }
+      },
+      "required": ["state", "message_id", "request_id"]
+    },
+    "ToolStartData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message_id": { "$ref": "#/$defs/MessageId" },
+        "request_id": { "$ref": "#/$defs/RequestId" },
+        "tool_name": { "type": "string", "minLength": 1 },
+        "args": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["message_id", "request_id", "tool_name"]
+    },
+    "ToolResultData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message_id": { "$ref": "#/$defs/MessageId" },
+        "request_id": { "$ref": "#/$defs/RequestId" },
+        "tool_name": { "type": "string", "minLength": 1 },
+        "ok": { "type": "boolean" },
+        "elapsed_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "result": { "type": ["object", "null"], "additionalProperties": true },
+        "error": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 }
+          },
+          "required": ["code", "message"]
+        }
+      },
+      "required": ["message_id", "request_id", "tool_name", "ok"]
+    },
+    "ContentDeltaData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message_id": { "$ref": "#/$defs/MessageId" },
+        "request_id": { "$ref": "#/$defs/RequestId" },
+        "seq": { "type": "integer", "minimum": 1 },
+        "delta": { "type": "string", "minLength": 1 }
+      },
+      "required": ["message_id", "request_id", "seq", "delta"]
+    },
+    "UpstreamRawData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message_id": { "$ref": "#/$defs/MessageId" },
+        "request_id": { "$ref": "#/$defs/RequestId" },
+        "seq": { "type": "integer", "minimum": 1 },
+        "dialect": { "type": ["string", "null"] },
+        "upstream_event": { "type": ["string", "null"] },
+        "raw": { "type": "string", "minLength": 1 }
+      },
+      "required": ["message_id", "request_id", "seq", "raw"]
+    },
+    "CompletedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message_id": { "$ref": "#/$defs/MessageId" },
+        "request_id": { "$ref": "#/$defs/RequestId" },
+        "provider": { "type": ["string", "null"] },
+        "resolved_model": { "type": ["string", "null"] },
+        "endpoint_id": { "type": ["integer", "null"] },
+        "upstream_request_id": { "type": ["string", "null"] },
+        "result_mode": { "type": ["string", "null"] },
+        "result_mode_effective": { "type": ["string", "null"] },
+        "reply": { "type": "string" },
+        "reply_len": { "type": "integer", "minimum": 0 },
+        "metadata": { "type": ["object", "null"], "additionalProperties": true }
+      },
+      "required": ["message_id", "request_id", "reply", "reply_len"]
+    },
+    "ErrorData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message_id": { "$ref": "#/$defs/MessageId" },
+        "request_id": { "$ref": "#/$defs/RequestId" },
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "error": { "type": ["string", "null"] },
+        "provider": { "type": ["string", "null"] },
+        "resolved_model": { "type": ["string", "null"] },
+        "endpoint_id": { "type": ["integer", "null"] }
+      },
+      "required": ["message_id", "request_id", "code", "message"]
+    },
+    "HeartbeatData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message_id": { "$ref": "#/$defs/MessageId" },
+        "request_id": { "$ref": "#/$defs/RequestId" },
+        "ts": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["message_id", "request_id", "ts"]
+    }
+  }
+}
+

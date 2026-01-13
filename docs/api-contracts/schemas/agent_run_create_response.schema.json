@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.gymbro.cloud/schemas/agent_run_create_response.schema.json",
+  "title": "AgentRunCreateResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "message_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "conversation_id": { "type": "string", "format": "uuid" }
+  },
+  "required": ["run_id", "message_id", "conversation_id"]
+}
+

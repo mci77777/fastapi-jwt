@@ -341,7 +341,13 @@ class TestConditionalPersistence:
         ai_service = AIService(provider=mock_provider)
         broker = MessageEventBroker()
         message_id = AIService.new_message_id()
-        await broker.create_channel(message_id, owner_user_id="user-123", conversation_id="conv-001")
+        # 该用例关注“是否持久化”，与 ThinkingML 纠错无关；避免因输出模式差异影响断言。
+        await broker.create_channel(
+            message_id,
+            owner_user_id="user-123",
+            conversation_id="conv-001",
+            result_mode="raw_passthrough",
+        )
 
         user = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
         message = AIMessageInput(
@@ -375,7 +381,12 @@ class TestConditionalPersistence:
         ai_service = AIService(provider=mock_provider)
         broker = MessageEventBroker()
         message_id = AIService.new_message_id()
-        await broker.create_channel(message_id, owner_user_id="user-123", conversation_id="conv-001")
+        await broker.create_channel(
+            message_id,
+            owner_user_id="user-123",
+            conversation_id="conv-001",
+            result_mode="raw_passthrough",
+        )
 
         user = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
         message = AIMessageInput(
@@ -405,7 +416,12 @@ class TestConditionalPersistence:
         ai_service = AIService(provider=mock_provider)
         broker = MessageEventBroker()
         message_id = AIService.new_message_id()
-        await broker.create_channel(message_id, owner_user_id="user-123", conversation_id="conv-001")
+        await broker.create_channel(
+            message_id,
+            owner_user_id="user-123",
+            conversation_id="conv-001",
+            result_mode="raw_passthrough",
+        )
 
         user = AuthenticatedUser(uid="user-123", claims={}, user_type="permanent")
         message = AIMessageInput(

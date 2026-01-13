@@ -584,18 +584,18 @@ async def stream_message_events(
     # 输出事件白名单：避免客户端在某模式下收到无意义事件（同时降低敏感数据暴露面）。
     def _current_allowed_events() -> set[str]:
         if result_mode == "raw_passthrough":
-            return {"status", "heartbeat", "content_delta", "completed", "error"}
+            return {"status", "heartbeat", "tool_start", "tool_result", "content_delta", "completed", "error"}
         if result_mode != "auto":  # xml_plaintext
-            return {"status", "heartbeat", "content_delta", "completed", "error"}
+            return {"status", "heartbeat", "tool_start", "tool_result", "content_delta", "completed", "error"}
         # auto：若已判定 effective，则动态收敛到单一输出
         effective = None
         if meta is not None:
             effective = str(getattr(meta, "effective_result_mode", "") or "").strip()
         if effective == "raw_passthrough":
-            return {"status", "heartbeat", "content_delta", "upstream_raw", "completed", "error"}
+            return {"status", "heartbeat", "tool_start", "tool_result", "content_delta", "upstream_raw", "completed", "error"}
         if effective == "xml_plaintext":
-            return {"status", "heartbeat", "content_delta", "completed", "error"}
-        return {"status", "heartbeat", "content_delta", "upstream_raw", "completed", "error"}
+            return {"status", "heartbeat", "tool_start", "tool_result", "content_delta", "completed", "error"}
+        return {"status", "heartbeat", "tool_start", "tool_result", "content_delta", "upstream_raw", "completed", "error"}
 
     async def event_generator():
         started = time.time()
@@ -637,6 +637,23 @@ async def stream_message_events(
                     safe_data = {
                         "message_id": safe_data.get("message_id"),
                         "delta_len": len(delta),
+                    }
+                elif item.event in {"tool_start", "tool_result"}:
+                    tool_name = str(safe_data.get("tool_name") or safe_data.get("name") or "").strip()
+                    args = safe_data.get("args") if isinstance(safe_data.get("args"), dict) else {}
+                    result = safe_data.get("result") if isinstance(safe_data.get("result"), dict) else {}
+                    err = safe_data.get("error") if isinstance(safe_data.get("error"), dict) else None
+                    safe_data = {
+                        "message_id": safe_data.get("message_id"),
+                        "tool_name": tool_name or None,
+                        "ok": bool(safe_data.get("ok", True)) if item.event == "tool_result" else None,
+                        "elapsed_ms": safe_data.get("elapsed_ms") if item.event == "tool_result" else None,
+                        "args_keys": sorted([str(k) for k in args.keys()])[:20] if args else [],
+                        "query_len": len(str(args.get("query") or "")) if args else 0,
+                        "top_k": args.get("top_k") if args else None,
+                        "result_keys": sorted([str(k) for k in result.keys()])[:20] if result else [],
+                        "results_count": len(result.get("results")) if isinstance(result.get("results"), list) else None,
+                        "error_code": (err or {}).get("code") if isinstance(err, dict) else None,
                     }
                 elif item.event == "upstream_raw":
                     raw = safe_data.get("raw")

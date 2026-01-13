@@ -66,6 +66,22 @@ CREATE INDEX IF NOT EXISTS idx_ai_prompts_is_active ON ai_prompts(is_active);
 CREATE INDEX IF NOT EXISTS idx_ai_prompts_name ON ai_prompts(name);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_prompts_supabase_id ON ai_prompts(supabase_id);
 
+CREATE TABLE IF NOT EXISTS ai_prompt_tests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    prompt_id INTEGER NOT NULL,
+    endpoint_id INTEGER NOT NULL,
+    model TEXT,
+    request_message TEXT NOT NULL,
+    response_message TEXT,
+    success INTEGER DEFAULT 0,
+    latency_ms REAL,
+    error TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_prompt_tests_prompt_id ON ai_prompt_tests(prompt_id);
+CREATE INDEX IF NOT EXISTS idx_ai_prompt_tests_created_at ON ai_prompt_tests(created_at);
+
 
 CREATE TABLE IF NOT EXISTS dashboard_stats (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
