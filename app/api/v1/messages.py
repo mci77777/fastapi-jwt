@@ -413,6 +413,14 @@ async def create_message(
         requested_result_mode = await _get_llm_app_default_result_mode(request)
     prompt_mode = await _get_llm_app_prompt_mode(request)
     enforced_skip_prompt = prompt_mode == "passthrough"
+    # SSOT：/messages 不允许使用 agent prompts（仅 /agent/runs 可用）
+    sanitized_metadata = dict(payload.metadata or {})
+    raw_scope = str(sanitized_metadata.get("prompt_scope") or "").strip().lower()
+    raw_source = str(sanitized_metadata.get("source") or "").strip().lower()
+    if raw_scope == "agent" or raw_source == "agent_run":
+        sanitized_metadata["prompt_scope"] = "messages"
+        if raw_source == "agent_run":
+            sanitized_metadata["source"] = "messages"
 
     if is_payload_mode:
         dialect = str(payload.dialect or "").strip()
@@ -470,7 +478,7 @@ async def create_message(
 
         message_input = AIMessageInput(
             conversation_id=conversation_id,
-            metadata=payload.metadata,
+            metadata=sanitized_metadata,
             # payload 模式：服务端不注入默认 prompt/tools（以 payload 为准）
             skip_prompt=True,
             result_mode=str(requested_result_mode),
@@ -536,7 +544,7 @@ async def create_message(
         message_input = AIMessageInput(
             text=payload.text,
             conversation_id=conversation_id,
-            metadata=payload.metadata,
+            metadata=sanitized_metadata,
             skip_prompt=enforced_skip_prompt,
             result_mode=str(requested_result_mode),
             model=requested_model,
