@@ -9,13 +9,15 @@ const USER_INFO_CODE = 'user_info'
  * @param {string} token - JWT token
  * @returns {object|null} - 解码后的 payload，或 null 如果解码失败
  */
-function decodeJWT(token) {
+export function decodeJWT(token) {
   try {
     if (!token || typeof token !== 'string') return null
     const parts = token.split('.')
     if (parts.length !== 3) return null
 
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padding = '='.repeat((4 - (base64.length % 4)) % 4)
+    const payload = JSON.parse(atob(`${base64}${padding}`))
     return payload
   } catch (error) {
     console.error('JWT 解码失败:', error)
