@@ -23,6 +23,7 @@ async def test_dashboard_stats_includes_mapped_models(async_client) -> None:
         assert body.get("code") == 200
         data = body.get("data") or {}
         assert isinstance(data.get("mapped_models"), dict)
+        assert isinstance(data.get("e2e_mapped_models"), dict)
 
 
 @pytest.mark.asyncio
@@ -135,3 +136,64 @@ async def test_mapped_models_stats_rejects_1h_time_window(async_client) -> None:
         )
 
         assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_e2e_mapped_models_stats_returns_latest(async_client) -> None:
+    db = get_sqlite_manager(fastapi_app)
+    now = datetime.now().replace(microsecond=0).isoformat()
+    results_json = json.dumps(
+        [
+            {"model_key": "xai", "success": True, "latency_ms": 120.0, "request_id": "r1"},
+            {"model_key": "deepseek", "success": False, "latency_ms": 80.0, "request_id": "r2", "error": "failed"},
+        ],
+        ensure_ascii=False,
+    )
+
+    await db.execute(
+        """
+        INSERT INTO e2e_mapped_model_runs
+        (run_id, user_type, auth_mode, prompt_text, prompt_mode, result_mode,
+         models_total, models_success, models_failed, started_at, finished_at,
+         duration_ms, status, error_summary, results_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "run-anon-1",
+            "anonymous",
+            "edge",
+            "hello",
+            "server",
+            "xml_plaintext",
+            2,
+            1,
+            1,
+            now,
+            now,
+            200.0,
+            "failed",
+            "partial_fail",
+            results_json,
+        ),
+    )
+
+    with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+        mock_verifier = mock_get_verifier.return_value
+        mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={}, user_type="permanent")
+
+        resp = await async_client.get(
+            "/api/v1/stats/e2e-mapped-models",
+            headers={"Authorization": "Bearer mock.supabase.jwt"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("code") == 200
+        data = body.get("data") or {}
+        latest = data.get("latest") or {}
+        anon = latest.get("anonymous") or {}
+        assert anon.get("models_total") == 2
+        assert anon.get("models_success") == 1
+        assert anon.get("models_failed") == 1
+        items = anon.get("results") or []
+        assert isinstance(items, list)
+        assert items[0].get("model_key") == "xai"

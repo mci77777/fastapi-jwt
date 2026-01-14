@@ -44,6 +44,22 @@
           <template #suffix>条</template>
         </NInputNumber>
       </NFormItem>
+
+      <NFormItem label="每日 E2E 启动时间" path="e2e_daily_time">
+        <NInput
+          v-model:value="formData.e2e_daily_time"
+          placeholder="HH:MM（默认 05:00）"
+        />
+      </NFormItem>
+
+      <NFormItem label="E2E 默认请求语句" path="e2e_prompt_text">
+        <NInput
+          v-model:value="formData.e2e_prompt_text"
+          type="textarea"
+          :autosize="{ minRows: 2, maxRows: 4 }"
+          placeholder="默认：每日测试连通性和tools工具可用性"
+        />
+      </NFormItem>
     </NForm>
 
     <template #action>
@@ -56,7 +72,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { NModal, NForm, NFormItem, NInputNumber, useMessage } from 'naive-ui'
+import { NModal, NForm, NFormItem, NInputNumber, NInput, useMessage } from 'naive-ui'
 
 defineOptions({ name: 'PollingConfig' })
 
@@ -71,6 +87,8 @@ const props = defineProps({
       websocket_push_interval: 10,
       http_poll_interval: 30,
       log_retention_size: 100,
+      e2e_daily_time: '05:00',
+      e2e_prompt_text: '每日测试连通性和tools工具可用性',
     }),
   },
 })
@@ -86,6 +104,8 @@ const formData = ref({
   websocket_push_interval: 10,
   http_poll_interval: 30,
   log_retention_size: 100,
+  e2e_daily_time: '05:00',
+  e2e_prompt_text: '每日测试连通性和tools工具可用性',
 })
 
 // 表单验证规则
@@ -132,6 +152,27 @@ const rules = {
       min: 10,
       max: 1000,
       message: '日志保留数量必须在 10-1000 条之间',
+      trigger: 'blur',
+    },
+  ],
+  e2e_daily_time: [
+    {
+      required: true,
+      type: 'string',
+      message: '请输入每日 E2E 启动时间',
+      trigger: 'blur',
+    },
+    {
+      pattern: /^\\d{2}:\\d{2}$/,
+      message: '时间格式应为 HH:MM',
+      trigger: 'blur',
+    },
+  ],
+  e2e_prompt_text: [
+    {
+      required: true,
+      type: 'string',
+      message: '请输入 E2E 默认请求语句',
       trigger: 'blur',
     },
   ],

@@ -125,6 +125,14 @@ export const API_ENDPOINTS = [
     requiresAuth: true,
   },
   {
+    path: '/stats/e2e-mapped-models',
+    method: 'GET',
+    type: 'http',
+    description: '每日 E2E 映射模型结果',
+    category: 'dashboard',
+    requiresAuth: true,
+  },
+  {
     path: '/stats/api-connectivity',
     method: 'GET',
     type: 'http',

@@ -1,7 +1,7 @@
 # GymBro 脚本索引
 
 **更新时间**：2025-12-24
-**总计**：31 个 Python 脚本（`scripts/` 目录 23 个，`e2e/anon_jwt_sse/scripts/` 目录 8 个）
+**总计**：32 个 Python 脚本（`scripts/` 目录 24 个，`e2e/anon_jwt_sse/scripts/` 目录 8 个）
 
 ---
 
@@ -15,7 +15,7 @@ vue-fastapi-admin/
 
 ---
 
-## scripts/ 目录（23 个）
+## scripts/ 目录（24 个）
 
 ### 1. JWT 工具（4 个）
 
@@ -34,12 +34,14 @@ vue-fastapi-admin/
 | `scripts/testing/supabase/test_keepalive.py` | Supabase 保活测试 | `python scripts/testing/supabase/test_keepalive.py` |
 | `scripts/utils/detect_table_schema.py` | 探测聊天表结构，给出字段建议 | `python scripts/utils/detect_table_schema.py` |
 
-### 3. 回归运维（7 个）
+### 3. 回归运维（8 个）
 
 | 脚本 | 功能 | 运行方式 |
 |------|------|----------|
 | `scripts/monitoring/smoke_test.py` | API 冒烟：注册、JWT、SSE、持久化 | `python scripts/monitoring/smoke_test.py` |
 | `scripts/monitoring/test_api_monitor.py` | API 监控测试 | `python scripts/monitoring/test_api_monitor.py` |
+| `scripts/monitoring/daily_mapped_model_jwt_e2e.py` | ✅ 每日 E2E：匿名/普通 JWT + 映射模型 message 可用性，结果写入 SQLite | `python scripts/monitoring/daily_mapped_model_jwt_e2e.py` |
+| `scripts/monitoring/daily_mapped_model_schedule_check.py` | ✅ 调度守门：读取 Dashboard 配置，判断是否应触发每日 E2E | `python scripts/monitoring/daily_mapped_model_schedule_check.py` |
 | `scripts/deployment/k5_build_and_test.py` | ✅ K5 CI 管线（双构建 + Newman 测试） | `python scripts/deployment/k5_build_and_test.py` |
 | `scripts/deployment/k5_rollback_drill.py` | K5 回滚演练 | `python scripts/deployment/k5_rollback_drill.py` |
 | `scripts/deployment/k5_security_scanner.py` | K5 安全扫描与报告 | `python scripts/deployment/k5_security_scanner.py` |

@@ -146,6 +146,30 @@ CREATE INDEX IF NOT EXISTS idx_ai_model_daily_usage_date ON ai_model_daily_usage
 CREATE INDEX IF NOT EXISTS idx_ai_model_daily_usage_user ON ai_model_daily_usage(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_model_daily_usage_model ON ai_model_daily_usage(model_key);
 
+-- Daily E2E: mapped model availability (JWT, message-only)
+CREATE TABLE IF NOT EXISTS e2e_mapped_model_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    user_type TEXT NOT NULL, -- anonymous / permanent
+    auth_mode TEXT,
+    prompt_text TEXT,
+    prompt_mode TEXT,
+    result_mode TEXT,
+    models_total INTEGER DEFAULT 0,
+    models_success INTEGER DEFAULT 0,
+    models_failed INTEGER DEFAULT 0,
+    started_at TEXT,
+    finished_at TEXT,
+    duration_ms REAL,
+    status TEXT,
+    error_summary TEXT,
+    results_json TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_e2e_mapped_model_runs_created ON e2e_mapped_model_runs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_e2e_mapped_model_runs_user ON e2e_mapped_model_runs(user_type, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS conversation_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
@@ -223,6 +247,14 @@ CREATE TABLE IF NOT EXISTS llm_app_settings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_llm_app_settings_updated_at ON llm_app_settings(updated_at DESC);
+
+-- Dashboard 配置（本地 SSOT；单行 JSON）
+CREATE TABLE IF NOT EXISTS dashboard_config (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    config_json TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Official Exercise Library snapshots (versioned seed payloads)
 CREATE TABLE IF NOT EXISTS exercise_library_snapshots (

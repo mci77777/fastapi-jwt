@@ -97,6 +97,14 @@ export function getMappedModelsStats(params = {}) {
 }
 
 /**
+ * 获取每日 E2E 映射模型可用性结果
+ * @returns {Promise} E2E 结果
+ */
+export function getE2EMappedModelsStats() {
+  return request.get('/stats/e2e-mapped-models')
+}
+
+/**
  * 获取 API 连通性状态
  * @returns {Promise} API 连通性数据
  */

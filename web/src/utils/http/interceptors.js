@@ -1,4 +1,4 @@
-import { getRefreshToken, getToken, removeToken, setRefreshToken, setToken } from '@/utils'
+import { decodeJWT, getRefreshToken, getToken, removeToken, setRefreshToken, setToken } from '@/utils'
 import { resolveResError } from './helpers'
 import { supabaseRefreshSession } from '@/utils/supabase/auth'
 import { requestLogBegin, requestLogFinish, requestLogGet, requestLogPersistIsEnabled } from './requestLog'
@@ -96,11 +96,8 @@ function shouldRefreshToken(token) {
 
   try {
     // 解码 JWT payload（不验证签名，只读取过期时间）
-    const parts = token.split('.')
-    if (parts.length !== 3) return false
-
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
-    const exp = payload.exp
+    const payload = decodeJWT(token)
+    const exp = payload?.exp
 
     if (!exp) return false
 
@@ -203,6 +200,7 @@ export async function reqResolve(config) {
   // 允许调用方显式覆盖 Authorization（用于 JWT 测试等场景，避免污染全局登录态）
   const explicitAuth = readHeader(config.headers, 'Authorization') || readHeader(config.headers, 'authorization')
   if (explicitAuth) {
+    config.__auth_explicit = true
     console.log(
       `request_id=${readHeader(config.headers, 'X-Request-Id')} action=http_request_auth_override url=${config.url}`
     )
@@ -347,6 +345,23 @@ export async function resReject(error) {
 
   // 修复：检查 HTTP 状态码 401（Token 过期）
   if (status === 401 || data?.code === 401) {
+    if (error?.config?.__auth_explicit) {
+      const detail = data?.detail || {}
+      const message =
+        detail?.message ||
+        detail?.msg ||
+        data?.msg ||
+        error?.message ||
+        (requestId ? `认证失败（request_id=${requestId}）` : '认证失败')
+      const suffix = requestId ? `（request_id=${requestId}）` : ''
+      window.$message?.error(message + suffix, { keepAliveOnHover: true })
+      return Promise.reject({
+        code: detail?.code ?? data?.code ?? 401,
+        message,
+        request_id: requestId,
+        error: data,
+      })
+    }
     try {
       // 清除本地存储
       removeToken()

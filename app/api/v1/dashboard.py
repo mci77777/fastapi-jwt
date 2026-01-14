@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -10,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
 from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
-from app.db import get_sqlite_manager
+from app.db import SQLiteManager, get_sqlite_manager
 from app.auth.jwt_verifier import get_jwt_verifier
 from app.log import logger
 from app.services.dashboard_broker import DashboardBroker
@@ -152,6 +153,7 @@ class DashboardStatsResponse(BaseModel):
     token_usage: Optional[int] = Field(None, description="Token 使用量（后续追加）")
     api_connectivity: Dict[str, Any] = Field(..., description="API 连通性")
     mapped_models: Dict[str, Any] = Field(..., description="映射模型可用性摘要")
+    e2e_mapped_models: Optional[Dict[str, Any]] = Field(None, description="每日 E2E 映射模型可用性")
     jwt_availability: Dict[str, Any] = Field(..., description="JWT 可获取性")
 
 
@@ -415,6 +417,80 @@ async def get_mapped_models_stats(
     }
 
 
+@router.get("/stats/e2e-mapped-models")
+async def get_e2e_mapped_models_stats(
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """获取每日 E2E（映射模型可用性）最近结果。"""
+
+    def _parse_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not row:
+            return None
+        raw_results = row.get("results_json")
+        results: list[dict[str, Any]] = []
+        if isinstance(raw_results, str) and raw_results.strip():
+            try:
+                parsed = json.loads(raw_results)
+                if isinstance(parsed, list):
+                    results = [item for item in parsed if isinstance(item, dict)]
+            except Exception:
+                results = []
+        return {
+            "run_id": row.get("run_id"),
+            "user_type": row.get("user_type"),
+            "auth_mode": row.get("auth_mode"),
+            "prompt_text": row.get("prompt_text"),
+            "prompt_mode": row.get("prompt_mode"),
+            "result_mode": row.get("result_mode"),
+            "models_total": int(row.get("models_total") or 0),
+            "models_success": int(row.get("models_success") or 0),
+            "models_failed": int(row.get("models_failed") or 0),
+            "started_at": row.get("started_at") or row.get("created_at"),
+            "finished_at": row.get("finished_at"),
+            "duration_ms": row.get("duration_ms"),
+            "status": row.get("status"),
+            "error_summary": row.get("error_summary"),
+            "results": results,
+        }
+
+    db = get_sqlite_manager(request.app)
+    latest: dict[str, Any] = {}
+    for user_type in ("anonymous", "permanent"):
+        row = await db.fetchone(
+            """
+            SELECT *
+            FROM e2e_mapped_model_runs
+            WHERE user_type = ?
+            ORDER BY COALESCE(started_at, created_at) DESC
+            LIMIT 1
+            """,
+            [user_type],
+        )
+        parsed = _parse_row(row)
+        if parsed:
+            latest[user_type] = parsed
+
+    total_models = 0
+    total_success = 0
+    total_failed = 0
+    for item in latest.values():
+        if not isinstance(item, dict):
+            continue
+        total_models += int(item.get("models_total") or 0)
+        total_success += int(item.get("models_success") or 0)
+        total_failed += int(item.get("models_failed") or 0)
+
+    summary = {
+        "models_total": total_models,
+        "models_success": total_success,
+        "models_failed": total_failed,
+        "success_rate": round((total_success / total_models) * 100.0, 2) if total_models > 0 else 0.0,
+    }
+
+    return {"code": 200, "data": {"latest": latest, "summary": summary}, "msg": "success"}
+
+
 @router.get("/stats/api-connectivity")
 async def get_api_connectivity(
     request: Request,
@@ -557,6 +633,13 @@ class DashboardConfig(BaseModel):
     websocket_push_interval: int = Field(10, ge=1, le=300, description="WebSocket 推送间隔（秒）")
     http_poll_interval: int = Field(30, ge=5, le=600, description="HTTP 轮询间隔（秒）")
     log_retention_size: int = Field(100, ge=10, le=1000, description="日志保留条数")
+    e2e_daily_time: str = Field("05:00", description="每日 E2E 启动时间（HH:MM）", pattern=r"^\d{2}:\d{2}$")
+    e2e_prompt_text: str = Field(
+        "每日测试连通性和tools工具可用性",
+        min_length=1,
+        max_length=500,
+        description="E2E 默认请求语句（可调整）",
+    )
 
 
 class DashboardConfigResponse(BaseModel):
@@ -564,6 +647,38 @@ class DashboardConfigResponse(BaseModel):
 
     config: DashboardConfig = Field(..., description="当前配置")
     updated_at: Optional[str] = Field(None, description="最后更新时间")
+
+
+async def _get_dashboard_config_payload(db: SQLiteManager) -> dict[str, Any]:
+    default_config = DashboardConfig(
+        websocket_push_interval=10,
+        http_poll_interval=30,
+        log_retention_size=100,
+        e2e_daily_time="05:00",
+        e2e_prompt_text="每日测试连通性和tools工具可用性",
+    ).dict()
+
+    row = await db.fetchone(
+        "SELECT config_json, updated_at FROM dashboard_config WHERE id = 1",
+        (),
+    )
+    updated_at = row.get("updated_at") if row else None
+    merged = dict(default_config)
+    if row:
+        raw = row.get("config_json")
+        if isinstance(raw, str) and raw.strip():
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    merged.update(parsed)
+            except Exception:
+                pass
+
+    try:
+        validated = DashboardConfig(**merged)
+    except Exception:
+        validated = DashboardConfig(**default_config)
+    return {"config": validated.dict(), "updated_at": updated_at}
 
 
 @router.get("/stats/config")
@@ -580,19 +695,8 @@ async def get_dashboard_config(
     Returns:
         Dashboard 配置（包装在统一响应格式中）
     """
-    # 从 app.state 获取配置（如果不存在则使用默认值）
-    if not hasattr(request.app.state, "dashboard_config"):
-        # 显式传入默认值，避免 Pylance 对 pydantic v2 __init__ 签名的误判
-        request.app.state.dashboard_config = {
-            "config": DashboardConfig(
-                websocket_push_interval=10,
-                http_poll_interval=30,
-                log_retention_size=100,
-            ).dict(),
-            "updated_at": None,
-        }
-
-    config_data = request.app.state.dashboard_config
+    db = get_sqlite_manager(request.app)
+    config_data = await _get_dashboard_config_payload(db)
     return {"code": 200, "data": config_data, "msg": "success"}
 
 
@@ -619,12 +723,20 @@ async def update_dashboard_config(
             detail={"code": "forbidden", "message": "Anonymous users cannot update config"},
         )
 
-    # 更新配置
-    request.app.state.dashboard_config = {
-        "config": config.dict(),
-        "updated_at": datetime.utcnow().isoformat(),
-    }
+    db = get_sqlite_manager(request.app)
+    payload = config.dict()
+    await db.execute(
+        """
+        INSERT INTO dashboard_config (id, config_json, updated_at)
+        VALUES (1, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(id) DO UPDATE SET
+          config_json = excluded.config_json,
+          updated_at = CURRENT_TIMESTAMP
+        """,
+        (json.dumps(payload, ensure_ascii=False),),
+    )
 
-    logger.info("Dashboard config updated by user_id=%s config=%s", current_user.uid, config.dict())
+    logger.info("Dashboard config updated by user_id=%s config=%s", current_user.uid, payload)
 
-    return {"code": 200, "data": request.app.state.dashboard_config, "msg": "success"}
+    config_data = await _get_dashboard_config_payload(db)
+    return {"code": 200, "data": config_data, "msg": "success"}

@@ -2,7 +2,7 @@
 
 本目录存放 GymBro FastAPI + Vue3 项目的运维脚本、验证工具与自动化套件。
 
-**最后更新**: 2025-11-03
+**最后更新**: 2026-01-14
 **重组状态**: ✅ 已完成（删除 21 个重复脚本，减少 35% 冗余）
 
 ## 📁 目录结构
@@ -50,9 +50,11 @@ scripts/
 │   ├── verify_phase4_ui.py            # Phase 4 UI 验证
 │   └── visual_verification_phase4.py  # Phase 4 可视化验证
 │
-├── monitoring/                 # 监控脚本（2 个脚本）
+├── monitoring/                 # 监控脚本（4 个脚本）
 │   ├── smoke_test.py                  # 冒烟测试（SSOT）
-│   └── test_api_monitor.py            # API 监控测试
+│   ├── test_api_monitor.py            # API 监控测试
+│   ├── daily_mapped_model_jwt_e2e.py  # 每日 E2E：匿名/普通 JWT + 映射模型可用性
+│   └── daily_mapped_model_schedule_check.py  # 调度守门：读取 Dashboard 配置
 │
 ├── utils/                      # 工具脚本（4 个脚本）
 │   ├── analyze_jwt.py                 # JWT 分析工具
@@ -92,6 +94,9 @@ python scripts/monitoring/smoke_test.py
 
 # 4. 真实用户 JWT + /messages + SSE（本地闭环；复用 e2e/anon_jwt_sse/.env.local，不打印密钥）
 bash scripts/dev/run_local_real_user_e2e.sh
+
+# 5. 每日 E2E：匿名/普通 JWT + 映射模型可用性（写入 SQLite）
+bash scripts/dev/run_daily_mapped_model_e2e.sh
 ```
 
 ### 开发测试

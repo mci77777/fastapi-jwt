@@ -49,6 +49,7 @@ class MetricsCollector:
             "token_usage": await self._get_token_usage(time_window),
             "api_connectivity": await self._get_api_connectivity(),
             "mapped_models": await self._get_mapped_models_summary(),
+            "e2e_mapped_models": await self._get_e2e_mapped_models_summary(),
             "jwt_availability": await self._get_jwt_availability(),
         }
 
@@ -193,6 +194,76 @@ class MetricsCollector:
             "available": available,
             "unavailable": unavailable,
             "availability_rate": availability_rate,
+        }
+
+    async def _get_e2e_mapped_models_summary(self) -> Dict[str, Any]:
+        """读取最新 E2E 结果摘要（每日映射模型可用性）。"""
+
+        def _parse_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
+            if not row:
+                return None
+            raw_results = row.get("results_json")
+            results: list[dict[str, Any]] = []
+            if isinstance(raw_results, str) and raw_results.strip():
+                try:
+                    parsed = json.loads(raw_results)
+                    if isinstance(parsed, list):
+                        results = [item for item in parsed if isinstance(item, dict)]
+                except Exception:
+                    results = []
+            return {
+                "run_id": row.get("run_id"),
+                "user_type": row.get("user_type"),
+                "auth_mode": row.get("auth_mode"),
+                "prompt_text": row.get("prompt_text"),
+                "prompt_mode": row.get("prompt_mode"),
+                "result_mode": row.get("result_mode"),
+                "models_total": int(row.get("models_total") or 0),
+                "models_success": int(row.get("models_success") or 0),
+                "models_failed": int(row.get("models_failed") or 0),
+                "started_at": row.get("started_at") or row.get("created_at"),
+                "finished_at": row.get("finished_at"),
+                "duration_ms": row.get("duration_ms"),
+                "status": row.get("status"),
+                "error_summary": row.get("error_summary"),
+                "results": results,
+            }
+
+        latest: dict[str, Any] = {}
+        for user_type in ("anonymous", "permanent"):
+            row = await self._db.fetchone(
+                """
+                SELECT *
+                FROM e2e_mapped_model_runs
+                WHERE user_type = ?
+                ORDER BY COALESCE(started_at, created_at) DESC
+                LIMIT 1
+                """,
+                [user_type],
+            )
+            parsed = _parse_row(row)
+            if parsed:
+                latest[user_type] = parsed
+
+        total_models = 0
+        total_success = 0
+        total_failed = 0
+        for item in latest.values():
+            if not isinstance(item, dict):
+                continue
+            total_models += int(item.get("models_total") or 0)
+            total_success += int(item.get("models_success") or 0)
+            total_failed += int(item.get("models_failed") or 0)
+
+        success_rate = round((total_success / total_models) * 100.0, 2) if total_models > 0 else 0.0
+        return {
+            "latest": latest,
+            "summary": {
+                "models_total": total_models,
+                "models_success": total_success,
+                "models_failed": total_failed,
+                "success_rate": success_rate,
+            },
         }
 
     async def _get_api_connectivity(self) -> Dict[str, Any]:
