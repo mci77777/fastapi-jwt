@@ -41,6 +41,7 @@ export const listMailUsers = (params = {}) => request.get('/llm/tests/mail-users
 export const refreshMailUserToken = (testUserId, data = {}) =>
   request.post(`/llm/tests/mail-users/${testUserId}/refresh`, data)
 export const fetchActivePromptsSnapshot = () => request.get('/llm/tests/active-prompts')
+export const fetchActiveAgentPromptsSnapshot = () => request.get('/llm/tests/active-agent-prompts')
 
 // 消息与对话相关
 /**
@@ -148,6 +149,15 @@ export const createMessage = ({
  * @param {string|null} [options.conversationId] - 会话 ID（UUID）
  * @param {Object} [options.metadata] - 扩展元信息（用于对账/调试）
  * @param {('xml_plaintext'|'raw_passthrough'|'auto')} [options.resultMode] - SSE 输出模式
+ * @param {('server'|'passthrough')} [options.promptMode='server'] - prompt 策略：后端 SSOT 或透传 OpenAI messages
+ * @param {Object} [options.openai] - OpenAI 兼容字段（仅 passthrough 生效）
+ * @param {Array<Object>} [options.openai.messages]
+ * @param {string} [options.openai.system_prompt]
+ * @param {Array<any>} [options.openai.tools]
+ * @param {any} [options.openai.tool_choice]
+ * @param {number} [options.openai.temperature]
+ * @param {number} [options.openai.top_p]
+ * @param {number} [options.openai.max_tokens]
  * @param {string} [options.requestId] - X-Request-Id
  * @param {string} [options.accessToken] - 覆盖 Authorization（用于 JWT 测试页）
  * @returns {Promise<{run_id: string, message_id: string, conversation_id: string}>}
@@ -158,6 +168,8 @@ export const createAgentRun = ({
   conversationId,
   metadata = {},
   resultMode,
+  promptMode = 'server',
+  openai = {},
   enableExerciseSearch,
   exerciseTopK,
   enableWebSearch,
@@ -179,6 +191,18 @@ export const createAgentRun = ({
       timestamp: new Date().toISOString(),
       ...metadata,
     },
+  }
+
+  const resolvedPromptMode = String(promptMode || '').trim() === 'passthrough' ? 'passthrough' : 'server'
+  if (resolvedPromptMode === 'passthrough') {
+    payload.skip_prompt = true
+    if (Array.isArray(openai?.messages)) payload.messages = openai.messages
+    if (openai?.system_prompt !== undefined) payload.system_prompt = openai.system_prompt
+    if (openai?.tools !== undefined) payload.tools = openai.tools
+    if (openai?.tool_choice !== undefined) payload.tool_choice = openai.tool_choice
+    if (openai?.temperature !== undefined) payload.temperature = openai.temperature
+    if (openai?.top_p !== undefined) payload.top_p = openai.top_p
+    if (openai?.max_tokens !== undefined) payload.max_tokens = openai.max_tokens
   }
 
   // SSE 输出模式（与 /messages 保持一致；兼容旧值）

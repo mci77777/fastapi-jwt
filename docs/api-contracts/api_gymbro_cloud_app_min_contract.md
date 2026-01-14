@@ -79,6 +79,12 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
 - `xml_plaintext`：服务端解析上游响应并以 `event: content_delta` 流式输出，同时做 ThinkingML 最小纠错/标签归一化，保证结构契约稳定（允许包含 `<final>...</final>` 等 XML 标签）。
 - `auto`：服务端自动判定（优先 `xml_plaintext`；若无法产出 `content_delta` 则降级为 `raw_passthrough`；必要时可能产生 `event: upstream_raw` 诊断帧）。
 
+### Prompt 组装模式（SSOT）
+
+- Dashboard 配置 `llm_app_settings.prompt_mode`（`/api/v1/llm/app/config`）为唯一来源。
+- `server`（默认）：后端注入系统 Prompt/Tools（忽略客户端的 `system_prompt` 与 `tools`）。
+- `passthrough`：后端跳过默认注入，按客户端请求透传（等价于强制 `skip_prompt=true`）。
+
 ### 权限等级与配额（SSOT）
 
 当前仅区分 **2 个权限等级**：

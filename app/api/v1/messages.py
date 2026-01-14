@@ -59,6 +59,29 @@ async def _get_llm_app_default_result_mode(request: Request) -> str:
     return mode
 
 
+async def _get_llm_app_prompt_mode(request: Request) -> str:
+    """App 默认 Prompt 组装模式（SSOT：以 llm_app_settings.prompt_mode 为准）。"""
+
+    db = get_sqlite_manager(request.app)
+    row = await db.fetchone(
+        "SELECT value_json FROM llm_app_settings WHERE key = ? LIMIT 1",
+        ("prompt_mode",),
+    )
+
+    mode = ""
+    raw = row.get("value_json") if isinstance(row, dict) else None
+    if raw is not None:
+        try:
+            value = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            value = raw
+        mode = str(value or "").strip().lower()
+
+    if mode not in {"server", "passthrough"}:
+        mode = "server"
+    return mode
+
+
 def _normalize_quota_model_key(model_name: str) -> str:
     raw = str(model_name or "").strip().lower()
     if ":" in raw:
@@ -388,6 +411,8 @@ async def create_message(
     )
     if not requested_result_mode:
         requested_result_mode = await _get_llm_app_default_result_mode(request)
+    prompt_mode = await _get_llm_app_prompt_mode(request)
+    enforced_skip_prompt = prompt_mode == "passthrough"
 
     if is_payload_mode:
         dialect = str(payload.dialect or "").strip()
@@ -504,11 +529,15 @@ async def create_message(
             if isinstance(t, int):
                 normalized_max_tokens = t
 
+        if not enforced_skip_prompt:
+            normalized_system_prompt = None
+            normalized_tools = None
+
         message_input = AIMessageInput(
             text=payload.text,
             conversation_id=conversation_id,
             metadata=payload.metadata,
-            skip_prompt=payload.skip_prompt,
+            skip_prompt=enforced_skip_prompt,
             result_mode=str(requested_result_mode),
             model=requested_model,
             messages=normalized_messages,

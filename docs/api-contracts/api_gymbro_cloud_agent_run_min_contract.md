@@ -14,6 +14,7 @@
 - 认证：除公开端点外均要求 `Authorization: Bearer <jwt>`
 - 命名：服务端字段为 `snake_case`
 - SSE：事件 `data` 会自动带 `message_id` 与 `request_id`（若请求侧传 `X-Request-Id`，则用于对账）
+- Prompt（SSOT）：Agent Run 默认使用 `agent_system` + `agent_tools`（可在 Dashboard 的 Prompt 管理页配置/启用）
 
 ---
 

@@ -27,9 +27,11 @@ import {
   listMailUsers,
   refreshMailUserToken,
   fetchActivePromptsSnapshot,
+  fetchActiveAgentPromptsSnapshot,
   createMessage,
   createAgentRun,
 } from '@/api/aiModelSuite'
+import api from '@/api'
 import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
 import { validateThinkingMLV45 } from '@/utils/common'
 import { requestLogAppendEvent } from '@/utils/http/requestLog'
@@ -235,6 +237,8 @@ const activeChatTab = ref('agent') // agent | messages
 const promptMode = ref('server') // server | passthrough
 const DEFAULT_EXTRA_SYSTEM_PROMPT = `请严格按原样输出 Strict-XML（ThinkingML v4.5）：\n1) 必须输出且仅输出一个 XML 文本：<thinking>...</thinking> 紧接 <final>...</final>\n2) 只允许标签：think/serp/thinking/phase/title/final（phase 必须有 id=\"1..N\" 且递增）\n3) <final> 内容最后必须追加：\n<!-- <serp_queries>\n[\"q1\",\"q2\",\"q3\"]\n</serp_queries> -->\n4) 不要解释协议，不要使用 Markdown 代码块包裹 XML；若无法满足，输出 <<ParsingError>>`
 const extraSystemPrompt = ref('')
+const agentPromptMode = ref('server') // server | passthrough
+const agentExtraSystemPrompt = ref('')
 const resultMode = ref('xml_plaintext') // xml_plaintext | raw_passthrough | auto
 const toolChoice = ref('') // '' | none | auto（OpenAI tool_choice）
 const autoValidateOnCompleted = ref(true)
@@ -251,23 +255,113 @@ const agentExerciseTopK = ref(5)
 const agentDisableWebSearch = ref(false)
 const agentWebSearchTopK = ref(5)
 
+// LLM App Config（SSOT：/api/v1/llm/app/config）
+const appConfigLoading = ref(false)
+const appConfigError = ref('')
+const dashboardDefaultResultMode = ref('')
+const dashboardPromptMode = ref('server')
+const dashboardWebSearchEnabled = ref(false)
+const dashboardWebSearchProvider = ref('exa')
+const dashboardWebSearchExaApiKeyMasked = ref('')
+const dashboardWebSearchExaApiKeySource = ref('none')
+const didInitResultModeFromDashboard = ref(false)
+const didInitPromptModeFromDashboard = ref(false)
+
+async function loadAppConfig() {
+  appConfigLoading.value = true
+  appConfigError.value = ''
+  try {
+    const res = await api.getLlmAppConfig()
+    const data = res?.data?.data || res?.data || {}
+    const mode = String(data?.default_result_mode || '').trim()
+    const normalizedMode = ['xml_plaintext', 'raw_passthrough', 'auto'].includes(mode)
+      ? mode
+      : 'raw_passthrough'
+    dashboardDefaultResultMode.value = normalizedMode
+
+    const pm = String(data?.prompt_mode || '').trim().toLowerCase()
+    const normalizedPromptMode = pm === 'passthrough' ? 'passthrough' : 'server'
+    dashboardPromptMode.value = normalizedPromptMode
+
+    dashboardWebSearchEnabled.value = Boolean(data?.web_search_enabled)
+    dashboardWebSearchProvider.value = String(data?.web_search_provider || 'exa').trim().toLowerCase() || 'exa'
+    dashboardWebSearchExaApiKeyMasked.value = String(data?.web_search_exa_api_key_masked || '').trim()
+    dashboardWebSearchExaApiKeySource.value = String(data?.web_search_exa_api_key_source || 'none').trim()
+
+    // 默认跟随 Dashboard（避免 JWT 页与 Dashboard 漂移）
+    if (!didInitResultModeFromDashboard.value && normalizedMode) {
+      resultMode.value = normalizedMode
+      didInitResultModeFromDashboard.value = true
+    }
+    if (!didInitPromptModeFromDashboard.value && normalizedPromptMode) {
+      promptMode.value = normalizedPromptMode
+      agentPromptMode.value = normalizedPromptMode
+      didInitPromptModeFromDashboard.value = true
+    }
+  } catch (error) {
+    appConfigError.value = error?.message || '加载 App 配置失败'
+  } finally {
+    appConfigLoading.value = false
+  }
+}
+
 // Dashboard active prompts（只读预览，避免 JWT 页与 Dashboard 漂移）
 const activePromptsLoading = ref(false)
 const activePromptsSnapshot = ref(null)
 const activePromptsError = ref('')
 
+const activeAgentPromptsSnapshot = ref(null)
+const activeAgentPromptsError = ref('')
+
 const effectiveSystemMessagePreview = computed(() =>
   String(activePromptsSnapshot.value?.effective_system_message || '').trim()
 )
+const effectiveAgentSystemMessagePreview = computed(() =>
+  String(activeAgentPromptsSnapshot.value?.effective_system_message || '').trim()
+)
+const promptsSnapshotForPreview = computed(() =>
+  activeChatTab.value === 'agent' ? activeAgentPromptsSnapshot.value : activePromptsSnapshot.value
+)
+const promptsErrorForPreview = computed(() =>
+  activeChatTab.value === 'agent' ? activeAgentPromptsError.value : activePromptsError.value
+)
+const effectiveSystemMessageForPreview = computed(() =>
+  activeChatTab.value === 'agent' ? effectiveAgentSystemMessagePreview.value : effectiveSystemMessagePreview.value
+)
+
+const toolChoiceRisk = computed(() => String(toolChoice.value || '').trim() === 'auto')
+const agentWebSearchStatus = computed(() => {
+  const enabled = Boolean(dashboardWebSearchEnabled.value)
+  const masked = String(dashboardWebSearchExaApiKeyMasked.value || '').trim()
+  const keySource = String(dashboardWebSearchExaApiKeySource.value || 'none').trim() || 'none'
+  const requestDisabled = Boolean(agentDisableWebSearch.value)
+  return {
+    enabled,
+    provider: String(dashboardWebSearchProvider.value || 'exa').trim() || 'exa',
+    keyMasked: masked,
+    keySource,
+    hasKey: !!masked,
+    requestDisabled,
+    willRun: enabled && !requestDisabled,
+  }
+})
 
 async function loadActivePrompts() {
   activePromptsLoading.value = true
   activePromptsError.value = ''
+  activeAgentPromptsError.value = ''
   try {
-    const res = await fetchActivePromptsSnapshot()
-    activePromptsSnapshot.value = res?.data ?? null
+    const [chatRes, agentRes] = await Promise.allSettled([
+      fetchActivePromptsSnapshot(),
+      fetchActiveAgentPromptsSnapshot(),
+    ])
+    if (chatRes.status === 'fulfilled') activePromptsSnapshot.value = chatRes.value?.data ?? null
+    else activePromptsError.value = chatRes.reason?.message || '加载 active prompts 失败'
+
+    if (agentRes.status === 'fulfilled') activeAgentPromptsSnapshot.value = agentRes.value?.data ?? null
+    else activeAgentPromptsError.value = agentRes.reason?.message || '加载 agent prompts 失败'
   } catch (error) {
-    activePromptsError.value = error?.message || '加载 active prompts 失败'
+    activePromptsError.value = error?.message || '加载 prompts 失败'
   } finally {
     activePromptsLoading.value = false
   }
@@ -312,10 +406,35 @@ function handleSwitchToServerAndClearPrompt() {
   extraSystemPrompt.value = ''
 }
 
+function handleSwitchAgentToServerAndClearPrompt() {
+  agentPromptMode.value = 'server'
+  agentExtraSystemPrompt.value = ''
+}
+
+function handleFillAgentExtraPromptFromDashboard() {
+  const text = effectiveAgentSystemMessagePreview.value
+  if (!text) {
+    message.warning('当前无可用的 Dashboard agent system message（请先在 Prompt 管理页启用）')
+    return
+  }
+  agentPromptMode.value = 'passthrough'
+  agentExtraSystemPrompt.value = text
+  message.success('已填充为 Dashboard agent 有效 system message（包含 agent tools prompt patch）')
+}
+
+function handleFillAgentExtraPromptTemplate() {
+  agentPromptMode.value = 'passthrough'
+  agentExtraSystemPrompt.value = DEFAULT_EXTRA_SYSTEM_PROMPT
+  message.success('已填充默认 Strict-XML 模板（用于 agent passthrough）')
+}
+
 function handleResetPromptDefaults() {
-  promptMode.value = 'server'
+  promptMode.value = dashboardPromptMode.value || 'server'
   extraSystemPrompt.value = ''
+  agentPromptMode.value = dashboardPromptMode.value || 'server'
+  agentExtraSystemPrompt.value = ''
   toolChoice.value = ''
+  resultMode.value = dashboardDefaultResultMode.value || 'xml_plaintext'
   agentEnableExerciseSearch.value = true
   agentExerciseTopK.value = 5
   agentDisableWebSearch.value = false
@@ -436,13 +555,33 @@ async function handleSendAgentRun() {
     const createRequestId = genRequestId('web-agent-create')
     lastCreateRequestId.value = createRequestId
 
+    const resolvedPromptMode = agentPromptMode.value === 'passthrough' ? 'passthrough' : 'server'
+    const userText = chatText.value.trim()
+    if (resolvedPromptMode === 'passthrough' && !String(agentExtraSystemPrompt.value || '').trim()) {
+      message.warning('agent passthrough 需要提供 system message（建议“填充 Dashboard agent system message”）')
+      return
+    }
+
+    const openai =
+      resolvedPromptMode === 'passthrough'
+        ? {
+            model: selectedModel.value,
+            messages: [
+              { role: 'system', content: String(agentExtraSystemPrompt.value || '').trim() || undefined },
+              { role: 'user', content: userText },
+            ].filter((m) => m && m.content),
+          }
+        : undefined
+
     const created = await createAgentRun({
       model: selectedModel.value,
-      text: chatText.value.trim(),
+      text: userText,
       conversationId: conversationId.value || null,
       metadata: {
         scenario: 'ai_jwt_agent_run_sse',
         model: selectedModel.value,
+        prompt_mode: resolvedPromptMode,
+        extra_prompt_len: resolvedPromptMode === 'passthrough' ? String(agentExtraSystemPrompt.value || '').trim().length : 0,
         result_mode: resultMode.value,
         enable_exercise_search: agentEnableExerciseSearch.value,
         exercise_top_k: agentExerciseTopK.value,
@@ -450,6 +589,8 @@ async function handleSendAgentRun() {
         web_search_top_k: agentWebSearchTopK.value,
       },
       resultMode: resultMode.value,
+      promptMode: resolvedPromptMode,
+      openai,
       enableExerciseSearch: agentEnableExerciseSearch.value,
       exerciseTopK: agentExerciseTopK.value,
       enableWebSearch: agentDisableWebSearch.value ? false : undefined,
@@ -634,6 +775,7 @@ async function streamSse(msgId, convId, requestId, { kind = 'messages' } = {}) {
 onMounted(() => {
   loadMailUsers()
   loadAppModels()
+  loadAppConfig()
   loadActivePrompts()
 })
 
@@ -898,6 +1040,7 @@ async function handleRunSseProbe() {
           ]"
           style="min-width: 220px"
         />
+        <NTag size="small" type="info">prompt_mode: {{ dashboardPromptMode }}</NTag>
         <NCheckbox v-model:checked="autoValidateOnCompleted">completed 自动校验 ThinkingML</NCheckbox>
         <NButton tertiary size="small" :disabled="!aiResponseText" @click="handleValidateThinkingML"
           >立即校验</NButton
@@ -909,27 +1052,32 @@ async function handleRunSseProbe() {
         <NButton tertiary size="small" :loading="activePromptsLoading" @click="loadActivePrompts"
           >刷新 Prompts（SSOT）</NButton
         >
+        <NButton tertiary size="small" :loading="appConfigLoading" @click="loadAppConfig">刷新 App Config</NButton>
         <NButton tertiary size="small" @click="handleResetPromptDefaults">恢复默认（SSOT）</NButton>
       </NSpace>
 
-      <NAlert v-if="activePromptsError" type="error" class="mt-2">{{ activePromptsError }}</NAlert>
-      <NCard size="small" class="mt-3" title="Dashboard Prompt/Tools（SSOT 预览）">
+      <NAlert v-if="promptsErrorForPreview" type="error" class="mt-2">{{ promptsErrorForPreview }}</NAlert>
+      <NCard
+        size="small"
+        class="mt-3"
+        :title="activeChatTab === 'agent' ? 'Agent Prompt/Tools（SSOT 预览）' : 'Messages Prompt/Tools（SSOT 预览）'"
+      >
         <NSpace align="center" wrap>
           <NText depth="3"
-            >system: {{ activePromptsSnapshot?.system_prompt?.name || '--' }}#{{
-              activePromptsSnapshot?.system_prompt?.id || '--'
+            >system: {{ promptsSnapshotForPreview?.system_prompt?.name || '--' }}#{{
+              promptsSnapshotForPreview?.system_prompt?.id || '--'
             }}</NText
           >
           <NText depth="3"
-            >tools: {{ activePromptsSnapshot?.tools_prompt?.name || '--' }}#{{
-              activePromptsSnapshot?.tools_prompt?.id || '--'
+            >tools: {{ promptsSnapshotForPreview?.tools_prompt?.name || '--' }}#{{
+              promptsSnapshotForPreview?.tools_prompt?.id || '--'
             }}</NText
           >
-          <NText depth="3">tools_schema: {{ activePromptsSnapshot?.tools_schema_count ?? 0 }}</NText>
+          <NText depth="3">tools_schema: {{ promptsSnapshotForPreview?.tools_schema_count ?? 0 }}</NText>
         </NSpace>
         <NInput
-          v-if="effectiveSystemMessagePreview"
-          :value="effectiveSystemMessagePreview"
+          v-if="effectiveSystemMessageForPreview"
+          :value="effectiveSystemMessageForPreview"
           type="textarea"
           :rows="6"
           readonly
@@ -940,6 +1088,39 @@ async function handleRunSseProbe() {
       <NTabs v-model:value="activeChatTab" type="line" animated class="mt-3">
         <NTabPane name="agent" tab="Agent（后端工具）" display-directive="show">
           <NSpace align="center" wrap>
+            <NSelect
+              v-model:value="agentPromptMode"
+              :options="[
+                { label: '后端组装 prompt（server）', value: 'server' },
+                { label: '透传 prompt（passthrough）', value: 'passthrough' },
+              ]"
+              style="min-width: 240px"
+            />
+            <NButton tertiary size="small" @click="handleSwitchAgentToServerAndClearPrompt"
+              >切回 server + 清空</NButton
+            >
+            <NButton tertiary size="small" @click="handleFillAgentExtraPromptFromDashboard"
+              >填充 Dashboard agent system message</NButton
+            >
+            <NButton tertiary size="small" @click="handleFillAgentExtraPromptTemplate"
+              >填充默认 Strict-XML 模板</NButton
+            >
+            <NText v-if="agentPromptMode === 'server'" depth="3">server 模式完全跟随后端 SSOT</NText>
+          </NSpace>
+
+          <NForm label-placement="left" label-width="100" class="mt-3">
+            <NFormItem label="附加 Prompt">
+              <NInput
+                v-model:value="agentExtraSystemPrompt"
+                type="textarea"
+                :rows="4"
+                :disabled="agentPromptMode === 'server'"
+                placeholder="agent passthrough 模式下作为 system message 发送（建议点击“填充 Dashboard agent system message”）"
+              />
+            </NFormItem>
+          </NForm>
+
+          <NSpace align="center" wrap class="mt-3">
             <NCheckbox v-model:checked="agentEnableExerciseSearch">动作库检索</NCheckbox>
             <NInputNumber
               v-model:value="agentExerciseTopK"
@@ -949,7 +1130,7 @@ async function handleRunSseProbe() {
               size="small"
               style="width: 120px"
             />
-            <NCheckbox v-model:checked="agentDisableWebSearch">禁用 Web 搜索（仅请求级）</NCheckbox>
+            <NCheckbox v-model:checked="agentDisableWebSearch">请求级禁用 Web 搜索</NCheckbox>
             <NInputNumber
               v-model:value="agentWebSearchTopK"
               :min="1"
@@ -959,11 +1140,25 @@ async function handleRunSseProbe() {
               :disabled="agentDisableWebSearch"
               style="width: 120px"
             />
-            <NText depth="3">Agent 固定使用后端 prompt（server）</NText>
+            <NTag
+              size="small"
+              :type="agentWebSearchStatus.willRun ? (agentWebSearchStatus.hasKey ? 'success' : 'warning') : 'default'"
+            >
+              web_search: {{ agentWebSearchStatus.willRun ? 'will_run' : 'off' }}
+            </NTag>
+            <NText depth="3" v-if="agentWebSearchStatus.enabled">
+              exa_key: {{ dashboardWebSearchExaApiKeyMasked || 'none' }} ({{ dashboardWebSearchExaApiKeySource }})
+            </NText>
           </NSpace>
 
+          <NAlert v-if="appConfigError" type="error" :bordered="false" class="mt-2">
+            {{ appConfigError }}
+          </NAlert>
+
           <NAlert type="info" :bordered="false" class="mt-2">
-            Web 搜索是否启用/Key 来源以「系统 → AI」为主；此处仅提供请求级关闭（控成本）。
+            Dashboard Web 搜索：{{ agentWebSearchStatus.enabled ? 'ON' : 'OFF' }} / provider={{
+              agentWebSearchStatus.provider
+            }}。开启/Key 请到「系统 → AI」配置；此页仅提供请求级关闭（控成本）。
           </NAlert>
 
           <NForm label-placement="left" label-width="100" class="mt-3">
@@ -1009,6 +1204,11 @@ async function handleRunSseProbe() {
             >
             <NText v-if="promptMode === 'server'" depth="3">server 模式完全跟随后端 SSOT</NText>
           </NSpace>
+
+          <NAlert v-if="toolChoiceRisk" type="warning" :bordered="false" class="mt-2">
+            提示：当前后端不执行 tool_calls。若 tool_choice=auto 且 tools schema 下发，上游可能返回 tool_calls 导致 reply 不可用/ThinkingML 校验失败。
+            建议用「Agent（后端工具）」来跑 Web 搜索链路。
+          </NAlert>
 
           <NForm label-placement="left" label-width="100" class="mt-3">
             <NFormItem label="附加 Prompt">

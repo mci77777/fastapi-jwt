@@ -3,14 +3,14 @@
     <n-space vertical :size="12">
       <n-space align="center" justify="space-between">
         <n-text depth="3">Prompt 模式</n-text>
-        <n-select
-          v-model:value="promptMode"
-          :options="promptModeOptions"
-          :disabled="loading"
-          size="small"
-          style="min-width: 180px"
-          @update:value="handlePromptModeChange"
-        />
+      <n-select
+        v-model:value="promptMode"
+        :options="promptModeOptions"
+        :disabled="loading || promptModeLoading || promptModeSaving"
+        size="small"
+        style="min-width: 180px"
+        @update:value="handlePromptModeChange"
+      />
       </n-space>
 
       <n-alert v-if="promptMode === 'passthrough'" type="info" :show-icon="false">
@@ -37,6 +37,24 @@
             @update:value="handlePromptChange"
           />
         </n-tab-pane>
+        <n-tab-pane name="agent_system" tab="Agent System">
+          <n-select
+            v-model:value="selectedAgentSystemPromptId"
+            :options="agentSystemPromptOptions"
+            :loading="loading"
+            placeholder="选择 Agent System Prompt"
+            @update:value="handlePromptChange"
+          />
+        </n-tab-pane>
+        <n-tab-pane name="agent_tools" tab="Agent Tools">
+          <n-select
+            v-model:value="selectedAgentToolsPromptId"
+            :options="agentToolsPromptOptions"
+            :loading="loading"
+            placeholder="选择 Agent Tools Prompt"
+            @update:value="handlePromptChange"
+          />
+        </n-tab-pane>
       </n-tabs>
 
       <!-- 当前 Prompt 详情 -->
@@ -50,7 +68,15 @@
           </n-tag>
           <n-tag v-if="currentPrompt.tools_json" type="info" size="small"> Tools 已配置 </n-tag>
           <n-tag v-if="promptType" type="warning" size="small">
-            {{ promptType === 'system' ? 'System' : 'Tools' }}
+            {{
+              promptType === 'system'
+                ? 'System'
+                : promptType === 'tools'
+                  ? 'Tools'
+                  : promptType === 'agent_system'
+                    ? 'Agent System'
+                    : 'Agent Tools'
+            }}
           </n-tag>
         </n-space>
       </n-space>
@@ -62,6 +88,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
+import api from '@/api'
 
 defineProps({
   compact: { type: Boolean, default: false },
@@ -76,8 +103,11 @@ const activeTab = ref('system')
 const loading = computed(() => promptsLoading.value)
 const selectedSystemPromptId = ref(null)
 const selectedToolsPromptId = ref(null)
-const PROMPT_MODE_KEY = 'dashboard_prompt_mode'
+const selectedAgentSystemPromptId = ref(null)
+const selectedAgentToolsPromptId = ref(null)
 const promptMode = ref('server') // 'server' | 'passthrough'
+const promptModeLoading = ref(false)
+const promptModeSaving = ref(false)
 const promptModeOptions = [
   { label: '不透传（后端组装/注入）', value: 'server' },
   { label: '透传（跳过后端默认注入）', value: 'passthrough' },
@@ -90,7 +120,12 @@ const promptModeOptions = [
  */
 function getPromptType(prompt) {
   if (!prompt) return null
-  if (prompt.prompt_type === 'system' || prompt.prompt_type === 'tools') {
+  if (
+    prompt.prompt_type === 'system' ||
+    prompt.prompt_type === 'tools' ||
+    prompt.prompt_type === 'agent_system' ||
+    prompt.prompt_type === 'agent_tools'
+  ) {
     return prompt.prompt_type
   }
   if (prompt.tools_json && Object.keys(prompt.tools_json).length > 0) {
@@ -119,8 +154,33 @@ const toolsPromptOptions = computed(() => {
     }))
 })
 
+const agentSystemPromptOptions = computed(() => {
+  return prompts.value
+    .filter((p) => getPromptType(p) === 'agent_system')
+    .map((prompt) => ({
+      label: prompt.name,
+      value: prompt.id,
+    }))
+})
+
+const agentToolsPromptOptions = computed(() => {
+  return prompts.value
+    .filter((p) => getPromptType(p) === 'agent_tools')
+    .map((prompt) => ({
+      label: prompt.name,
+      value: prompt.id,
+    }))
+})
+
 const currentPrompt = computed(() => {
-  const id = activeTab.value === 'tools' ? selectedToolsPromptId.value : selectedSystemPromptId.value
+  const id =
+    activeTab.value === 'tools'
+      ? selectedToolsPromptId.value
+      : activeTab.value === 'agent_system'
+        ? selectedAgentSystemPromptId.value
+        : activeTab.value === 'agent_tools'
+          ? selectedAgentToolsPromptId.value
+          : selectedSystemPromptId.value
   return prompts.value.find((p) => p.id === id)
 })
 
@@ -137,6 +197,8 @@ async function handlePromptChange(promptId) {
       prompt_mode: promptMode.value,
       system_prompt_id: selectedSystemPromptId.value,
       tools_prompt_id: selectedToolsPromptId.value,
+      agent_system_prompt_id: selectedAgentSystemPromptId.value,
+      agent_tools_prompt_id: selectedAgentToolsPromptId.value,
     })
     window.$message?.success('Prompt 已切换')
   } catch (error) {
@@ -144,44 +206,66 @@ async function handlePromptChange(promptId) {
     // 回滚到之前的选择（按类型）
     const activeSystem = prompts.value.find((p) => p.is_active && getPromptType(p) === 'system')
     const activeTools = prompts.value.find((p) => p.is_active && getPromptType(p) === 'tools')
+    const activeAgentSystem = prompts.value.find((p) => p.is_active && getPromptType(p) === 'agent_system')
+    const activeAgentTools = prompts.value.find((p) => p.is_active && getPromptType(p) === 'agent_tools')
     selectedSystemPromptId.value = activeSystem ? activeSystem.id : null
     selectedToolsPromptId.value = activeTools ? activeTools.id : null
+    selectedAgentSystemPromptId.value = activeAgentSystem ? activeAgentSystem.id : null
+    selectedAgentToolsPromptId.value = activeAgentTools ? activeAgentTools.id : null
   }
 }
 
-function handlePromptModeChange(mode) {
+async function handlePromptModeChange(mode) {
   const resolved = mode === 'passthrough' ? 'passthrough' : 'server'
+  const prev = promptMode.value
   promptMode.value = resolved
+  promptModeSaving.value = true
   try {
-    localStorage.setItem(PROMPT_MODE_KEY, resolved)
-  } catch {
-    // ignore
+    const res = await api.upsertLlmAppConfig({ prompt_mode: resolved })
+    const data = res?.data?.data || res?.data || {}
+    const saved = String(data?.prompt_mode || '').trim().toLowerCase()
+    promptMode.value = saved === 'passthrough' ? 'passthrough' : 'server'
+    emit('change', {
+      prompt_mode: promptMode.value,
+      system_prompt_id: selectedSystemPromptId.value,
+      tools_prompt_id: selectedToolsPromptId.value,
+      agent_system_prompt_id: selectedAgentSystemPromptId.value,
+      agent_tools_prompt_id: selectedAgentToolsPromptId.value,
+    })
+    window.$message?.success('已更新 Prompt 模式')
+  } catch (error) {
+    promptMode.value = prev
+    window.$message?.error(error?.message || '保存 Prompt 模式失败')
+  } finally {
+    promptModeSaving.value = false
   }
-  emit('change', {
-    prompt_mode: promptMode.value,
-    system_prompt_id: selectedSystemPromptId.value,
-    tools_prompt_id: selectedToolsPromptId.value,
-  })
 }
 
 onMounted(async () => {
+  promptModeLoading.value = true
+  try {
+    const res = await api.getLlmAppConfig()
+    const data = res?.data?.data || res?.data || {}
+    const savedMode = String(data?.prompt_mode || '').trim().toLowerCase()
+    promptMode.value = savedMode === 'passthrough' ? 'passthrough' : 'server'
+  } catch (error) {
+    window.$message?.error(error?.message || '加载 Prompt 模式失败')
+  } finally {
+    promptModeLoading.value = false
+  }
+
   try {
     await store.loadPrompts()
     const activeSystem = prompts.value.find((p) => p.is_active && getPromptType(p) === 'system')
     const activeTools = prompts.value.find((p) => p.is_active && getPromptType(p) === 'tools')
+    const activeAgentSystem = prompts.value.find((p) => p.is_active && getPromptType(p) === 'agent_system')
+    const activeAgentTools = prompts.value.find((p) => p.is_active && getPromptType(p) === 'agent_tools')
     selectedSystemPromptId.value = activeSystem ? activeSystem.id : null
     selectedToolsPromptId.value = activeTools ? activeTools.id : null
-
-    try {
-      const saved = localStorage.getItem(PROMPT_MODE_KEY)
-      if (saved === 'passthrough' || saved === 'server') {
-        promptMode.value = saved
-      }
-    } catch {
-      // ignore
-    }
+    selectedAgentSystemPromptId.value = activeAgentSystem ? activeAgentSystem.id : null
+    selectedAgentToolsPromptId.value = activeAgentTools ? activeAgentTools.id : null
   } catch (error) {
-    window.$message?.error('加载 Prompt 列表失败')
+    window.$message?.error(error?.message || '加载 Prompt 列表失败')
   }
 })
 

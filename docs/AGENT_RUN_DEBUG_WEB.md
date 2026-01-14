@@ -31,18 +31,23 @@
 
 相关只读接口（用于预览 SSOT 配置）：
 - `GET /api/v1/llm/tests/active-prompts`
+- `GET /api/v1/llm/tests/active-agent-prompts`
 
 推荐流程：
 1) 在页面上先获取 JWT（匿名/永久均可；建议先用永久 token 便于排障）
-2) 选择模型（来自 `/api/v1/llm/models`）
-3) 输入消息内容
-4) 点击 `Agent Run 并拉流`，在 SSE 事件列表中观察：
+2) （可选）先到「系统 → AI」配置 Exa：开启 `web_search_enabled` 并填写 Key（否则 `web_search.exa` 会失败或不触发）
+3) 选择模型（来自 `/api/v1/llm/models`）
+4) 输入消息内容
+5) 点击 `Agent Run 并拉流`，在 SSE 事件列表中观察：
    - `tool_start` / `tool_result`
    - `content_delta`（拼接 reply）
    - `completed` / `error`
    
 说明：
 - 匿名用户也允许执行 `web_search.exa`（仍受 `web_search_enabled` 开关、限流与配额影响）。
+- JWT 页提供 `tool_choice` 仅用于排障：当前后端不执行上游 tool_calls；建议用 `Agent（后端工具）` 跑 Web 搜索链路。
+- `prompt_mode`（server/passthrough）以 Dashboard 配置为准（SSOT：`/api/v1/llm/app/config`）。若需要透传自定义 system message，请先把 `prompt_mode` 切到 `passthrough`。
+- 若需要在 Messages 模式下“下发 tools schema 但禁止 tool_calls”，推荐使用 `tool_choice=none`（避免触发空回复导致 ThinkingML 校验失败）。
 
 ## 4) Docker 重启/重新部署
 

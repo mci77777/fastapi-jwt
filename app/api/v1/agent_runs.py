@@ -21,7 +21,13 @@ from app.services.entitlement_service import EntitlementService
 from app.services.exercise_library_service import ExerciseLibraryService
 from app.services.web_search_service import WebSearchError, WebSearchService
 
-from .messages import _FREE_TIER_DAILY_MODEL_LIMITS, _get_llm_app_default_result_mode, _normalize_quota_model_key, stream_message_events
+from .messages import (
+    _FREE_TIER_DAILY_MODEL_LIMITS,
+    _get_llm_app_default_result_mode,
+    _get_llm_app_prompt_mode,
+    _normalize_quota_model_key,
+    stream_message_events,
+)
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -270,22 +276,32 @@ async def create_agent_run(
     )
     if not requested_result_mode:
         requested_result_mode = await _get_llm_app_default_result_mode(request)
+    prompt_mode = await _get_llm_app_prompt_mode(request)
+    enforced_skip_prompt = prompt_mode == "passthrough"
 
     # Agent 请求体：顶层字段为 SSOT；metadata 仅补充上下文/对账。
     meta = dict(payload.metadata or {})
+    # SSOT：/agent 固定使用 agent_system/agent_tools（避免被客户端 metadata.source=web_ui 等字段误导）。
+    meta["prompt_scope"] = "agent"
     meta.setdefault("source", "agent_run")
     meta.setdefault("tool_web_search_provider", "exa")
+
+    normalized_system_prompt = payload.system_prompt
+    normalized_tools = payload.tools
+    if not enforced_skip_prompt:
+        normalized_system_prompt = None
+        normalized_tools = None
 
     message_input = AIMessageInput(
         text=str(payload.text or "").strip(),
         conversation_id=conversation_id,
         metadata=meta,
-        skip_prompt=bool(payload.skip_prompt),
+        skip_prompt=enforced_skip_prompt,
         result_mode=str(requested_result_mode),
         model=requested_model,
         messages=payload.messages,
-        system_prompt=payload.system_prompt,
-        tools=payload.tools,
+        system_prompt=normalized_system_prompt,
+        tools=normalized_tools,
         tool_choice=payload.tool_choice,
         temperature=payload.temperature,
         top_p=payload.top_p,
@@ -386,8 +402,10 @@ async def create_agent_run(
 
         if web_search_enabled:
             api_key = str(await _get_llm_app_setting(request, "web_search_exa_api_key") or "").strip()
+            api_key_source = "db" if api_key else "none"
             if not api_key:
                 api_key = str(os.getenv("EXA_API_KEY") or "").strip()
+                api_key_source = "env" if api_key else "none"
 
             web_top_k = int(payload.web_search_top_k or 5)
             if web_top_k <= 0:
@@ -399,7 +417,10 @@ async def create_agent_run(
                 message_id,
                 MessageEvent(
                     event="tool_start",
-                    data={"tool_name": "web_search.exa", "args": {"query": query, "top_k": web_top_k}},
+                    data={
+                        "tool_name": "web_search.exa",
+                        "args": {"query": query, "top_k": web_top_k, "api_key_source": api_key_source},
+                    },
                 ),
             )
             t0 = time.perf_counter()

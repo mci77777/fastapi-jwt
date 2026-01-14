@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 _DEFAULT_LLM_APP_CONFIG: dict[str, Any] = {
     # App 默认 SSE 输出模式：raw_passthrough=上游 RAW 透明转发；xml_plaintext=解析后纯文本（含 XML 标签）；auto=自动判断
     "default_result_mode": DEFAULT_LLM_APP_RESULT_MODE,
+    # Prompt 组装模式：server=后端组装/注入默认 prompt（system+tools）；passthrough=跳过后端注入
+    "prompt_mode": "server",
     # Agent / Tools：Web 搜索（默认关闭；可在 Dashboard 中配置）
     "web_search_enabled": False,
     "web_search_provider": "exa",
@@ -136,6 +138,11 @@ async def _get_llm_app_config(request: Request) -> dict[str, Any]:
         mode = "raw_passthrough"
     merged["default_result_mode"] = mode
 
+    prompt_mode = str(merged.get("prompt_mode") or "").strip().lower()
+    if prompt_mode not in {"server", "passthrough"}:
+        prompt_mode = "server"
+    merged["prompt_mode"] = prompt_mode
+
     provider = str(merged.get("web_search_provider") or "exa").strip().lower() or "exa"
     if provider != "exa":
         provider = "exa"
@@ -157,6 +164,7 @@ async def _get_llm_app_config(request: Request) -> dict[str, Any]:
 async def _set_llm_app_config(request: Request, values: dict[str, Any]) -> dict[str, Any]:
     allowed_keys = {
         "default_result_mode",
+        "prompt_mode",
         "web_search_enabled",
         "web_search_provider",
         "web_search_exa_api_key",
@@ -195,6 +203,7 @@ class LlmAppConfigUpsertRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     default_result_mode: Literal["xml_plaintext", "raw_passthrough", "auto"] | None = Field(default=None)
+    prompt_mode: Literal["server", "passthrough"] | None = Field(default=None)
     web_search_enabled: bool | None = Field(default=None)
     web_search_provider: Literal["exa"] | None = Field(default=None)
     # 注意：该字段为写入专用；读取时仅返回 masked 版本，避免泄露。

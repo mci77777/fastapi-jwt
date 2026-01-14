@@ -31,11 +31,18 @@ defineOptions({ name: 'AIPromptManager' })
 const vPermission = resolveDirective('permission')
 const $table = ref(null)
 
-const queryItems = ref({ keyword: null, only_active: null })
+const queryItems = ref({ keyword: null, only_active: null, prompt_type: null })
 const statusOptions = [
   { label: '全部', value: null },
   { label: '已启用', value: true },
   { label: '未启用', value: false },
+]
+const promptTypeOptions = [
+  { label: '全部', value: null },
+  { label: 'System', value: 'system' },
+  { label: 'Tools', value: 'tools' },
+  { label: 'Agent System', value: 'agent_system' },
+  { label: 'Agent Tools', value: 'agent_tools' },
 ]
 
 const initForm = {
@@ -45,6 +52,7 @@ const initForm = {
   content: '',
   category: '',
   description: '',
+  prompt_type: 'system',
   tools_json_text: '',
   is_active: false,
   auto_sync: false,
@@ -58,6 +66,7 @@ function normalizeForm(row) {
     content: row.content,
     category: row.category,
     description: row.description,
+    prompt_type: row.prompt_type || (row.tools_json ? 'tools' : 'system'),
     is_active: row.is_active,
     tools_json_text: row.tools_json ? JSON.stringify(row.tools_json, null, 2) : '',
     auto_sync: false,
@@ -71,10 +80,13 @@ function toPayload(form) {
     content: form.content?.trim(),
     category: form.category?.trim() || undefined,
     description: form.description?.trim() || undefined,
+    prompt_type: form.prompt_type || undefined,
     is_active: form.is_active,
     auto_sync: form.auto_sync,
   }
-  if (form.tools_json_text && form.tools_json_text.trim().length) {
+  const pt = String(form.prompt_type || '').trim()
+  const allowTools = pt === 'tools' || pt === 'agent_tools'
+  if (allowTools && form.tools_json_text && form.tools_json_text.trim().length) {
     payload.tools_json = form.tools_json_text
   }
   return payload
@@ -137,6 +149,25 @@ const columns = [
         h('span', row.name),
         ...tags,
       ])
+    },
+  },
+  {
+    title: '类型',
+    key: 'prompt_type',
+    align: 'center',
+    width: 120,
+    render(row) {
+      const t = row.prompt_type || (row.tools_json ? 'tools' : 'system')
+      const label =
+        t === 'agent_system'
+          ? 'Agent System'
+          : t === 'agent_tools'
+            ? 'Agent Tools'
+            : t === 'tools'
+              ? 'Tools'
+              : 'System'
+      const type = t.startsWith('agent_') ? 'warning' : t === 'tools' ? 'info' : 'default'
+      return h(NTag, { size: 'small', type, bordered: false }, { default: () => label })
     },
   },
   {
@@ -423,6 +454,14 @@ onMounted(() => {
             @keypress.enter="$table?.handleSearch()"
           />
         </QueryBarItem>
+        <QueryBarItem label="类型" :label-width="50">
+          <NSelect
+            v-model:value="queryItems.prompt_type"
+            :options="promptTypeOptions"
+            clearable
+            @update:value="$table?.handleSearch()"
+          />
+        </QueryBarItem>
         <QueryBarItem label="启用" :label-width="50">
           <NSelect
             v-model:value="queryItems.only_active"
@@ -451,6 +490,19 @@ onMounted(() => {
         <NFormItem label="名称" path="name">
           <NInput v-model:value="modalForm.name" placeholder="请输入 Prompt 名称" />
         </NFormItem>
+        <NFormItem label="类型" path="prompt_type">
+          <NSelect
+            v-model:value="modalForm.prompt_type"
+            :options="[
+              { label: 'System', value: 'system' },
+              { label: 'Tools', value: 'tools' },
+              { label: 'Agent System', value: 'agent_system' },
+              { label: 'Agent Tools', value: 'agent_tools' },
+            ]"
+            placeholder="选择 Prompt 类型"
+            clearable
+          />
+        </NFormItem>
         <NFormItem label="版本" path="version">
           <NInput v-model:value="modalForm.version" placeholder="可选版本号" />
         </NFormItem>
@@ -473,6 +525,7 @@ onMounted(() => {
             v-model:value="modalForm.tools_json_text"
             type="textarea"
             :autosize="{ minRows: 4 }"
+            :disabled="!['tools', 'agent_tools'].includes(String(modalForm.prompt_type || 'system'))"
             placeholder="可选，输入工具定义 JSON"
           />
         </NFormItem>

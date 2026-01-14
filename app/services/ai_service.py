@@ -1681,6 +1681,10 @@ class AIService:
 
         final_messages: list[dict[str, Any]] = []
         explicit_system_prompt = isinstance(system_prompt, str) and bool(system_prompt.strip())
+        prompt_type_system = "system"
+        prompt_type_tools = "tools"
+        if not explicit_system_prompt and not message.skip_prompt:
+            prompt_type_system, prompt_type_tools = self._resolve_prompt_types(message)
 
         # 语义收敛：
         # - skip_prompt=true：允许完整透传 messages（含 system），服务端不注入默认 prompt。
@@ -1694,7 +1698,10 @@ class AIService:
             if explicit_system_prompt:
                 final_messages.append({"role": "system", "content": system_prompt.strip()})
             else:
-                default_prompt = await self._get_active_prompt_text() or "You are GymBro's AI assistant."
+                default_prompt = (
+                    await self._get_active_prompt_text_for(prompt_type_system, prompt_type_tools)
+                    or "You are GymBro's AI assistant."
+                )
                 if default_prompt:
                     final_messages.append({"role": "system", "content": default_prompt})
             final_messages.extend(user_messages)
@@ -1706,7 +1713,7 @@ class AIService:
             if message.skip_prompt:
                 resolved_tools = None
             else:
-                resolved_tools = await self._get_active_prompt_tools()
+                resolved_tools = await self._get_active_prompt_tools_for(prompt_type_tools)
                 tools_from_active_prompt = True
 
         # KISS/兼容性：当前后端不执行 tool_calls。
@@ -1734,6 +1741,17 @@ class AIService:
 
         return payload
 
+    def _resolve_prompt_types(self, message: AIMessageInput) -> tuple[str, str]:
+        meta = message.metadata or {}
+        scope = str(meta.get("prompt_scope") or "").strip().lower()
+        if not scope:
+            source = str(meta.get("source") or "").strip().lower()
+            if source == "agent_run":
+                scope = "agent"
+        if scope == "agent":
+            return ("agent_system", "agent_tools")
+        return ("system", "tools")
+
     def _map_legacy_function_call_to_tool_choice(self, value: Any) -> Any:
         if value in (None, ""):
             return None
@@ -1748,19 +1766,19 @@ class AIService:
                 return {"type": "function", "function": {"name": name.strip()}}
         return value
 
-    async def _get_active_prompt_text(self) -> Optional[str]:
+    async def _get_active_prompt_text_for(self, system_prompt_type: str, tools_prompt_type: str) -> Optional[str]:
         if self._ai_config_service is None:
             return None
         try:
             system_prompts, _ = await self._ai_config_service.list_prompts(
                 only_active=True,
-                prompt_type="system",
+                prompt_type=str(system_prompt_type or "system"),
                 page=1,
                 page_size=1,
             )
             tools_prompts, _ = await self._ai_config_service.list_prompts(
                 only_active=True,
-                prompt_type="tools",
+                prompt_type=str(tools_prompt_type or "tools"),
                 page=1,
                 page_size=1,
             )
@@ -1770,13 +1788,13 @@ class AIService:
         tools_text = str(tools_prompts[0].get("content") or "").strip() if tools_prompts else None
         return assemble_system_prompt(system_text, tools_text)
 
-    async def _get_active_prompt_tools(self) -> Optional[list[Any]]:
+    async def _get_active_prompt_tools_for(self, tools_prompt_type: str) -> Optional[list[Any]]:
         if self._ai_config_service is None:
             return None
         try:
             prompts, _ = await self._ai_config_service.list_prompts(
                 only_active=True,
-                prompt_type="tools",
+                prompt_type=str(tools_prompt_type or "tools"),
                 page=1,
                 page_size=1,
             )

@@ -335,3 +335,135 @@ class TestAgentRunsMicroE2E:
                             await fastapi_app.state.ai_config_service.delete_endpoint(int(created_endpoint_id), sync_remote=False)
                         except Exception:
                             pass
+
+    @pytest.mark.asyncio
+    async def test_agent_runs_uses_agent_prompts_bundle(self, async_client: AsyncClient, mock_jwt_token: str):
+        created_endpoint_id = None
+        mapping_id = "mapping:deepseek-agent-prompts"
+        agent_system_prompt_id = None
+        agent_tools_prompt_id = None
+
+        with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+            mock_verifier = MagicMock()
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-agent-002", claims={})
+            mock_get_verifier.return_value = mock_verifier
+
+            with patch("app.services.ai_service.httpx.AsyncClient") as mock_httpx:
+                endpoint = await fastapi_app.state.ai_config_service.create_endpoint(
+                    {
+                        "name": "deepseek-default",
+                        "base_url": "https://api.deepseek.com",
+                        "api_key": "test-api-key",
+                        "is_active": True,
+                        "is_default": False,
+                        "model_list": ["deepseek-chat"],
+                    }
+                )
+                created_endpoint_id = endpoint.get("id")
+
+                await fastapi_app.state.model_mapping_service.upsert_mapping(
+                    {
+                        "scope_type": "mapping",
+                        "scope_key": "deepseek-agent-prompts",
+                        "name": "deepseek-agent-prompts",
+                        "default_model": "deepseek-chat",
+                        "candidates": ["deepseek-chat"],
+                        "is_active": True,
+                        "metadata": {},
+                    }
+                )
+
+                agent_system = await fastapi_app.state.ai_config_service.create_prompt(
+                    {
+                        "name": "pytest-agent-system",
+                        "content": "AGENT_SYSTEM_PROMPT_UNIQUE",
+                        "prompt_type": "agent_system",
+                        "is_active": True,
+                    },
+                    auto_sync=False,
+                )
+                agent_system_prompt_id = agent_system.get("id")
+                agent_tools = await fastapi_app.state.ai_config_service.create_prompt(
+                    {
+                        "name": "pytest-agent-tools",
+                        "content": "AGENT_TOOLS_PROMPT_UNIQUE",
+                        "prompt_type": "agent_tools",
+                        "tools_json": [
+                            {
+                                "type": "function",
+                                "function": {
+                                    "name": "web_search.exa",
+                                    "description": "search",
+                                    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+                                },
+                            }
+                        ],
+                        "is_active": True,
+                    },
+                    auto_sync=False,
+                )
+                agent_tools_prompt_id = agent_tools.get("id")
+
+                _mock_httpx_stream_json(
+                    mock_httpx,
+                    {"choices": [{"message": {"content": "Hello from agent."}}]},
+                    headers={"x-request-id": "upstream-rid"},
+                )
+
+                try:
+                    create = await async_client.post(
+                        "/api/v1/agent/runs",
+                        headers={
+                            "Authorization": f"Bearer {mock_jwt_token}",
+                            "X-Request-Id": "rid-agent-prompts-create",
+                        },
+                        json={
+                            "model": "deepseek-agent-prompts",
+                            "text": "hello",
+                            "conversation_id": None,
+                            "metadata": {"client": "pytest"},
+                        },
+                    )
+                    assert create.status_code == status.HTTP_202_ACCEPTED
+                    payload = create.json()
+                    run_id = payload["run_id"]
+                    conversation_id = payload["conversation_id"]
+
+                    await _collect_sse_events(
+                        async_client,
+                        f"/api/v1/agent/runs/{run_id}/events?conversation_id={conversation_id}",
+                        headers={
+                            "Authorization": f"Bearer {mock_jwt_token}",
+                            "Accept": "text/event-stream",
+                        },
+                    )
+
+                    call_args = mock_httpx.return_value.__aenter__.return_value.stream.call_args
+                    assert call_args is not None
+                    upstream_payload = call_args.kwargs.get("json") or {}
+                    assert isinstance(upstream_payload, dict)
+                    msgs = upstream_payload.get("messages") or []
+                    assert isinstance(msgs, list) and msgs
+                    system_message = msgs[0].get("content") if isinstance(msgs[0], dict) else ""
+                    assert "AGENT_SYSTEM_PROMPT_UNIQUE" in str(system_message)
+                    assert "AGENT_TOOLS_PROMPT_UNIQUE" in str(system_message)
+                finally:
+                    try:
+                        if agent_system_prompt_id is not None:
+                            await fastapi_app.state.ai_config_service.delete_prompt(int(agent_system_prompt_id), sync_remote=False)
+                        if agent_tools_prompt_id is not None:
+                            await fastapi_app.state.ai_config_service.delete_prompt(int(agent_tools_prompt_id), sync_remote=False)
+                    finally:
+                        try:
+                            await fastapi_app.state.ai_config_service.ensure_default_prompts_seeded()
+                        except Exception:
+                            pass
+                    try:
+                        await fastapi_app.state.model_mapping_service.delete_mapping(mapping_id)
+                    except Exception:
+                        pass
+                    if created_endpoint_id is not None:
+                        try:
+                            await fastapi_app.state.ai_config_service.delete_endpoint(int(created_endpoint_id), sync_remote=False)
+                        except Exception:
+                            pass

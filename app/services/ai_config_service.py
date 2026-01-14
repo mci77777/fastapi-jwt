@@ -61,6 +61,24 @@ _DEFAULT_TOOLS_PROMPT_NAME = "gymbro-default-tools-v1"
 _DEFAULT_SYSTEM_PROMPT_ASSET = Path("assets") / "prompts" / "serp_prompt.md"
 _DEFAULT_TOOLS_PROMPT_ASSET = Path("assets") / "prompts" / "tool.md"
 
+_DEFAULT_AGENT_SYSTEM_PROMPT_NAME = "gymbro-agent-system-thinkingml-v45"
+_DEFAULT_AGENT_TOOLS_PROMPT_NAME = "gymbro-agent-tools-v1"
+_DEFAULT_AGENT_SYSTEM_PROMPT_ASSET = _DEFAULT_SYSTEM_PROMPT_ASSET
+_DEFAULT_AGENT_TOOLS_PROMPT_ASSET = Path("assets") / "prompts" / "agent_tool.md"
+
+_PROMPT_TYPE_SYSTEM = "system"
+_PROMPT_TYPE_TOOLS = "tools"
+_PROMPT_TYPE_AGENT_SYSTEM = "agent_system"
+_PROMPT_TYPE_AGENT_TOOLS = "agent_tools"
+_ALLOWED_PROMPT_TYPES = {
+    _PROMPT_TYPE_SYSTEM,
+    _PROMPT_TYPE_TOOLS,
+    _PROMPT_TYPE_AGENT_SYSTEM,
+    _PROMPT_TYPE_AGENT_TOOLS,
+}
+_TOOLS_PROMPT_TYPES = {_PROMPT_TYPE_TOOLS, _PROMPT_TYPE_AGENT_TOOLS}
+_AGENT_PROMPT_TYPES = {_PROMPT_TYPE_AGENT_SYSTEM, _PROMPT_TYPE_AGENT_TOOLS}
+
 _TOOL_NAME_RE = re.compile(r"^\s*-\s*`([^`]+)`：\s*(.*)\s*$")
 _TOOL_PARAMS_RE = re.compile(r"参数：\s*(.*)\s*$")
 
@@ -101,6 +119,25 @@ def _parse_tools_from_tool_md(tool_md: str) -> list[dict[str, Any]]:
         current_desc = ""
 
     return tools
+
+
+def _normalize_prompt_type(
+    value: Any,
+    *,
+    tools_json_present: bool,
+    existing_type: str | None = None,
+) -> str:
+    """Prompt 类型归一化（SSOT：system/tools + agent_system/agent_tools）。"""
+
+    raw = str(value or "").strip().lower()
+    if raw in _ALLOWED_PROMPT_TYPES:
+        return raw
+
+    # 未显式指定时：保持与既有记录的 scope 一致（agent_* 不应被隐式降级为 system/tools）
+    base_agent = str(existing_type or "").strip().lower() in _AGENT_PROMPT_TYPES
+    if tools_json_present:
+        return _PROMPT_TYPE_AGENT_TOOLS if base_agent else _PROMPT_TYPE_TOOLS
+    return _PROMPT_TYPE_AGENT_SYSTEM if base_agent else _PROMPT_TYPE_SYSTEM
 
 
 def _utc_now() -> str:
@@ -482,12 +519,18 @@ class AIConfigService:
             name = fn.get("name") if isinstance(fn, dict) else None
             return str(name or "").strip()
 
-        async def _maybe_patch_default_tools_prompt(active_prompt: dict[str, Any], desired_tools_json: Any) -> Optional[dict[str, Any]]:
+        async def _maybe_patch_default_tools_prompt(
+            active_prompt: dict[str, Any],
+            desired_tools_json: Any,
+            *,
+            expected_name: str,
+            expected_prompt_type: str,
+        ) -> Optional[dict[str, Any]]:
             """为默认 tools prompt 做“仅追加”升级（不覆盖用户自定义 tools prompt）。"""
 
             if not isinstance(active_prompt, dict) or not desired_tools_json:
                 return None
-            if str(active_prompt.get("name") or "").strip() != _DEFAULT_TOOLS_PROMPT_NAME:
+            if str(active_prompt.get("name") or "").strip() != expected_name:
                 return None
 
             desired = extract_tools_schema(desired_tools_json) or []
@@ -501,7 +544,10 @@ class AIConfigService:
                 return None
 
             merged = list(existing) + to_add
-            updated = await self.update_prompt(int(active_prompt["id"]), {"tools_json": merged, "prompt_type": "tools"})
+            updated = await self.update_prompt(
+                int(active_prompt["id"]),
+                {"tools_json": merged, "prompt_type": expected_prompt_type},
+            )
             # 保持 active（update_prompt 不会改变 is_active，但这里做一次幂等确保）
             updated = await self.activate_prompt(int(updated["id"]))
             return updated
@@ -512,14 +558,29 @@ class AIConfigService:
             name: str,
             asset_path: Path,
             tools_json: Any = None,
+            content_override: str | None = None,
         ) -> Optional[dict[str, Any]]:
             active, _ = await self.list_prompts(only_active=True, prompt_type=prompt_type, page=1, page_size=1)
             if active:
                 # 默认 tools prompt：允许“仅追加”补齐新工具 schema（例如 web_search.exa）。
                 if prompt_type == "tools" and tools_json:
-                    patched = await _maybe_patch_default_tools_prompt(active[0], tools_json)
+                    patched = await _maybe_patch_default_tools_prompt(
+                        active[0],
+                        tools_json,
+                        expected_name=_DEFAULT_TOOLS_PROMPT_NAME,
+                        expected_prompt_type=_PROMPT_TYPE_TOOLS,
+                    )
                     if patched:
                         created["tools_prompt_patched"] = patched
+                if prompt_type == _PROMPT_TYPE_AGENT_TOOLS and tools_json:
+                    patched = await _maybe_patch_default_tools_prompt(
+                        active[0],
+                        tools_json,
+                        expected_name=_DEFAULT_AGENT_TOOLS_PROMPT_NAME,
+                        expected_prompt_type=_PROMPT_TYPE_AGENT_TOOLS,
+                    )
+                    if patched:
+                        created["agent_tools_prompt_patched"] = patched
                 return None
 
             row = await self._db.fetchone(
@@ -536,17 +597,23 @@ class AIConfigService:
                 updates: dict[str, Any] = {}
                 if prompt_type == "tools" and not prompt.get("tools_json") and tools_json:
                     updates["tools_json"] = tools_json
-                    updates["prompt_type"] = "tools"
+                    updates["prompt_type"] = _PROMPT_TYPE_TOOLS
+                if prompt_type == _PROMPT_TYPE_AGENT_TOOLS and not prompt.get("tools_json") and tools_json:
+                    updates["tools_json"] = tools_json
+                    updates["prompt_type"] = _PROMPT_TYPE_AGENT_TOOLS
                 if updates:
                     prompt = await self.update_prompt(int(prompt["id"]), updates)
                 prompt = await self.activate_prompt(int(prompt["id"]))
                 return prompt
 
-            try:
-                content = asset_path.read_text(encoding="utf-8").strip()
-            except Exception as exc:  # pragma: no cover
-                logger.warning("读取默认 Prompt 失败 path=%s error=%s", asset_path, exc)
-                return None
+            if isinstance(content_override, str) and content_override.strip():
+                content = content_override.strip()
+            else:
+                try:
+                    content = asset_path.read_text(encoding="utf-8").strip()
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("读取默认 Prompt 失败 path=%s error=%s", asset_path, exc)
+                    return None
             if not content:
                 return None
 
@@ -583,6 +650,46 @@ class AIConfigService:
         )
         if tools_prompt:
             created["tools_prompt"] = tools_prompt
+
+        # Agent prompts（与 /agent/runs 使用的 prompt 绑定；独立于 messages 的 system/tools）
+        agent_system_seed = None
+        try:
+            base = _DEFAULT_AGENT_SYSTEM_PROMPT_ASSET.read_text(encoding="utf-8").strip()
+            if base:
+                agent_system_seed = (
+                    "【Agent Run】你正在 GymBro Agent 模式下工作：\n"
+                    "- 工具（Web 搜索/动作库检索）均由后端执行，结果会以 <gymbro_injected_context> 注入到用户消息中\n"
+                    "- 你只可阅读其中 <text> 的内容，严禁在输出中复述/复制任何内部标签\n"
+                    "- 无论是否有工具上下文，输出都必须严格满足 ThinkingML v4.5（<thinking>...</thinking><final>...</final>）\n"
+                    "\n"
+                    + base
+                )
+        except Exception:
+            agent_system_seed = None
+
+        agent_system_prompt = await _ensure(
+            prompt_type=_PROMPT_TYPE_AGENT_SYSTEM,
+            name=_DEFAULT_AGENT_SYSTEM_PROMPT_NAME,
+            asset_path=_DEFAULT_AGENT_SYSTEM_PROMPT_ASSET,
+            content_override=agent_system_seed,
+        )
+        if agent_system_prompt:
+            created["agent_system_prompt"] = agent_system_prompt
+
+        agent_tools_md = ""
+        try:
+            agent_tools_md = _DEFAULT_AGENT_TOOLS_PROMPT_ASSET.read_text(encoding="utf-8").strip()
+        except Exception:
+            agent_tools_md = ""
+        agent_tools_schema = _parse_tools_from_tool_md(agent_tools_md) if agent_tools_md else []
+        agent_tools_prompt = await _ensure(
+            prompt_type=_PROMPT_TYPE_AGENT_TOOLS,
+            name=_DEFAULT_AGENT_TOOLS_PROMPT_NAME,
+            asset_path=_DEFAULT_AGENT_TOOLS_PROMPT_ASSET,
+            tools_json=agent_tools_schema if agent_tools_schema else None,
+        )
+        if agent_tools_prompt:
+            created["agent_tools_prompt"] = agent_tools_prompt
 
         return created
 
@@ -1370,11 +1477,8 @@ class AIConfigService:
 
     async def create_prompt(self, payload: dict[str, Any], *, auto_sync: bool = False) -> dict[str, Any]:
         now = _utc_now()
-        prompt_type = payload.get("prompt_type")
-        if not isinstance(prompt_type, str) or not prompt_type.strip():
-            tools_value = payload.get("tools_json")
-            prompt_type = "tools" if tools_value else "system"
-        prompt_type = "tools" if str(prompt_type).strip() == "tools" else "system"
+        tools_value = payload.get("tools_json")
+        prompt_type = _normalize_prompt_type(payload.get("prompt_type"), tools_json_present=bool(tools_value))
 
         if payload.get("is_active"):
             await self._db.execute(
@@ -1435,16 +1539,26 @@ class AIConfigService:
         if "tools_json" in payload:
             add("tools_json", _safe_json_dumps(payload["tools_json"]))
             if "prompt_type" not in payload:
-                payload["prompt_type"] = "tools" if payload.get("tools_json") else "system"
+                payload["prompt_type"] = _normalize_prompt_type(
+                    None,
+                    tools_json_present=bool(payload.get("tools_json")),
+                    existing_type=existing_type,
+                )
         if "prompt_type" in payload:
-            resolved_type = "tools" if str(payload.get("prompt_type")).strip() == "tools" else "system"
+            resolved_type = _normalize_prompt_type(
+                payload.get("prompt_type"),
+                tools_json_present=bool(payload.get("tools_json")) if "tools_json" in payload else bool(existing.get("tools_json")),
+                existing_type=existing_type,
+            )
+            payload["prompt_type"] = resolved_type
             add("prompt_type", resolved_type)
         if "is_active" in payload:
             if payload["is_active"]:
-                resolved_type = payload.get("prompt_type")
-                if not isinstance(resolved_type, str) or not resolved_type.strip():
-                    resolved_type = existing_type or "system"
-                resolved_type = "tools" if str(resolved_type).strip() == "tools" else "system"
+                resolved_type = _normalize_prompt_type(
+                    payload.get("prompt_type"),
+                    tools_json_present=bool(payload.get("tools_json")) if "tools_json" in payload else bool(existing.get("tools_json")),
+                    existing_type=existing_type,
+                )
                 await self._db.execute(
                     "UPDATE ai_prompts SET is_active = 0 WHERE is_active = 1 AND id != ? AND prompt_type = ?",
                     [prompt_id, resolved_type],
@@ -1478,8 +1592,11 @@ class AIConfigService:
 
     async def activate_prompt(self, prompt_id: int) -> dict[str, Any]:
         prompt = await self.get_prompt(prompt_id)
-        resolved_type = prompt.get("prompt_type")
-        resolved_type = "tools" if str(resolved_type).strip() == "tools" else "system"
+        resolved_type = _normalize_prompt_type(
+            prompt.get("prompt_type"),
+            tools_json_present=bool(prompt.get("tools_json")),
+            existing_type=str(prompt.get("prompt_type") or "").strip(),
+        )
 
         await self._db.execute(
             "UPDATE ai_prompts SET is_active = 0 WHERE is_active = 1 AND id != ? AND prompt_type = ?",
@@ -1721,17 +1838,27 @@ class AIConfigService:
         tool_choice: Any = None,
     ) -> dict[str, Any]:
         prompt = await self.get_prompt(prompt_id)
-        prompt_type = prompt.get("prompt_type")
-        prompt_type = "tools" if str(prompt_type).strip() == "tools" else "system"
+        raw_type = str(prompt.get("prompt_type") or "").strip().lower()
+        tools_present = bool(prompt.get("tools_json"))
+        prompt_type = _normalize_prompt_type(raw_type, tools_json_present=tools_present, existing_type=raw_type)
+
+        if prompt_type == _PROMPT_TYPE_SYSTEM:
+            other_type = _PROMPT_TYPE_TOOLS
+        elif prompt_type == _PROMPT_TYPE_TOOLS:
+            other_type = _PROMPT_TYPE_SYSTEM
+        elif prompt_type == _PROMPT_TYPE_AGENT_SYSTEM:
+            other_type = _PROMPT_TYPE_AGENT_TOOLS
+        else:
+            other_type = _PROMPT_TYPE_AGENT_SYSTEM
 
         system_prompt_text: Optional[str] = None
         tools_prompt_text: Optional[str] = None
         tools_json: Any = None
 
-        if prompt_type == "system":
+        if prompt_type in {_PROMPT_TYPE_SYSTEM, _PROMPT_TYPE_AGENT_SYSTEM}:
             system_prompt_text = str(prompt.get("content") or "").strip() or None
             if not skip_prompt:
-                active_tools, _ = await self.list_prompts(only_active=True, prompt_type="tools", page=1, page_size=1)
+                active_tools, _ = await self.list_prompts(only_active=True, prompt_type=other_type, page=1, page_size=1)
                 if active_tools:
                     tools_prompt_text = str(active_tools[0].get("content") or "").strip() or None
                     tools_json = active_tools[0].get("tools_json")
@@ -1739,7 +1866,7 @@ class AIConfigService:
             tools_prompt_text = str(prompt.get("content") or "").strip() or None
             tools_json = prompt.get("tools_json")
             if not skip_prompt:
-                active_system, _ = await self.list_prompts(only_active=True, prompt_type="system", page=1, page_size=1)
+                active_system, _ = await self.list_prompts(only_active=True, prompt_type=other_type, page=1, page_size=1)
                 if active_system:
                     system_prompt_text = str(active_system[0].get("content") or "").strip() or None
 
