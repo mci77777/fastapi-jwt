@@ -9,33 +9,12 @@ from fastapi import Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
+from app.auth.dashboard_access import CAP_LLM_MANAGE, has_capability, is_dashboard_admin_user, resolve_dashboard_access
 from app.core.middleware import get_current_request_id
 from app.services.ai_config_service import AIConfigService
 from app.services.model_mapping_service import ModelMappingService
 from app.services.monitor_service import EndpointMonitor
 from app.settings.config import get_settings
-
-
-def is_dashboard_admin_user(user: AuthenticatedUser) -> bool:
-    claims = getattr(user, "claims", {}) or {}
-    if not isinstance(claims, dict):
-        return False
-
-    user_metadata = claims.get("user_metadata") or {}
-    if isinstance(user_metadata, dict):
-        username = str(user_metadata.get("username") or "").strip()
-        if username == "admin" or bool(user_metadata.get("is_admin", False)):
-            return True
-
-    # 兼容：部分 Supabase/自定义 JWT 会把权限字段放在 app_metadata
-    app_metadata = claims.get("app_metadata") or {}
-    if isinstance(app_metadata, dict):
-        role = str(app_metadata.get("role") or "").strip().lower()
-        if role == "admin" or bool(app_metadata.get("is_admin", False)):
-            return True
-
-    role = str(claims.get("role") or "").strip().lower()
-    return role == "admin"
 
 
 def create_response(
@@ -105,6 +84,7 @@ class SyncRequest(BaseModel):
 
 
 async def require_llm_admin(
+    request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> None:
     """限制 LLM 配置变更端点的访问（避免被普通 Bearer 用户误/恶意写入）。"""
@@ -113,8 +93,9 @@ async def require_llm_admin(
     if getattr(settings, "debug", False):
         return
 
-    # Dashboard 本地 admin：兼容 /base/access_token 生成的测试 JWT（SSOT：user_metadata.is_admin 或 username=admin）
-    if is_dashboard_admin_user(current_user):
+    # Dashboard 本地账号与次级角色：以 SQLite local_users 为准（SSOT）。
+    access = await resolve_dashboard_access(request, current_user)
+    if has_capability(access, CAP_LLM_MANAGE):
         return
 
     allowed_uids = set(getattr(settings, "llm_admin_uids", []) or [])

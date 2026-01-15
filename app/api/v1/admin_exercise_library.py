@@ -8,10 +8,10 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-from app.api.v1.base import get_current_user_from_token
+from app.api.v1.dashboard_deps import require_dashboard_capability_user
 from app.auth import AuthenticatedUser
+from app.auth.dashboard_access import CAP_EXERCISE_MANAGE
 from app.services.exercise_library_service import ExerciseDto, ExerciseLibraryError, ExerciseLibraryService
-from .llm_common import is_dashboard_admin_user
 
 router = APIRouter(prefix="/admin/exercise/library", tags=["exercise-library-admin"])
 
@@ -23,15 +23,7 @@ def _get_service(request: Request) -> ExerciseLibraryService:
     return ExerciseLibraryService(sqlite_manager, seed_path=Path("assets") / "exercise" / "exercise_official_seed.json")
 
 
-async def require_dashboard_admin(
-    current_user: AuthenticatedUser = Depends(get_current_user_from_token),  # noqa: B008
-) -> AuthenticatedUser:
-    if is_dashboard_admin_user(current_user):
-        return current_user
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail={"code": "admin_required", "message": "Admin privileges required"},
-    )
+require_dashboard_admin = require_dashboard_capability_user(CAP_EXERCISE_MANAGE)
 
 
 @router.post("/publish")

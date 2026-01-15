@@ -144,6 +144,17 @@ export default {
     request.post(`/admin/app-users/${encodeURIComponent(String(userId || '').trim())}/enable`, data),
   resetAppUserPassword: (userId, data = {}) =>
     request.post(`/admin/app-users/${encodeURIComponent(String(userId || '').trim())}/reset-password`, data),
+  // dashboard local accounts (admin)
+  listDashboardUsers: () => request.get('/admin/dashboard-users/list'),
+  createDashboardUser: (data = {}) => request.post('/admin/dashboard-users/create', data),
+  updateDashboardUserRole: (username, data = {}) =>
+    request.post(`/admin/dashboard-users/${encodeURIComponent(String(username || '').trim())}/role`, data),
+  disableDashboardUser: (username, data = {}) =>
+    request.post(`/admin/dashboard-users/${encodeURIComponent(String(username || '').trim())}/disable`, data),
+  enableDashboardUser: (username, data = {}) =>
+    request.post(`/admin/dashboard-users/${encodeURIComponent(String(username || '').trim())}/enable`, data),
+  resetDashboardUserPassword: (username, data = {}) =>
+    request.post(`/admin/dashboard-users/${encodeURIComponent(String(username || '').trim())}/reset-password`, data),
   // depts
   getDepts: (params = {}) => request.get('/dept/list', { params }),
   createDept: (data = {}) => request.post('/dept/create', data),

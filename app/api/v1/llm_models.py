@@ -327,7 +327,7 @@ async def list_ai_models(
     # 若非管理员请求 endpoints，则降级为 mapped（安全且兼容）。
     if view == "endpoints":
         try:
-            await require_llm_admin(current_user=current_user)
+            await require_llm_admin(request=request, current_user=current_user)
         except HTTPException:
             view = "mapped"
 

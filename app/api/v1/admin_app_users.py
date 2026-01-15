@@ -12,27 +12,19 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.v1.base import get_current_user_from_token
+from app.api.v1.dashboard_deps import require_dashboard_capability_user
 from app.auth import AuthenticatedUser
+from app.auth.dashboard_access import CAP_APP_USERS_MANAGE
 from app.core.middleware import get_current_request_id
 from app.db import get_sqlite_manager
 from app.services.supabase_admin import SupabaseAdminClient
 from app.services.supabase_auth_admin import SupabaseAuthAdminClient
 
-from .llm_common import create_response, is_dashboard_admin_user
+from .llm_common import create_response
 
 router = APIRouter(prefix="/admin", tags=["app-users-admin"])
 
-
-async def require_dashboard_admin(
-    current_user: AuthenticatedUser = Depends(get_current_user_from_token),  # noqa: B008
-) -> AuthenticatedUser:
-    if is_dashboard_admin_user(current_user):
-        return current_user
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail=create_response(code=403, msg="Admin privileges required"),
-    )
+require_dashboard_admin = require_dashboard_capability_user(CAP_APP_USERS_MANAGE, msg="Admin privileges required")
 
 
 def _get_supabase_admin(request: Request) -> SupabaseAdminClient:

@@ -211,6 +211,9 @@ CREATE INDEX IF NOT EXISTS idx_request_raw_logs_request_id ON request_raw_logs(r
 CREATE TABLE IF NOT EXISTS local_users (
     username TEXT PRIMARY KEY,
     password_hash TEXT NOT NULL,
+    role TEXT,
+    is_active INTEGER DEFAULT 1,
+    last_login_at TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -380,6 +383,16 @@ class SQLiteManager:
                 "conversation_logs",
                 {
                     "request_id": "ALTER TABLE conversation_logs ADD COLUMN request_id TEXT",
+                },
+            )
+            await self._conn.commit()
+
+            await self._ensure_columns(
+                "local_users",
+                {
+                    "role": "ALTER TABLE local_users ADD COLUMN role TEXT",
+                    "is_active": "ALTER TABLE local_users ADD COLUMN is_active INTEGER DEFAULT 1",
+                    "last_login_at": "ALTER TABLE local_users ADD COLUMN last_login_at TEXT",
                 },
             )
             await self._conn.commit()
