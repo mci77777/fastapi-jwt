@@ -19,19 +19,18 @@ CAP_EXERCISE_MANAGE = "exercise_manage"
 
 
 class DashboardRole(str, Enum):
-    SUPER_ADMIN = "super_admin"
-    LLM_ADMIN = "llm_admin"
-    APP_USER_ADMIN = "app_user_admin"
-    EXERCISE_ADMIN = "exercise_admin"
-    VIEWER = "viewer"
+    ADMIN = "admin"
+    MANAGER = "manager"
+    USER = "user"
 
 
 ROLE_CAPABILITIES: dict[DashboardRole, set[str]] = {
-    DashboardRole.SUPER_ADMIN: {CAP_DASHBOARD_USERS_MANAGE, CAP_LLM_MANAGE, CAP_APP_USERS_MANAGE, CAP_EXERCISE_MANAGE},
-    DashboardRole.LLM_ADMIN: {CAP_LLM_MANAGE},
-    DashboardRole.APP_USER_ADMIN: {CAP_APP_USERS_MANAGE},
-    DashboardRole.EXERCISE_ADMIN: {CAP_EXERCISE_MANAGE},
-    DashboardRole.VIEWER: set(),
+    # 1) admin：全量管理（含后台账号管理）
+    DashboardRole.ADMIN: {CAP_DASHBOARD_USERS_MANAGE, CAP_LLM_MANAGE, CAP_APP_USERS_MANAGE, CAP_EXERCISE_MANAGE},
+    # 2) 高级管理权限：业务管理（不含后台账号管理）
+    DashboardRole.MANAGER: {CAP_LLM_MANAGE, CAP_APP_USERS_MANAGE, CAP_EXERCISE_MANAGE},
+    # 3) 普通权限：只读（仅展示 Dashboard 相关）
+    DashboardRole.USER: set(),
 }
 
 ALL_CAPABILITIES: set[str] = set().union(*ROLE_CAPABILITIES.values())
@@ -39,10 +38,14 @@ ALL_CAPABILITIES: set[str] = set().union(*ROLE_CAPABILITIES.values())
 
 def normalize_dashboard_role(value: Any) -> DashboardRole:
     raw = str(value or "").strip().lower()
-    for role in DashboardRole:
-        if role.value == raw:
-            return role
-    return DashboardRole.VIEWER
+    # 新三档：admin / manager / user
+    if raw in {"admin", "super_admin"}:
+        return DashboardRole.ADMIN
+    if raw in {"manager", "llm_admin", "app_user_admin", "exercise_admin"}:
+        return DashboardRole.MANAGER
+    if raw in {"user", "viewer"}:
+        return DashboardRole.USER
+    return DashboardRole.USER
 
 
 def is_dashboard_admin_user(user: AuthenticatedUser) -> bool:
@@ -123,7 +126,7 @@ async def resolve_dashboard_access(request: Request, user: AuthenticatedUser) ->
             )
 
         raw_role = row.get("role")
-        default_role = DashboardRole.SUPER_ADMIN.value if username == "admin" else DashboardRole.VIEWER.value
+        default_role = DashboardRole.ADMIN.value if username == "admin" else DashboardRole.USER.value
         role = normalize_dashboard_role(raw_role or default_role)
         is_active = int(row.get("is_active") if row.get("is_active") is not None else 1) == 1
         if not is_active:
@@ -132,7 +135,7 @@ async def resolve_dashboard_access(request: Request, user: AuthenticatedUser) ->
                 detail={"code": 401, "msg": "账号已禁用", "data": None},
             )
 
-        is_superuser = role == DashboardRole.SUPER_ADMIN
+        is_superuser = role == DashboardRole.ADMIN
         capabilities = set(ALL_CAPABILITIES if is_superuser else ROLE_CAPABILITIES.get(role, set()))
         return DashboardAccess(
             username=username,
@@ -143,9 +146,9 @@ async def resolve_dashboard_access(request: Request, user: AuthenticatedUser) ->
             source="local",
         )
 
-    # 非本地 token：兼容旧 admin 判定；其余视作 viewer
+    # 非本地 token：兼容旧 admin 判定；其余视作 user
     is_superuser = is_dashboard_admin_user(user)
-    role = DashboardRole.SUPER_ADMIN if is_superuser else DashboardRole.VIEWER
+    role = DashboardRole.ADMIN if is_superuser else DashboardRole.USER
     capabilities = set(ALL_CAPABILITIES if is_superuser else set())
     return DashboardAccess(
         username=username,

@@ -73,14 +73,14 @@ class UpdatePasswordRequest(BaseModel):
     confirm_password: Optional[str] = Field(default=None, description="确认新密码（可选）")
 
 def _default_role_for_username(username: str) -> str:
-    return DashboardRole.SUPER_ADMIN.value if str(username or "").strip() == "admin" else DashboardRole.VIEWER.value
+    return DashboardRole.ADMIN.value if str(username or "").strip() == "admin" else DashboardRole.USER.value
 
 
 async def _get_or_seed_local_admin_password_hash(request: Request) -> str:
     db = get_sqlite_manager(request.app)
     row = await db.fetchone("SELECT password_hash, role, is_active FROM local_users WHERE username = ?", ("admin",))
     if row and row.get("password_hash"):
-        # 兼容：历史行缺少 role/is_active 时自动补齐（SSOT：至少一个启用的 super_admin）。
+        # 兼容：历史行缺少 role/is_active 时自动补齐（SSOT：至少一个启用的 admin）。
         role = str(row.get("role") or "").strip().lower()
         is_active = row.get("is_active")
         need_fix = (not role) or (is_active is None)
@@ -93,7 +93,7 @@ async def _get_or_seed_local_admin_password_hash(request: Request) -> str:
                     updated_at = CURRENT_TIMESTAMP
                 WHERE username = ?
                 """,
-                (DashboardRole.SUPER_ADMIN.value, "admin"),
+                (DashboardRole.ADMIN.value, "admin"),
             )
         return str(row["password_hash"])
 
@@ -104,7 +104,7 @@ async def _get_or_seed_local_admin_password_hash(request: Request) -> str:
         INSERT OR REPLACE INTO local_users(username, password_hash, role, is_active, updated_at)
         VALUES(?, ?, ?, 1, CURRENT_TIMESTAMP)
         """,
-        ("admin", password_hash, DashboardRole.SUPER_ADMIN.value),
+        ("admin", password_hash, DashboardRole.ADMIN.value),
     )
     return password_hash
 
@@ -135,7 +135,7 @@ def create_test_jwt_token(
     issuer = (str(settings.supabase_issuer).rstrip("/") if settings.supabase_issuer else "http://localhost:9999")
 
     effective_role = str(role or _default_role_for_username(username)).strip().lower()
-    is_admin = effective_role == DashboardRole.SUPER_ADMIN.value
+    is_admin = effective_role == DashboardRole.ADMIN.value
 
     app_metadata: dict[str, Any] = {"provider": "test", "providers": ["test"]}
     if dashboard_local:

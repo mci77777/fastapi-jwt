@@ -52,6 +52,6 @@ async def require_dashboard_super_admin(
     current_user: AuthenticatedUser = Depends(get_current_user_from_token),  # noqa: B008
 ) -> DashboardAccess:
     access = await resolve_dashboard_access(request, current_user)
-    if access.role == DashboardRole.SUPER_ADMIN:
+    if access.role == DashboardRole.ADMIN:
         return access
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_detail(403, "需要超级管理员权限"))
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_detail(403, "需要 admin 权限"))

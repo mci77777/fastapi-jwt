@@ -27,19 +27,15 @@ const loading = ref(false)
 const rows = ref([])
 
 const roleOptions = [
-  { label: 'super_admin', value: 'super_admin' },
-  { label: 'llm_admin', value: 'llm_admin' },
-  { label: 'app_user_admin', value: 'app_user_admin' },
-  { label: 'exercise_admin', value: 'exercise_admin' },
-  { label: 'viewer', value: 'viewer' },
+  { label: '1 admin', value: 'admin' },
+  { label: '2 高级管理权限', value: 'manager' },
+  { label: '3 普通权限', value: 'user' },
 ]
 
 function roleTagType(role) {
   const r = String(role || '').trim().toLowerCase()
-  if (r === 'super_admin') return 'warning'
-  if (r === 'llm_admin') return 'success'
-  if (r === 'app_user_admin') return 'info'
-  if (r === 'exercise_admin') return 'primary'
+  if (r === 'admin' || r === 'super_admin') return 'warning'
+  if (r === 'manager' || r === 'llm_admin' || r === 'app_user_admin' || r === 'exercise_admin') return 'info'
   return 'default'
 }
 
@@ -66,14 +62,14 @@ const createSaving = ref(false)
 const createForm = reactive({
   username: '',
   password: '',
-  role: 'viewer',
+  role: 'user',
   is_active: true,
 })
 
 function openCreate() {
   createForm.username = ''
   createForm.password = ''
-  createForm.role = 'viewer'
+  createForm.role = 'user'
   createForm.is_active = true
   createVisible.value = true
 }
@@ -99,7 +95,7 @@ async function submitCreate() {
     await api.createDashboardUser({
       username,
       password,
-      role: String(createForm.role || 'viewer'),
+      role: String(createForm.role || 'user'),
       is_active: Boolean(createForm.is_active),
     })
     message.success('已创建')
@@ -117,7 +113,7 @@ const roleVisible = ref(false)
 const roleSaving = ref(false)
 const roleForm = reactive({
   username: '',
-  role: 'viewer',
+  role: 'user',
   confirm_username: '',
 })
 
@@ -129,7 +125,7 @@ function openRole(row) {
   const username = String(row?.username || '').trim()
   if (!username) return
   roleForm.username = username
-  roleForm.role = String(row?.role || 'viewer').trim() || 'viewer'
+  roleForm.role = String(row?.role || 'user').trim() || 'user'
   roleForm.confirm_username = ''
   roleVisible.value = true
 }
@@ -142,7 +138,7 @@ async function submitRole() {
   roleSaving.value = true
   try {
     await api.updateDashboardUserRole(roleForm.username, {
-      role: String(roleForm.role || 'viewer'),
+      role: String(roleForm.role || 'user'),
       confirm_username: String(roleForm.confirm_username || '').trim(),
     })
     message.success('已更新')
@@ -265,7 +261,7 @@ const columns = [
     key: 'role',
     width: 140,
     render: (row) =>
-      h(NTag, { size: 'small', type: roleTagType(row?.role) }, { default: () => String(row?.role || 'viewer') }),
+      h(NTag, { size: 'small', type: roleTagType(row?.role) }, { default: () => String(row?.role || 'user') }),
   },
   {
     title: '状态',

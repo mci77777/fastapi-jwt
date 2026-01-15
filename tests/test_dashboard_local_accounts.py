@@ -27,11 +27,11 @@ async def test_dashboard_local_accounts_rbac(async_client: AsyncClient, monkeypa
     admin_token = body["data"]["access_token"]
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # 2) 创建次级账号（viewer）
+    # 2) 创建次级账号（user）
     created = await async_client.post(
         "/api/v1/admin/dashboard-users/create",
         headers=admin_headers,
-        json={"username": "ops1", "password": "ops1pass", "role": "viewer", "is_active": True},
+        json={"username": "ops1", "password": "ops1pass", "role": "user", "is_active": True},
     )
     assert created.status_code == status.HTTP_200_OK
     assert created.json()["code"] == 200
@@ -53,11 +53,11 @@ async def test_dashboard_local_accounts_rbac(async_client: AsyncClient, monkeypa
     denied = await async_client.get("/api/v1/admin/app-users/bootstrap", headers=ops_headers)
     assert denied.status_code == status.HTTP_403_FORBIDDEN
 
-    # 4) 提升为 llm_admin 后允许写入 LLM 配置
+    # 4) 提升为 manager 后允许写入 LLM 配置
     updated = await async_client.post(
         "/api/v1/admin/dashboard-users/ops1/role",
         headers=admin_headers,
-        json={"role": "llm_admin", "confirm_username": "ops1"},
+        json={"role": "manager", "confirm_username": "ops1"},
     )
     assert updated.status_code == status.HTTP_200_OK
     assert updated.json()["code"] == 200
@@ -133,7 +133,7 @@ async def test_cannot_remove_last_active_super_admin(async_client: AsyncClient, 
     downgrade = await async_client.post(
         "/api/v1/admin/dashboard-users/admin/role",
         headers=headers,
-        json={"role": "viewer", "confirm_username": "admin"},
+        json={"role": "user", "confirm_username": "admin"},
     )
     assert downgrade.status_code == status.HTTP_200_OK
     assert downgrade.json()["code"] == 400
@@ -147,4 +147,3 @@ async def test_cannot_remove_last_active_super_admin(async_client: AsyncClient, 
     assert disable.json()["code"] == 400
 
     await fastapi_app.state.sqlite_manager.execute("DELETE FROM local_users", ())
-

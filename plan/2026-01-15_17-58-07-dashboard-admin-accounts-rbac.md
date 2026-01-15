@@ -24,7 +24,7 @@ complexity: complex
 ## Assumptions / Dependencies
 - Dashboard 本地账号 SSOT：SQLite `local_users`（不依赖 Supabase）。
 - Token 仅承载 username 等最小信息；角色/权限以 SQLite 实时查询为准，避免“影子权限”。
-- 固定角色集合（可按需调整）：`super_admin` / `llm_admin` / `app_user_admin` / `exercise_admin` / `viewer`。
+- 系统权限固定 3 级（显示为 1/2/3）：`admin`（1）/ `manager`（2）/ `user`（3），并兼容旧 role 字符串折叠到三档。
 - 既有前端权限机制：`/base/userapi` 返回 `accessApis`，由 `v-permission` 判断；后端必须同步强校验。
 
 ## Phases
@@ -34,11 +34,11 @@ complexity: complex
 2. 后端：账号与权限模型（SQLite SSOT）
    - 为 `local_users` 增列：`role`、`is_active`、`last_login_at`（必要时补 `created_at/updated_at` 已存在）。
    - 统一密码哈希/校验逻辑复用现有 scrypt 实现（避免重复）。
-3. 后端：后台账号管理 Admin API（仅 super_admin）
+3. 后端：后台账号管理 Admin API（仅 admin）
    - 新增 `/api/v1/admin/dashboard-users/*`：
      - `GET /list`：账号列表（不返回 password_hash）。
      - `POST /create`：创建账号（用户名唯一、写入 role/is_active/password_hash）。
-     - `POST /{username}/role`：更新角色（禁止降级最后一个 active super_admin）。
+     - `POST /{username}/role`：更新角色（禁止降级最后一个 active admin）。
      - `POST /{username}/enable|disable`：启/禁用（同上保护）。
      - `POST /{username}/reset-password`：重置密码（一次性返回明文，仅响应体展示）。
 4. 后端：登录/菜单/API 权限返回与强校验
@@ -57,7 +57,7 @@ complexity: complex
 
 ## Tests & Verification
 - 本地账号登录：`POST /api/v1/base/access_token` -> 200；随后 `GET /api/v1/base/userinfo|usermenu|userapi` -> 200。
-- 越权：非 `super_admin` 调用 `/api/v1/admin/dashboard-users/*` -> 403。
+- 越权：非 `admin` 调用 `/api/v1/admin/dashboard-users/*` -> 403。
 - 权限裁剪：次级角色菜单/按钮不可见，且直接调用未授权写接口同样 403。
 - 构建：`make test`；`cd web && pnpm build`。
 
@@ -79,7 +79,7 @@ complexity: complex
 
 ## Risks / Blockers
 - 现有 admin 判定分散：需统一到新的依赖与 SSOT 映射，避免漏网接口。
-- 误操作导致锁死：必须保证至少存在 1 个 active `super_admin`。
+- 误操作导致锁死：必须保证至少存在 1 个 active `admin`。
 
 ## Rollback / Recovery
 - 代码：`git revert <commit>` 回滚。

@@ -19,7 +19,7 @@ router = APIRouter(prefix="/admin/dashboard-users", tags=["dashboard-users-admin
 
 
 def _default_role_for_username(username: str) -> DashboardRole:
-    return DashboardRole.SUPER_ADMIN if str(username or "").strip() == "admin" else DashboardRole.VIEWER
+    return DashboardRole.ADMIN if str(username or "").strip() == "admin" else DashboardRole.USER
 
 
 def _random_password(length: int = 16) -> str:
@@ -28,10 +28,35 @@ def _random_password(length: int = 16) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(safe_len))
 
 
-async def _count_other_active_super_admins(db, *, exclude_username: str) -> int:
+_ALLOWED_ROLE_INPUTS: set[str] = {
+    # 新三档
+    "admin",
+    "manager",
+    "user",
+    # 兼容历史四档/五档（会折叠到新三档）
+    "super_admin",
+    "llm_admin",
+    "app_user_admin",
+    "exercise_admin",
+    "viewer",
+}
+
+
+def _is_valid_role_input(value: Any) -> bool:
+    raw = str(value or "").strip().lower()
+    return raw in _ALLOWED_ROLE_INPUTS
+
+
+async def _count_other_active_admins(db, *, exclude_username: str) -> int:
     row = await db.fetchone(
-        "SELECT COUNT(1) as total FROM local_users WHERE username <> ? AND role = ? AND is_active = 1",
-        (exclude_username, DashboardRole.SUPER_ADMIN.value),
+        """
+        SELECT COUNT(1) as total
+        FROM local_users
+        WHERE username <> ?
+          AND is_active = 1
+          AND LOWER(COALESCE(role, '')) IN (?, ?)
+        """,
+        (exclude_username, DashboardRole.ADMIN.value, "super_admin"),
     )
     return int((row or {}).get("total") or 0)
 
@@ -43,7 +68,7 @@ async def _ensure_not_removing_last_super_admin(
     next_role: DashboardRole | None = None,
     next_is_active: bool | None = None,
 ) -> bool:
-    """保护：至少保留一个 active super_admin。"""
+    """保护：至少保留一个 active admin。"""
 
     current = await db.fetchone(
         "SELECT username, role, is_active FROM local_users WHERE username = ?",
@@ -55,15 +80,15 @@ async def _ensure_not_removing_last_super_admin(
     current_role = normalize_dashboard_role(current.get("role") or _default_role_for_username(target_username).value)
     current_active = int(current.get("is_active") if current.get("is_active") is not None else 1) == 1
 
-    if current_role != DashboardRole.SUPER_ADMIN or not current_active:
+    if current_role != DashboardRole.ADMIN or not current_active:
         return True
 
     final_role = next_role or current_role
     final_active = current_active if next_is_active is None else bool(next_is_active)
-    if final_role == DashboardRole.SUPER_ADMIN and final_active:
+    if final_role == DashboardRole.ADMIN and final_active:
         return True
 
-    return (await _count_other_active_super_admins(db, exclude_username=target_username)) > 0
+    return (await _count_other_active_admins(db, exclude_username=target_username)) > 0
 
 
 class DashboardUserItem(BaseModel):
@@ -82,7 +107,7 @@ class CreateDashboardUserRequest(BaseModel):
 
     username: str = Field(..., min_length=3, max_length=32)
     password: str = Field(..., min_length=6, max_length=128)
-    role: str = Field(default=DashboardRole.VIEWER.value)
+    role: str = Field(default=DashboardRole.USER.value)
     is_active: bool = Field(default=True)
 
 
@@ -149,9 +174,10 @@ async def create_dashboard_user(
     if not username:
         return create_response(code=400, msg="用户名不能为空", data=None)
 
-    role = normalize_dashboard_role(payload.role)
-    if role == DashboardRole.VIEWER and str(payload.role or "").strip().lower() != DashboardRole.VIEWER.value:
+    if not _is_valid_role_input(payload.role):
         return create_response(code=400, msg="不支持的角色", data=None)
+
+    role = normalize_dashboard_role(payload.role)
 
     db = get_sqlite_manager(request.app)
     existing = await db.fetchone("SELECT username FROM local_users WHERE username = ?", (username,))
@@ -181,9 +207,10 @@ async def update_dashboard_user_role(
     if str(payload.confirm_username or "").strip() != target:
         return create_response(code=400, msg="二次确认失败：confirm_username 不匹配", data=None)
 
-    role = normalize_dashboard_role(payload.role)
-    if role == DashboardRole.VIEWER and str(payload.role or "").strip().lower() != DashboardRole.VIEWER.value:
+    if not _is_valid_role_input(payload.role):
         return create_response(code=400, msg="不支持的角色", data=None)
+
+    role = normalize_dashboard_role(payload.role)
 
     db = get_sqlite_manager(request.app)
     exists = await db.fetchone("SELECT username FROM local_users WHERE username = ?", (target,))
@@ -192,7 +219,7 @@ async def update_dashboard_user_role(
 
     ok = await _ensure_not_removing_last_super_admin(db, target_username=target, next_role=role)
     if not ok:
-        return create_response(code=400, msg="禁止降级：至少保留一个启用的 super_admin", data=None)
+        return create_response(code=400, msg="禁止降级：至少保留一个启用的 admin", data=None)
 
     await db.execute(
         "UPDATE local_users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
@@ -221,7 +248,7 @@ async def disable_dashboard_user(
 
     ok = await _ensure_not_removing_last_super_admin(db, target_username=target, next_is_active=False)
     if not ok:
-        return create_response(code=400, msg="禁止禁用：至少保留一个启用的 super_admin", data=None)
+        return create_response(code=400, msg="禁止禁用：至少保留一个启用的 admin", data=None)
 
     await db.execute(
         "UPDATE local_users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
@@ -283,4 +310,3 @@ async def reset_dashboard_user_password(
         msg="密码已重置（仅本次返回明文，请立即复制保存）",
         data={"username": target, "password": new_password},
     )
-
