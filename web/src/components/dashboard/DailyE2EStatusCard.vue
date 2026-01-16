@@ -120,6 +120,25 @@ const columns = computed(() => [
     },
   },
   {
+    title: 'XML结构',
+    key: 'thinkingml_ok',
+    width: 120,
+    render: (row) => {
+      if (row.thinkingml_ok === true) {
+        return h(NTag, { bordered: false, size: 'small', type: 'success' }, { default: () => 'OK' })
+      }
+      if (row.thinkingml_ok === false) {
+        const reason = String(row.thinkingml_reason || '').trim()
+        return h(
+          NTag,
+          { bordered: false, size: 'small', type: 'error', title: reason || undefined },
+          { default: () => 'FAIL' }
+        )
+      }
+      return h('span', { class: 'text-gray-400' }, '--')
+    },
+  },
+  {
     title: '延迟',
     key: 'latency_ms',
     width: 90,

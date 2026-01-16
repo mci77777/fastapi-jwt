@@ -1,31 +1,26 @@
 {
   "mcpServers": {
     "feedback": {
-      "command": "D:\\code\\CC\\feedback.exe"
+      "command": "/mnt/d/code/CC/feedback.exe",
+      "type": "stdio"
     },
     "context7": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "@upstash/context7-mcp"
       ]
     },
     "memory": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "@modelcontextprotocol/server-memory"
       ]
     },
     "exa": {
-      "command": "cmd",
+      "command": "npx",
       "args": [
-        "/c",
-        "npx",
         "-y",
         "exa-mcp-server"
       ],

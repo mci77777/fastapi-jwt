@@ -53,6 +53,10 @@ done <"$E2E_ENV_FILE"
 API_BASE_LOCAL="${E2E_API_BASE_LOCAL:-http://127.0.0.1:${API_PORT:-9999}/api/v1}"
 export E2E_API_BASE="$API_BASE_LOCAL"
 
+export E2E_USE_DASHBOARD_CONFIG="${E2E_USE_DASHBOARD_CONFIG:-1}"
+export E2E_RESULT_MODE="${E2E_RESULT_MODE:-xml_plaintext}"
+export E2E_VALIDATE_THINKINGML="${E2E_VALIDATE_THINKINGML:-1}"
+
 echo "E2E env: $E2E_ENV_FILE (keys loaded; values not printed)"
 echo "Root env: $(basename "$ROOT_ENV_FILE") (keys loaded; values not printed)"
 echo "E2E target: $E2E_API_BASE"

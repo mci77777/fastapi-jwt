@@ -30,6 +30,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from app.db.sqlite_manager import SQLiteManager  # noqa: E402
 from e2e.anon_jwt_sse.scripts.anon_signin_enhanced import EnhancedAnonAuth  # noqa: E402
+from scripts.monitoring.local_mock_ai_conversation_e2e import _validate_thinkingml  # noqa: E402
 from scripts.monitoring.real_user_ai_conversation_e2e import (  # noqa: E402
     SupabaseUser,
     _supabase_admin_create_user,
@@ -105,6 +106,8 @@ class ModelResult:
     conversation_id: Optional[str] = None
     reply_len: Optional[int] = None
     result_mode_effective: Optional[str] = None
+    thinkingml_ok: Optional[bool] = None
+    thinkingml_reason: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -282,7 +285,7 @@ async def _consume_sse(
     request_id: str,
     stream_timeout: float,
     max_events: int,
-) -> tuple[bool, int, Optional[str], Optional[str]]:
+) -> tuple[bool, str, Optional[str], Optional[str]]:
     url = f"/messages/{message_id}/events"
     params = {"conversation_id": conversation_id}
     headers = {
@@ -297,7 +300,7 @@ async def _consume_sse(
 
     async with client.stream("GET", url, params=params, headers=headers, timeout=stream_timeout) as resp:
         if resp.status_code != 200:
-            return False, 0, None, f"sse_connect_failed:{resp.status_code}"
+            return False, "", None, f"sse_connect_failed:{resp.status_code}"
         async for line in resp.aiter_lines():
             if not line:
                 continue
@@ -316,7 +319,7 @@ async def _consume_sse(
 
             events_seen += 1
             if events_seen > max_events:
-                return False, len(reply), result_mode_effective, "sse_max_events_exceeded"
+                return False, reply, result_mode_effective, "sse_max_events_exceeded"
 
             if event_name == "content_delta":
                 delta = str(data.get("delta") or "")
@@ -326,12 +329,12 @@ async def _consume_sse(
                 result_mode_effective = str(data.get("result_mode_effective") or data.get("result_mode") or "").strip() or None
                 if not reply:
                     reply = str(data.get("reply") or "")
-                return True, len(reply), result_mode_effective, None
+                return True, reply, result_mode_effective, None
             if event_name == "error":
                 err = str(data.get("error") or data.get("message") or "sse_error")
-                return False, len(reply), result_mode_effective, err
+                return False, reply, result_mode_effective, err
 
-    return False, len(reply), result_mode_effective, "sse_stream_incomplete"
+    return False, reply, result_mode_effective, "sse_stream_incomplete"
 
 
 async def _run_for_user(
@@ -374,7 +377,7 @@ async def _run_for_user(
                         "user_type": user_type,
                     },
                 )
-                ok, reply_len, effective_mode, err = await _consume_sse(
+                sse_ok, reply_text, effective_mode, err = await _consume_sse(
                     client,
                     token=token,
                     message_id=message_id,
@@ -384,6 +387,20 @@ async def _run_for_user(
                     max_events=max_events,
                 )
                 latency_ms = round((time.perf_counter() - model_start) * 1000.0, 2)
+                reply_len = len(reply_text or "")
+
+                thinkingml_ok: bool | None = None
+                thinkingml_reason: str | None = None
+                validate_thinkingml = _as_bool(os.getenv("E2E_VALIDATE_THINKINGML"), default=True)
+                if sse_ok and validate_thinkingml:
+                    mode_for_validation = str(effective_mode or result_mode or "").strip()
+                    if mode_for_validation == "xml_plaintext":
+                        thinkingml_ok, thinkingml_reason = _validate_thinkingml(reply_text)
+
+                ok = bool(sse_ok) and (bool(thinkingml_ok) if thinkingml_ok is not None else True)
+
+                if sse_ok and thinkingml_ok is False and not err:
+                    err = f"thinkingml:{thinkingml_reason or 'invalid'}"
                 results.append(
                     ModelResult(
                         model_key=model_key,
@@ -395,6 +412,8 @@ async def _run_for_user(
                         reply_len=reply_len,
                         result_mode_effective=effective_mode,
                         error=_safe_error(err),
+                        thinkingml_ok=thinkingml_ok,
+                        thinkingml_reason=thinkingml_reason,
                     )
                 )
             except Exception as exc:
@@ -448,6 +467,8 @@ async def _persist_run(db_path: Path, run: dict[str, Any], results: list[ModelRe
             "conversation_id": item.conversation_id,
             "reply_len": item.reply_len,
             "result_mode_effective": item.result_mode_effective,
+            "thinkingml_ok": item.thinkingml_ok,
+            "thinkingml_reason": item.thinkingml_reason,
             "error": item.error,
         }
         for item in results

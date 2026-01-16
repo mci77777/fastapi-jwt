@@ -4,3 +4,7 @@ node_modules
 .venv-*
 __pycache__/
 web/dist
+
+# 数据目录由 docker-compose volume 挂载，不打包进镜像
+data/
+logs/
