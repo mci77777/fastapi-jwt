@@ -25,6 +25,7 @@
 - `gateway_configs`
 - `memory_records`
 - `messages`
+- `model_mappings`
 - `public_content`
 - `public_shares`
 - `search_content`
@@ -48,6 +49,7 @@
 
 - `public.ai_model`：模型端点/供应商配置（后端读写；可配合 Dashboard）
 - `public.ai_prompt`：Prompt 配置（后端读写；可配合 Dashboard）
+- `public.model_mappings`：模型映射配置（后端读写；可选同步层，与本地 SQLite `llm_model_mappings` 对齐）
 
 #### 3) 匿名链路/Edge Function（后端或 Edge 负责）
 

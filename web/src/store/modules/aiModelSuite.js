@@ -11,6 +11,7 @@ import {
   updateModel,
   syncModel,
   syncAllModels,
+  syncMappingsToSupabase,
 } from '@/api/aiModelSuite'
 import api from '@/api'
 
@@ -49,6 +50,7 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
     blockedModelsLoading: false,
     syncingEndpoints: new Set(),
     syncAllLoading: false,
+    syncMappingsLoading: false,
     mailApiKey: localStorage.getItem('ai_suite_mail_api_key') || '',
     // JWT 调试页：仅用于前端调试（不影响全局登录态）
     jwtToken: localStorage.getItem('ai_suite_jwt_token') || '',
@@ -147,6 +149,18 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
         this.mappings = data || []
       } finally {
         this.mappingsLoading = false
+      }
+    },
+    async syncMappingsToSupabase() {
+      if (this.syncMappingsLoading) {
+        return { status: 'skipped:sync_in_progress', synced_count: 0, deleted_count: 0 }
+      }
+      this.syncMappingsLoading = true
+      try {
+        const response = await syncMappingsToSupabase()
+        return response?.data || {}
+      } finally {
+        this.syncMappingsLoading = false
       }
     },
     async saveMapping(payload) {

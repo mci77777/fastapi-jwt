@@ -60,9 +60,36 @@ CREATE TRIGGER update_ai_prompt_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION public.update_updated_at_column();
 
+-- 创建 model_mappings 表（模型映射同步到 Supabase 的落点；与本地 SQLite llm_model_mappings 对齐）
+CREATE TABLE IF NOT EXISTS public.model_mappings (
+    id TEXT PRIMARY KEY,                -- 形如 mapping:xai / global:global
+    scope_type TEXT NOT NULL,
+    scope_key TEXT NOT NULL,
+    name TEXT,
+    default_model TEXT,
+    candidates JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_active BOOLEAN DEFAULT TRUE,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    source TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 创建索引
+CREATE INDEX IF NOT EXISTS idx_model_mappings_scope ON public.model_mappings(scope_type, scope_key);
+CREATE INDEX IF NOT EXISTS idx_model_mappings_updated_at ON public.model_mappings(updated_at DESC);
+
+-- 创建更新时间触发器
+DROP TRIGGER IF EXISTS update_model_mappings_updated_at ON public.model_mappings;
+CREATE TRIGGER update_model_mappings_updated_at
+    BEFORE UPDATE ON public.model_mappings
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_updated_at_column();
+
 -- 启用 Row Level Security (RLS)
 ALTER TABLE public.ai_model ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_prompt ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.model_mappings ENABLE ROW LEVEL SECURITY;
 
 -- 创建 RLS 策略：所有认证用户可以读取
 DROP POLICY IF EXISTS "Authenticated users can view ai_model" ON public.ai_model;
@@ -75,6 +102,13 @@ USING (true);
 DROP POLICY IF EXISTS "Authenticated users can view ai_prompt" ON public.ai_prompt;
 CREATE POLICY "Authenticated users can view ai_prompt"
 ON public.ai_prompt
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can view model_mappings" ON public.model_mappings;
+CREATE POLICY "Authenticated users can view model_mappings"
+ON public.model_mappings
 FOR SELECT
 TO authenticated
 USING (true);
@@ -96,12 +130,22 @@ TO service_role
 USING (true)
 WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Service role can manage model_mappings" ON public.model_mappings;
+CREATE POLICY "Service role can manage model_mappings"
+ON public.model_mappings
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
 -- 授予必要的权限
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT SELECT ON public.ai_model TO authenticated;
 GRANT SELECT ON public.ai_prompt TO authenticated;
+GRANT SELECT ON public.model_mappings TO authenticated;
 GRANT ALL ON public.ai_model TO service_role;
 GRANT ALL ON public.ai_prompt TO service_role;
+GRANT ALL ON public.model_mappings TO service_role;
 GRANT USAGE, SELECT ON SEQUENCE public.ai_model_id_seq TO service_role;
 GRANT USAGE, SELECT ON SEQUENCE public.ai_prompt_id_seq TO service_role;
 

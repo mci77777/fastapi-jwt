@@ -6,6 +6,7 @@
     "messages",
     "ai_model",
     "ai_prompt",
+    "model_mappings",
     "user_entitlements",
     "user_anon",
     "anon_sessions",

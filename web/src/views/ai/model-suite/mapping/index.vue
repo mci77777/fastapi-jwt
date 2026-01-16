@@ -23,12 +23,12 @@ import { storeToRefs } from 'pinia'
 import CrudModal from '@/components/table/CrudModal.vue'
 import { useAiModelSuiteStore } from '@/store'
 
-defineOptions({ name: 'AiModelMapping' })
+	defineOptions({ name: 'AiModelMapping' })
 
-const store = useAiModelSuiteStore()
-const { mappings, mappingsLoading, models, prompts, promptsLoading } = storeToRefs(store)
-const message = useMessage()
-const dialog = useDialog()
+	const store = useAiModelSuiteStore()
+	const { mappings, mappingsLoading, syncMappingsLoading, models, prompts, promptsLoading } = storeToRefs(store)
+	const message = useMessage()
+	const dialog = useDialog()
 
 const modalVisible = ref(false)
 const isEdit = ref(false)
@@ -132,10 +132,64 @@ function handlePromptChange(value) {
     formModel.name = option.label
     formModel.scope_key = option.value
   }
-}
+	}
 
-async function handleSubmit() {
-  await store.saveMapping({
+	function _formatExportTs() {
+	  const d = new Date()
+	  const pad = (n) => String(n).padStart(2, '0')
+	  return (
+	    `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
+	    `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+	  )
+	}
+
+	function _downloadJson(filename, payload) {
+	  const json = JSON.stringify(payload, null, 2)
+	  const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
+	  const url = URL.createObjectURL(blob)
+	  const a = document.createElement('a')
+	  a.href = url
+	  a.download = filename
+	  a.click()
+	  URL.revokeObjectURL(url)
+	}
+
+	function handleExportLocal() {
+	  const exported = (mappings.value || []).map((item) => ({
+	    id: item?.id ?? null,
+	    scope_type: item?.scope_type ?? null,
+	    scope_key: item?.scope_key ?? null,
+	    name: item?.name ?? null,
+	    default_model: item?.default_model ?? null,
+	    candidates: Array.isArray(item?.candidates) ? item.candidates : [],
+	    is_active: item?.is_active ?? true,
+	    updated_at: item?.updated_at ?? null,
+	    source: item?.source ?? null,
+	    metadata: item?.metadata && typeof item.metadata === 'object' ? item.metadata : {},
+	  }))
+	  _downloadJson(`model-mappings-${_formatExportTs()}.json`, {
+	    exported_at: new Date().toISOString(),
+	    mappings: exported,
+	  })
+	  message.success('已导出本地 JSON')
+	}
+
+	async function handleSyncToSupabase() {
+	  try {
+	    const result = await store.syncMappingsToSupabase()
+	    const status = String(result?.status || '')
+	    if (status.startsWith('skipped:')) {
+	      message.warning(`已跳过同步：${status}`)
+	      return
+	    }
+	    message.success(`同步成功：已同步 ${result?.synced_count || 0} 条映射到 Supabase`)
+	  } catch (error) {
+	    message.error('同步失败：' + (error?.message || '未知错误'))
+	  }
+	}
+
+	async function handleSubmit() {
+	  await store.saveMapping({
     scope_type: formModel.scope_type,
     scope_key: formModel.scope_key,
     name: formModel.name,
@@ -145,8 +199,8 @@ async function handleSubmit() {
     is_active: true,
   })
   window.$message?.success('映射已保存')
-  modalVisible.value = false
-}
+	  modalVisible.value = false
+	}
 
 function ensureDefaultInCandidates(value) {
   if (value && !formModel.candidates.includes(value)) {
@@ -228,12 +282,18 @@ function handleDeleteMapping(record) {
 </script>
 
 <template>
-  <NSpace vertical size="large">
-    <NCard title="模型映射" size="small" :loading="mappingsLoading">
-      <NSpace justify="space-between" align="center" class="mb-3">
-        <NButton type="primary" @click="openCreate">新增映射</NButton>
-        <NButton secondary :loading="mappingsLoading" @click="store.loadMappings()">刷新</NButton>
-      </NSpace>
+	  <NSpace vertical size="large">
+	    <NCard title="模型映射" size="small" :loading="mappingsLoading">
+	      <NSpace justify="space-between" align="center" class="mb-3">
+	        <NSpace>
+	          <NButton type="primary" @click="openCreate">新增映射</NButton>
+	          <NButton secondary @click="handleExportLocal">导出本地 JSON</NButton>
+	          <NButton secondary :loading="syncMappingsLoading" @click="handleSyncToSupabase"
+	            >同步到 Supabase</NButton
+	          >
+	        </NSpace>
+	        <NButton secondary :loading="mappingsLoading" @click="store.loadMappings()">刷新</NButton>
+	      </NSpace>
 	      <NTable :loading="mappingsLoading" :single-line="false" class="mt-4" size="small" striped>
 	        <thead>
 	          <tr>

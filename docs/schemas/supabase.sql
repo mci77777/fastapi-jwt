@@ -27,6 +27,20 @@ CREATE TABLE public.ai_prompt (
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT ai_prompt_pkey PRIMARY KEY (id)
 );
+CREATE TABLE public.model_mappings (
+  id text NOT NULL,
+  scope_type text NOT NULL,
+  scope_key text NOT NULL,
+  name text,
+  default_model text,
+  candidates jsonb DEFAULT '[]'::jsonb NOT NULL,
+  is_active boolean DEFAULT true,
+  updated_at timestamp with time zone DEFAULT now(),
+  source text,
+  metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT model_mappings_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.anon_messages (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,

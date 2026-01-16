@@ -110,15 +110,15 @@ defineOptions({ name: 'ModelMappingCard' })
 const emit = defineEmits(['mapping-change'])
 
 const store = useAiModelSuiteStore()
-const { mappings, mappingsLoading, modelCandidates, models } = storeToRefs(store)
+const { mappings, mappingsLoading, modelCandidates, models, syncMappingsLoading } = storeToRefs(store)
 const message = useMessage()
 const dialog = useDialog()
 
 const loading = computed(() => mappingsLoading.value)
+const syncing = computed(() => syncMappingsLoading.value)
 const showAddModal = ref(false)
 const saving = ref(false)
 const diagnosing = ref(false)
-const syncing = ref(false)
 const formRef = ref(null)
 
 const formData = ref({
@@ -332,17 +332,16 @@ async function handleDiagnose() {
  * 同步映射到 Supabase
  */
 async function handleSyncToSupabase() {
-  syncing.value = true
   try {
-    const { syncMappingsToSupabase } = await import('@/api/aiModelSuite')
-    const response = await syncMappingsToSupabase()
-    const data = response.data || {}
-
-    message.success(`同步成功：已同步 ${data.synced_count || 0} 条映射到 Supabase`)
+    const result = await store.syncMappingsToSupabase()
+    const status = String(result?.status || '')
+    if (status.startsWith('skipped:')) {
+      message.warning(`已跳过同步：${status}`)
+      return
+    }
+    message.success(`同步成功：已同步 ${result?.synced_count || 0} 条映射到 Supabase`)
   } catch (error) {
     message.error('同步失败：' + (error.message || '未知错误'))
-  } finally {
-    syncing.value = false
   }
 }
 
