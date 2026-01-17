@@ -1,237 +1,88 @@
-# GymBro FastAPI + Vue3 Admin - Copilot 指令
+# AGENTS
 
-> 现代化全栈 RBAC 管理平台：FastAPI + Vue3 + JWT 认证 + 限流 + 策略访问控制
-# Quick Start
-# 调试文档
-```
-docs/archive/dashboard-refactor/ARCHITECTURE_OVERVIEW.md
-docs/archive/dashboard-refactor/CODE_REVIEW_AND_GAP_ANALYSIS.md
-docs/archive/dashboard-refactor/IMPLEMENTATION_PLAN.md
-docs/archive/dashboard-refactor/IMPLEMENTATION_SPEC.md
-```
+> Purpose: App 应用的 API 后端管理平台 - FastAPI + Agent 开发 + 双数据库架构（本地 SQLite + 云端 Supabase）
 
-## Start Development Environment
+## Role & objective
+- Role: 后端开发 Agent（专注 FastAPI API、Agent 开发、数据库管理）
+- Objective: 维护和扩展 RBAC 管理平台后端，开发 AI Agent 功能，确保本地/云端数据库一致性
 
-```powershell
-.\start-dev.ps1
-```
+## Constraints (non-negotiable)
+- **YAGNI → SSOT → KISS** 优先级严格遵守
+- 不绕过中间件（PolicyGate/RateLimiter 对安全至关重要）
+- 永不提交密钥（`.env` 已加入 gitignore）
+- 数据库模式变更后必须运行 `make migrate`
+- 使用 FastAPI `Depends()` 进行认证，不手动解析 header
+- 服务访问从 `request.app.state` 获取，不全局导入
+- 构建或启动必须成功且无错误
 
-**What it does:**
-- Auto-checks ports 3102 (frontend) and 9999 (backend)
-- Closes old processes if ports are occupied
-- Starts backend in new window
-- Starts frontend in new window
+## Tech & data
+- **后端**: FastAPI 0.111.0, Python 3.11+, Tortoise ORM, Aerich
+- **数据库**: SQLite（本地 `app/db/sqlite_manager.py`）+ Supabase（云端 PostgreSQL）
+- **认证**: JWT（Supabase JWKS 验证），匿名/永久用户区分
+- **中间件**: CORS → TraceID → PolicyGate → RateLimiter
+- **监控**: Prometheus 指标（`/api/v1/metrics`）
+- **Agent**: AI 供应商配置、模型映射、SSE 流式响应
 
-## Access
-
-Wait 10 seconds:
-- **Frontend**: http://localhost:3102
-- **Backend API**: http://localhost:9999/docs
-
-## Stop
-
-Close PowerShell windows or press `Ctrl+C`
-
-
-## 🏗️ 架构总览
-
-### 后端 (FastAPI 0.111.0, Python 3.11+)
-- **入口**: `run.py` → 启动 `app:app`，端口 9999，热重载
-- **应用工厂**: `app/core/application.py::create_app()` → 组装中间件栈，注册路由
-- **中间件链**（外→内）: CORS → **TraceID** → **PolicyGate** → **RateLimiter** → 路由处理器
-  - `TraceIDMiddleware`: 每个请求生成或透传 Trace ID（用于追踪）
-  - `PolicyGateMiddleware`: 限制匿名用户访问管理端点（`/api/v1/admin/*`, `/api/v1/user/*` 等）
-  - `RateLimitMiddleware`: 令牌桶 + 滑动窗口算法，永久用户限额高于匿名用户
-- **JWT 认证**: `app/auth/dependencies.py::get_current_user()`
-  - 支持 `Authorization: Bearer <token>` header（Supabase JWT）
-  - 区分匿名用户 vs 永久用户（`user.user_type`）
-  - JWKS 动态验证，时钟偏移容忍 ±120s，兼容无 `nbf` 的 Supabase token
-- **数据库**: SQLite（`app/db/sqlite_manager.py`）存储 AI 供应商配置、模型映射与运行态数据
-- **服务层**: 单例模式通过 `app.state` 注入（`application.py` 生命周期钩子）
-  - `AIConfigService`, `ModelMappingService` 管理运行时状态（endpoints→mapping→models SSOT）
-  - `EndpointMonitor` 收集 Prometheus 指标
-
-### 前端 (Vue 3.3, Vite 4, Naive UI 2.x)
-- **入口**: `web/src/main.js` → `pnpm dev` 启动 Vite 开发服务器
-- **路由**: `web/src/router/index.js::addDynamicRoutes()` 验证 token 后从后端获取 RBAC 路由
-- **状态**: Pinia stores (`web/src/store/modules/`) - user, permission, tags
-- **HTTP 客户端**: `web/src/utils/http/index.js` 封装 axios（拦截器自动注入 token，处理 401）
-- **API 调用**: `web/src/api/*.js` 导出函数如 `fetchModels()` → 调用 `/api/v1/llm/models`
-
-## ⚡ 关键开发工作流
-
-### 本地开发
-```bash
-# 一键启动（推荐）
-.\start-dev.ps1
-# → 自动启动前端 (3102) 和后端 (9999)
-
-# 或手动启动：
-# 后端（终端 1）
-python run.py  # 或 make start
-# → http://localhost:9999/docs 访问 Swagger UI
-
-# 前端（终端 2）
-cd web && pnpm dev
-# → http://localhost:3102（代理 /api/v1 到后端 9999）
-```
-
-### 测试
-```bash
-# 后端测试（pytest）
-make test  # 导出 .env，运行 pytest -vv
-
-# 核心测试文件：
-# - tests/test_jwt_auth.py: JWT 验证边界用例
-# - tests/test_jwt_hardening.py: 时钟偏移、nbf 可选、算法限制
-# - tests/test_api_contracts.py: API schema 验证
-```
-
-### 代码质量
-```bash
-# Python（行宽 120，black + isort + ruff）
-make check        # 格式化和 lint 空跑（dry-run）
-make format       # 应用 black + isort
-make lint         # ruff check ./app
-
-# Vue（2 空格缩进，ESLint + Prettier）
-cd web && pnpm lint:fix
-cd web && pnpm prettier
-```
-
-### 数据库迁移
-```bash
-# Aerich（Tortoise ORM 迁移工具）
-make clean-db     # ⚠️ 删除 migrations/ 和 db.sqlite3
-make migrate      # aerich migrate（生成迁移文件）
-make upgrade      # aerich upgrade（应用迁移）
-```
-
-### 运维脚本
-使用 `scripts/` 目录中的工具（详见 `docs/SCRIPTS_INDEX.md`，24 个脚本分类）：
-- **JWT 验证**: `python scripts/verify_jwks_cache.py`（验证 JWKS + token 链）
-- **Supabase 健康**: `python scripts/verify_supabase_config.py`（检查 API/表）
+## Project testing strategy
+- **Unit/integration**: `make test`（pytest -vv）
+  - 核心测试：`tests/test_jwt_auth.py`, `tests/test_jwt_hardening.py`, `tests/test_api_contracts.py`
 - **冒烟测试**: `python scripts/smoke_test.py`（注册→JWT→SSE→持久化）
-- **K5 CI 管线**: `python scripts/k5_build_and_test.py`（构建 + Newman 测试）
+- **健康检查**: `curl http://localhost:9999/api/v1/healthz`
+- **Build/run**: `python run.py` 或 `make start`（端口 9999）
+- **Lint/format**: `make format`（black + isort）, `make lint`（ruff）
+- **MCP tools**: `feedback:codebase-retrieval`（语义代码检索）, `supabase-mcp-server:*`（Supabase 操作）, `context7:*`（依赖文档）
 
-## 📐 项目特定约定
+## E2E loop
+E2E loop = plan → issues → implement → test → review → commit → regression.
 
-### 后端模式
-1. **依赖注入**: 使用 FastAPI `Depends()` 进行认证，不要手动解析 header
-   ```python
-   from app.auth import get_current_user
-   
-   @router.get("/protected")
-   async def endpoint(user: AuthenticatedUser = Depends(get_current_user)):
-       # user.user_type 是 "anonymous" 或 "permanent"
-   ```
+1. **Plan**: 使用 `plan` skill 生成实施计划和 Issue CSV
+2. **Issues**: 在 `issues/` 目录创建 CSV，按时间戳命名
+3. **Implement**: 按 Issue 逐条实现，遵循 SSOT 原则
+4. **Test**: `make test` + 健康检查 + 冒烟测试
+5. **Review**: 代码审查，确保符合项目约定
+6. **Commit**: 单提交可撤回，影响面记录
+7. **Regression**: 验证无回归，更新 Issue 状态
 
-2. **错误响应**: 使用 `app/core/exceptions.py::create_error_response()` 确保格式一致
-   ```python
-   # 返回: {"status": 401, "code": "token_expired", "message": "...", "request_id": "...", "hint": "..."}
-   ```
+## Plan & issue generation
+- 使用 `plan` skill 生成计划和 Issue CSV
+- 计划必须包含：步骤、测试、风险、回滚/安全备注
+- 复杂任务先分析 WHY，再 PBR 发现，最后最小变更
 
-3. **服务访问**: 从 `request.app.state` 获取，不要全局导入
-   ```python
-   async def endpoint(request: Request):
-       ai_service = request.app.state.ai_config_service
-   ```
+## Issue CSV guidelines
+- **详细规范**: 参见 `issues/README.md`
+- **位置**: `issues/` 目录
+- **命名**: `YYYY-MM-DD_HH-MM-SS-<描述>.csv`
+- **必需列**: ID, Title, Description, Acceptance, Test_Method, Tools, Dev_Status, Review1_Status, Regression_Status, Files, Dependencies, Notes
+- **状态值**: TODO | DOING | DONE
+- **工作流**: 每条 Issue 逐一处理，完成后更新状态
 
-4. **指标收集**: 使用 `app/core/metrics.py` 的 Prometheus counters/histograms，导出到 `/api/v1/metrics`
+## Tool usage
+- 匹配的 MCP 工具存在时，直接使用；不猜测或模拟结果
+- 优先使用 Issue CSV `Tools` 列指定的工具
+- 工具不可用或失败时，记录并使用最安全的替代方案
+- **详细工具目录**: 参见 `docs/mcp-tools.md`
+- **🥇 第一优先级**: `feedback:codebase-retrieval`（语义代码检索）- 任何代码问题首选
+- **🥈 第二优先级**: `supabase-mcp-server:*`（Supabase 云端数据库操作）
+- **🥉 第三优先级**: `context7:*`（第三方依赖文档查询）
+- **代码智能优先级**: LSP (sou) > AST (ast-grep) > 文本 (Grep)
 
-### 前端模式
-1. **组件结构**: `<script setup>` + `<template>` + `<style scoped>`（**禁止 JSX 混用**）
-   ```vue
-   <script setup>
-   import { ref } from 'vue'
-   const count = ref(0)
-   </script>
-   <template>
-     <n-button @click="count++">{{ count }}</n-button>
-   </template>
-   ```
+## Testing policy
+- **详细规范**: 参见 `docs/testing-policy.md`
+- 每次变更后运行 `make test`
+- 启动后执行健康检查 `GET /api/v1/healthz`
+- 关键功能变更需冒烟测试
+- JWT 相关变更需运行 `tests/test_jwt_*.py`
+- 数据库变更需验证迁移成功
 
-2. **Store 使用**: 用 `storeToRefs()` 解构以保持响应性
-   ```javascript
-   import { storeToRefs } from 'pinia'
-   const userStore = useUserStore()
-   const { userInfo } = storeToRefs(userStore)  // 响应式
-   const { logout } = userStore  // actions 不需要 refs
-   ```
+## Safety
+- 避免破坏性命令，除非明确要求
+- 保持向后兼容，除非明确要求打破
+- 永不暴露密钥；遇到时脱敏处理
+- 中间件相关变更需谨慎（PolicyGate/RateLimiter）
+- 数据库操作优先在本地 SQLite 验证，再同步 Supabase
 
-3. **API 调用**: 始终使用 `web/src/api/*.js` 函数，禁止内联 axios
-   ```javascript
-   import { fetchModels } from '@/api/aiModelSuite'
-   const models = await fetchModels({ page: 1 })
-   ```
-
-## 🔗 集成要点
-
-### JWT 认证流程
-1. **前端** → POST `/api/v1/base/access_token` 携带凭证
-2. **后端** → PolicyGate 放行公开端点 → 返回 JWT
-3. **前端** → 存储 token → 后续请求携带 `Authorization: Bearer <token>`
-4. **后端** → `get_current_user()` 通过 JWKS 验证 → 设置 `request.state.user`
-5. **中间件** → RateLimiter 检查用户类型 → PolicyGate 执行访问策略
-
-### 匿名用户 vs 永久用户
-- **匿名**: 受限的速率限制，仅可访问 `/api/v1/messages*` 和 `/api/v1/llm/models`（仅 GET）
-- **永久**: 更高限额，完整 RBAC 访问管理端点
-- **检测**: JWT claim `user_type` 或邮箱模式（`anon_*` = 匿名）
-
-### SSE (Server-Sent Events)
-- **端点**: `/api/v1/messages/{id}/events`（流式 AI 响应）
-- **中间件**: `app/core/sse_guard.py` 防止活跃 SSE 连接被限流阻断
-- **前端**: POST `/api/v1/messages` 创建会话后 EventSource 连接
-
-## ⚙️ 配置与密钥
-
-### 环境文件
-- **后端**: `.env`（根目录）→ 由 `app/settings/config.py::Settings` 加载
-- **前端**: `web/.env.development` / `web/.env.production` → Vite 环境变量（`VITE_*`）
-
-### 关键配置项
-```bash
-# JWT（详见 docs/JWT_HARDENING_GUIDE.md）
-JWT_CLOCK_SKEW_SECONDS=120       # Supabase 时钟偏移容忍
-JWT_REQUIRE_NBF=false            # Supabase token 缺少 nbf 声明
-JWT_ALLOWED_ALGORITHMS=ES256,RS256,HS256
-
-# 限流（app/core/rate_limiter.py）
-RATE_LIMIT_ENABLED=true
-ANON_ENABLED=true                # 允许匿名用户
-POLICY_GATE_ENABLED=true         # 执行访问策略
-
-# 请求追踪：固定使用 `X-Request-Id`（无需配置项）
-```
-
-## ⚠️ 常见陷阱
-
-1. **不要绕过中间件**: PolicyGate/RateLimiter 对安全至关重要；使用 `app/core/policy_gate.py` 中的公开端点模式来豁免
-2. **永不提交密钥**: `.env` 已加入 gitignore；使用 `.env.example` 作为模板
-3. **数据库模式变更**: 模型更新后始终运行 `make migrate`（Aerich 跟踪变更）
-4. **前端 token 刷新**: 401 响应触发 `useUserStore().logout()` → 清除状态 → 重定向到登录
-5. **Prometheus 指标**: 未经更新 `docs/GW_AUTH_README.md` 监控章节，不要创建新指标类型
-
-## 📚 核心文档
-
-- **架构**: `docs/PROJECT_OVERVIEW.md`（系统图、技术栈、已完成功能）
-- **JWT 硬化**: `docs/JWT_HARDENING_GUIDE.md`（时钟偏移、算法限制、Supabase 兼容性）
-- **网关认证**: `docs/GW_AUTH_README.md`（健康探针、指标、回滚程序）
-- **脚本索引**: `docs/SCRIPTS_INDEX.md`（24 个按用例分类的运维脚本）
-- **Vue 标准**: `docs/coding-standards/vue-best-practices.md`（禁止 JSX、Composition API、Naive UI 模式）
-- **现有约定**: `AGENTS.md`（项目结构、命令、风格指南）
-
-## 📋 快速参考
-
-| 任务 | 命令 |
-|------|---------|
-| 启动后端 | `python run.py` 或 `make start` |
-| 启动前端 | `cd web && pnpm dev` |
-| 运行测试 | `make test` |
-| 格式化代码 | `make format`（后端），`cd web && pnpm prettier`（前端）|
-| 代码检查 | `make lint`（后端），`cd web && pnpm lint`（前端）|
-| 构建 Docker | `docker build -t vue-fastapi-admin .` |
-| 健康检查 | `curl http://localhost:9999/api/v1/healthz` |
-| 指标查看 | `curl http://localhost:9999/api/v1/metrics` |
-| API 文档 | http://localhost:9999/docs（Swagger UI）|
+## Output style
+- 保持回复简洁、结构化
+- 编辑时提供文件引用和行号
+- 非平凡变更总是包含风险和建议的下一步
+- 遵循 Chat 输出模板：WHY → HOW → 工具选择 → 同义扫描 → 最小变更 → 验证 → 记忆+反馈

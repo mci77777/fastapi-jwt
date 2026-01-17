@@ -417,42 +417,47 @@ async def get_mapped_models_stats(
     }
 
 
+def _parse_e2e_mapped_model_run_row(row: dict[str, Any] | None, *, include_created_at: bool = False) -> dict[str, Any] | None:
+    if not row:
+        return None
+    raw_results = row.get("results_json")
+    results: list[dict[str, Any]] = []
+    if isinstance(raw_results, str) and raw_results.strip():
+        try:
+            parsed = json.loads(raw_results)
+            if isinstance(parsed, list):
+                results = [item for item in parsed if isinstance(item, dict)]
+        except Exception:
+            results = []
+
+    payload: dict[str, Any] = {
+        "run_id": row.get("run_id"),
+        "user_type": row.get("user_type"),
+        "auth_mode": row.get("auth_mode"),
+        "prompt_text": row.get("prompt_text"),
+        "prompt_mode": row.get("prompt_mode"),
+        "result_mode": row.get("result_mode"),
+        "models_total": int(row.get("models_total") or 0),
+        "models_success": int(row.get("models_success") or 0),
+        "models_failed": int(row.get("models_failed") or 0),
+        "started_at": row.get("started_at") or row.get("created_at"),
+        "finished_at": row.get("finished_at"),
+        "duration_ms": row.get("duration_ms"),
+        "status": row.get("status"),
+        "error_summary": row.get("error_summary"),
+        "results": results,
+    }
+    if include_created_at:
+        payload["created_at"] = row.get("created_at")
+    return payload
+
+
 @router.get("/stats/e2e-mapped-models")
 async def get_e2e_mapped_models_stats(
     request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """获取每日 E2E（映射模型可用性）最近结果。"""
-
-    def _parse_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
-        if not row:
-            return None
-        raw_results = row.get("results_json")
-        results: list[dict[str, Any]] = []
-        if isinstance(raw_results, str) and raw_results.strip():
-            try:
-                parsed = json.loads(raw_results)
-                if isinstance(parsed, list):
-                    results = [item for item in parsed if isinstance(item, dict)]
-            except Exception:
-                results = []
-        return {
-            "run_id": row.get("run_id"),
-            "user_type": row.get("user_type"),
-            "auth_mode": row.get("auth_mode"),
-            "prompt_text": row.get("prompt_text"),
-            "prompt_mode": row.get("prompt_mode"),
-            "result_mode": row.get("result_mode"),
-            "models_total": int(row.get("models_total") or 0),
-            "models_success": int(row.get("models_success") or 0),
-            "models_failed": int(row.get("models_failed") or 0),
-            "started_at": row.get("started_at") or row.get("created_at"),
-            "finished_at": row.get("finished_at"),
-            "duration_ms": row.get("duration_ms"),
-            "status": row.get("status"),
-            "error_summary": row.get("error_summary"),
-            "results": results,
-        }
 
     db = get_sqlite_manager(request.app)
     latest: dict[str, Any] = {}
@@ -462,12 +467,12 @@ async def get_e2e_mapped_models_stats(
             SELECT *
             FROM e2e_mapped_model_runs
             WHERE user_type = ?
-            ORDER BY COALESCE(started_at, created_at) DESC
+            ORDER BY created_at DESC
             LIMIT 1
             """,
             [user_type],
         )
-        parsed = _parse_row(row)
+        parsed = _parse_e2e_mapped_model_run_row(row)
         if parsed:
             latest[user_type] = parsed
 
@@ -489,6 +494,69 @@ async def get_e2e_mapped_models_stats(
     }
 
     return {"code": 200, "data": {"latest": latest, "summary": summary}, "msg": "success"}
+
+
+@router.get("/stats/e2e-mapped-model-runs")
+async def get_e2e_mapped_model_runs(
+    request: Request,
+    user_type: str = Query("permanent", regex="^(anonymous|permanent)$", description="用户类型"),
+    time_window: str = Query("24h", regex="^(24h|7d|30d)$", description="时间窗口"),
+    limit: int = Query(20, ge=1, le=200, description="返回条数"),
+    offset: int = Query(0, ge=0, le=10000, description="偏移量（分页）"),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """获取 E2E（映射模型）运行记录列表（用于矩阵/回归观察）。"""
+
+    now_utc = datetime.now(timezone.utc)
+    if time_window == "30d":
+        start_time = now_utc - timedelta(days=30)
+    elif time_window == "7d":
+        start_time = now_utc - timedelta(days=7)
+    else:
+        start_time = now_utc - timedelta(hours=24)
+
+    start_ts = start_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    db = get_sqlite_manager(request.app)
+    total_row = await db.fetchone(
+        """
+        SELECT COUNT(1) as total
+        FROM e2e_mapped_model_runs
+        WHERE user_type = ? AND created_at >= ?
+        """,
+        [user_type, start_ts],
+    )
+    total = int((total_row or {}).get("total") or 0)
+
+    raw_rows = await db.fetchall(
+        """
+        SELECT *
+        FROM e2e_mapped_model_runs
+        WHERE user_type = ? AND created_at >= ?
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?
+        """,
+        [user_type, start_ts, int(limit), int(offset)],
+    )
+
+    runs: list[dict[str, Any]] = []
+    for row in raw_rows:
+        parsed = _parse_e2e_mapped_model_run_row(row, include_created_at=True)
+        if parsed:
+            runs.append(parsed)
+
+    return {
+        "code": 200,
+        "data": {
+            "user_type": user_type,
+            "time_window": time_window,
+            "limit": int(limit),
+            "offset": int(offset),
+            "total": total,
+            "runs": runs,
+        },
+        "msg": "success",
+    }
 
 
 @router.get("/stats/api-connectivity")
@@ -633,6 +701,12 @@ class DashboardConfig(BaseModel):
     websocket_push_interval: int = Field(10, ge=1, le=300, description="WebSocket 推送间隔（秒）")
     http_poll_interval: int = Field(30, ge=5, le=600, description="HTTP 轮询间隔（秒）")
     log_retention_size: int = Field(100, ge=10, le=1000, description="日志保留条数")
+    e2e_interval_hours: Optional[int] = Field(
+        None,
+        ge=3,
+        le=24,
+        description="E2E 运行间隔（小时，3~24；配置后优先于 e2e_daily_time）",
+    )
     e2e_daily_time: str = Field("05:00", description="每日 E2E 启动时间（HH:MM）", pattern=r"^\d{2}:\d{2}$")
     e2e_prompt_text: str = Field(
         "每日测试连通性和tools工具可用性",
@@ -654,6 +728,7 @@ async def _get_dashboard_config_payload(db: SQLiteManager) -> dict[str, Any]:
         websocket_push_interval=10,
         http_poll_interval=30,
         log_retention_size=100,
+        e2e_interval_hours=None,
         e2e_daily_time="05:00",
         e2e_prompt_text="每日测试连通性和tools工具可用性",
     ).dict()

@@ -45,6 +45,19 @@
         </NInputNumber>
       </NFormItem>
 
+      <NFormItem label="E2E 执行间隔（小时）" path="e2e_interval_hours">
+        <NInputNumber
+          v-model:value="formData.e2e_interval_hours"
+          :min="3"
+          :max="24"
+          :step="1"
+          clearable
+          placeholder="留空=按每日时间运行；填写=每隔 N 小时运行"
+        >
+          <template #suffix>小时</template>
+        </NInputNumber>
+      </NFormItem>
+
       <NFormItem label="每日 E2E 启动时间" path="e2e_daily_time">
         <NInput
           v-model:value="formData.e2e_daily_time"
@@ -87,6 +100,7 @@ const props = defineProps({
       websocket_push_interval: 10,
       http_poll_interval: 30,
       log_retention_size: 100,
+      e2e_interval_hours: null,
       e2e_daily_time: '05:00',
       e2e_prompt_text: '每日测试连通性和tools工具可用性',
     }),
@@ -104,6 +118,7 @@ const formData = ref({
   websocket_push_interval: 10,
   http_poll_interval: 30,
   log_retention_size: 100,
+  e2e_interval_hours: null,
   e2e_daily_time: '05:00',
   e2e_prompt_text: '每日测试连通性和tools工具可用性',
 })
@@ -153,6 +168,18 @@ const rules = {
       max: 1000,
       message: '日志保留数量必须在 10-1000 条之间',
       trigger: 'blur',
+    },
+  ],
+  e2e_interval_hours: [
+    {
+      validator(rule, value) {
+        if (value === null || value === undefined || value === '') return true
+        const n = Number(value)
+        if (!Number.isFinite(n)) return false
+        return n >= 3 && n <= 24
+      },
+      message: 'E2E 间隔必须在 3-24 小时之间（留空则按“每日时间”运行）',
+      trigger: ['blur', 'change'],
     },
   ],
   e2e_daily_time: [

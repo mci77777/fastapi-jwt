@@ -185,6 +185,7 @@ const dashboardConfig = ref({
   websocket_push_interval: 10,
   http_poll_interval: 30,
   log_retention_size: 100,
+  e2e_interval_hours: null,
   e2e_daily_time: '05:00',
   e2e_prompt_text: '每日测试连通性和tools工具可用性',
 })

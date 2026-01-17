@@ -530,6 +530,15 @@ async def get_user_menu(
                         "is_hidden": False,
                         "keepalive": False,
                     },
+                    {
+                        "name": "E2E 记录",
+                        "path": "e2e-records",
+                        "component": "/ai/model-suite/e2e-records",
+                        "icon": "mdi:clipboard-text-clock-outline",
+                        "order": 3,
+                        "is_hidden": False,
+                        "keepalive": False,
+                    },
                 ],
             }
         )

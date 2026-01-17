@@ -1,62 +1,8 @@
 # GymBro FastAPI + Vue3 Admin - Copilot 指令
 
-> App 应用的 API 后端管理平台 - FastAPI + Agent 开发 + 双数据库架构（本地 SQLite + 云端 Supabase）
-
-## 🎯 Role & Objective
-
-- **Role**: 后端开发 Agent（专注 FastAPI API、Agent 开发、数据库管理）
-- **Objective**: 维护和扩展 RBAC 管理平台后端，开发 AI Agent 功能，确保本地/云端数据库一致性
-
-## 🚫 Constraints (non-negotiable)
-
-- **YAGNI → SSOT → KISS** 优先级严格遵守
-- 不绕过中间件（PolicyGate/RateLimiter 对安全至关重要）
-- 永不提交密钥（`.env` 已加入 gitignore）
-- 数据库模式变更后必须运行 `make migrate`
-- 使用 FastAPI `Depends()` 进行认证，不手动解析 header
-- 服务访问从 `request.app.state` 获取，不全局导入
-- 构建或启动必须成功且无错误
-- 不要改动端口（前端 3102，后端 9999）
-- 不要尝试一直启动服务
-
-## 🔧 MCP Tool Usage
-
-- **详细工具目录**: 参见 `docs/mcp-tools.md`
-- **🥇 第一优先级**: `feedback:codebase-retrieval`（语义代码检索）- 任何代码问题首选
-- **🥈 第二优先级**: `supabase-mcp-server:*`（Supabase 云端数据库操作）
-- **🥉 第三优先级**: `context7:*`（第三方依赖文档查询）
-- **代码智能优先级**: LSP (sou) > AST (ast-grep) > 文本 (Grep)
-- 匹配的 MCP 工具存在时，直接使用；不猜测或模拟结果
-- 工具不可用或失败时，记录并使用最安全的替代方案
-
-## 🔄 E2E Loop
-
-E2E loop = plan → issues → implement → test → review → commit → regression.
-
-1. **Plan**: 使用 `plan` skill 生成实施计划和 Issue CSV
-2. **Issues**: 在 `issues/` 目录创建 CSV，按时间戳命名
-3. **Implement**: 按 Issue 逐条实现，遵循 SSOT 原则
-4. **Test**: `make test` + 健康检查 + 冒烟测试
-5. **Review**: 代码审查，确保符合项目约定
-6. **Commit**: 单提交可撤回，影响面记录
-7. **Regression**: 验证无回归，更新 Issue 状态
-
-## 📋 Issue CSV Guidelines
-
-- **详细规范**: 参见 `issues/README.md`
-- **位置**: `issues/` 目录
-- **命名**: `YYYY-MM-DD_HH-MM-SS-<描述>.csv`
-- **必需列**: ID, Title, Description, Acceptance, Test_Method, Tools, Dev_Status, Review1_Status, Regression_Status, Files, Dependencies, Notes
-- **状态值**: TODO | DOING | DONE
-- **工作流**: 每条 Issue 逐一处理，完成后更新状态
-
-## 🌐 Production URLs
-
-- **Web**: https://web.gymbro.cloud/ | https://web.gymbro.cloud/dashboard
-- **API**: https://api.gymbro.cloud/ | https://api.gymbro.cloud/docs
-
-## 📚 调试文档
-
+> 现代化全栈 RBAC 管理平台：FastAPI + Vue3 + JWT 认证 + 限流 + 策略访问控制
+# Quick Start
+# 调试文档
 ```
 docs/archive/dashboard-refactor/ARCHITECTURE_OVERVIEW.md
 docs/archive/dashboard-refactor/CODE_REVIEW_AND_GAP_ANALYSIS.md
@@ -64,7 +10,28 @@ docs/archive/dashboard-refactor/IMPLEMENTATION_PLAN.md
 docs/archive/dashboard-refactor/IMPLEMENTATION_SPEC.md
 ```
 
----
+## Start Development Environment
+
+```powershell
+.\start-dev.ps1
+```
+
+**What it does:**
+- Auto-checks ports 3102 (frontend) and 9999 (backend)
+- Closes old processes if ports are occupied
+- Starts backend in new window
+- Starts frontend in new window
+
+## Access
+
+Wait 10 seconds:
+- **Frontend**: http://localhost:3102
+- **Backend API**: http://localhost:9999/docs
+
+## Stop
+
+Close PowerShell windows or press `Ctrl+C`
+
 
 ## 🏗️ 架构总览
 
@@ -79,11 +46,10 @@ docs/archive/dashboard-refactor/IMPLEMENTATION_SPEC.md
   - 支持 `Authorization: Bearer <token>` header（Supabase JWT）
   - 区分匿名用户 vs 永久用户（`user.user_type`）
   - JWKS 动态验证，时钟偏移容忍 ±120s，兼容无 `nbf` 的 Supabase token
-- **数据库**: SQLite（本地 `app/db/sqlite_manager.py`）+ Supabase（云端 PostgreSQL）
+- **数据库**: SQLite（`app/db/sqlite_manager.py`）存储 AI 供应商配置、模型映射与运行态数据
 - **服务层**: 单例模式通过 `app.state` 注入（`application.py` 生命周期钩子）
   - `AIConfigService`, `ModelMappingService` 管理运行时状态（endpoints→mapping→models SSOT）
   - `EndpointMonitor` 收集 Prometheus 指标
-- **Agent**: AI 供应商配置、模型映射、SSE 流式响应
 
 ### 前端 (Vue 3.3, Vite 4, Naive UI 2.x)
 - **入口**: `web/src/main.js` → `pnpm dev` 启动 Vite 开发服务器
@@ -91,8 +57,6 @@ docs/archive/dashboard-refactor/IMPLEMENTATION_SPEC.md
 - **状态**: Pinia stores (`web/src/store/modules/`) - user, permission, tags
 - **HTTP 客户端**: `web/src/utils/http/index.js` 封装 axios（拦截器自动注入 token，处理 401）
 - **API 调用**: `web/src/api/*.js` 导出函数如 `fetchModels()` → 调用 `/api/v1/llm/models`
-
----
 
 ## ⚡ 关键开发工作流
 
@@ -112,7 +76,7 @@ cd web && pnpm dev
 # → http://localhost:3102（代理 /api/v1 到后端 9999）
 ```
 
-### 测试策略
+### 测试
 ```bash
 # 后端测试（pytest）
 make test  # 导出 .env，运行 pytest -vv
@@ -121,20 +85,7 @@ make test  # 导出 .env，运行 pytest -vv
 # - tests/test_jwt_auth.py: JWT 验证边界用例
 # - tests/test_jwt_hardening.py: 时钟偏移、nbf 可选、算法限制
 # - tests/test_api_contracts.py: API schema 验证
-
-# 冒烟测试
-python scripts/smoke_test.py  # 注册→JWT→SSE→持久化
-
-# 健康检查
-curl http://localhost:9999/api/v1/healthz
 ```
-
-**Testing Policy**:
-- 每次变更后运行 `make test`
-- 启动后执行健康检查 `GET /api/v1/healthz`
-- 关键功能变更需冒烟测试
-- JWT 相关变更需运行 `tests/test_jwt_*.py`
-- 数据库变更需验证迁移成功
 
 ### 代码质量
 ```bash
@@ -163,15 +114,13 @@ make upgrade      # aerich upgrade（应用迁移）
 - **冒烟测试**: `python scripts/smoke_test.py`（注册→JWT→SSE→持久化）
 - **K5 CI 管线**: `python scripts/k5_build_and_test.py`（构建 + Newman 测试）
 
----
-
 ## 📐 项目特定约定
 
 ### 后端模式
 1. **依赖注入**: 使用 FastAPI `Depends()` 进行认证，不要手动解析 header
    ```python
    from app.auth import get_current_user
-
+   
    @router.get("/protected")
    async def endpoint(user: AuthenticatedUser = Depends(get_current_user)):
        # user.user_type 是 "anonymous" 或 "permanent"
@@ -216,8 +165,6 @@ make upgrade      # aerich upgrade（应用迁移）
    const models = await fetchModels({ page: 1 })
    ```
 
----
-
 ## 🔗 集成要点
 
 ### JWT 认证流程
@@ -236,8 +183,6 @@ make upgrade      # aerich upgrade（应用迁移）
 - **端点**: `/api/v1/messages/{id}/events`（流式 AI 响应）
 - **中间件**: `app/core/sse_guard.py` 防止活跃 SSE 连接被限流阻断
 - **前端**: POST `/api/v1/messages` 创建会话后 EventSource 连接
-
----
 
 ## ⚙️ 配置与密钥
 
@@ -260,8 +205,6 @@ POLICY_GATE_ENABLED=true         # 执行访问策略
 # 请求追踪：固定使用 `X-Request-Id`（无需配置项）
 ```
 
----
-
 ## ⚠️ 常见陷阱
 
 1. **不要绕过中间件**: PolicyGate/RateLimiter 对安全至关重要；使用 `app/core/policy_gate.py` 中的公开端点模式来豁免
@@ -270,18 +213,6 @@ POLICY_GATE_ENABLED=true         # 执行访问策略
 4. **前端 token 刷新**: 401 响应触发 `useUserStore().logout()` → 清除状态 → 重定向到登录
 5. **Prometheus 指标**: 未经更新 `docs/GW_AUTH_README.md` 监控章节，不要创建新指标类型
 
----
-
-## 🛡️ Safety
-
-- 避免破坏性命令，除非明确要求
-- 保持向后兼容，除非明确要求打破
-- 永不暴露密钥；遇到时脱敏处理
-- 中间件相关变更需谨慎（PolicyGate/RateLimiter）
-- 数据库操作优先在本地 SQLite 验证，再同步 Supabase
-
----
-
 ## 📚 核心文档
 
 - **架构**: `docs/PROJECT_OVERVIEW.md`（系统图、技术栈、已完成功能）
@@ -289,18 +220,12 @@ POLICY_GATE_ENABLED=true         # 执行访问策略
 - **网关认证**: `docs/GW_AUTH_README.md`（健康探针、指标、回滚程序）
 - **脚本索引**: `docs/SCRIPTS_INDEX.md`（24 个按用例分类的运维脚本）
 - **Vue 标准**: `docs/coding-standards/vue-best-practices.md`（禁止 JSX、Composition API、Naive UI 模式）
-- **MCP 工具**: `docs/mcp-tools.md`（MCP 工具目录和优先级）
-- **测试策略**: `docs/testing-policy.md`（测试规范和验收标准）
-- **Issue 规范**: `issues/README.md`（Issue CSV 工作流）
-- **Agent 规范**: `AGENTS.md`（角色、约束、E2E 工作流）
-
----
+- **现有约定**: `AGENTS.md`（项目结构、命令、风格指南）
 
 ## 📋 快速参考
 
 | 任务 | 命令 |
 |------|---------|
-| 一键启动 | `.\start-dev.ps1` |
 | 启动后端 | `python run.py` 或 `make start` |
 | 启动前端 | `cd web && pnpm dev` |
 | 运行测试 | `make test` |
@@ -310,12 +235,3 @@ POLICY_GATE_ENABLED=true         # 执行访问策略
 | 健康检查 | `curl http://localhost:9999/api/v1/healthz` |
 | 指标查看 | `curl http://localhost:9999/api/v1/metrics` |
 | API 文档 | http://localhost:9999/docs（Swagger UI）|
-
----
-
-## 💬 Output Style
-
-- 保持回复简洁、结构化
-- 编辑时提供文件引用和行号
-- 非平凡变更总是包含风险和建议的下一步
-- 遵循 Chat 输出模板：WHY → HOW → 工具选择 → 同义扫描 → 最小变更 → 验证 → 记忆+反馈

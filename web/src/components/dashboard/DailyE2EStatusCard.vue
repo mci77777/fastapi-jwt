@@ -6,7 +6,7 @@
           <n-tag v-if="currentRun" :bordered="false" type="success">成功: {{ currentRun.models_success }}</n-tag>
           <n-tag v-if="currentRun" :bordered="false" type="error">失败: {{ currentRun.models_failed }}</n-tag>
           <n-tag v-if="currentRun" :bordered="false">总计: {{ currentRun.models_total }}</n-tag>
-          <n-tag v-if="scheduleText" :bordered="false" type="info">每日 {{ scheduleText }}</n-tag>
+          <n-tag v-if="scheduleLabel" :bordered="false" type="info">{{ scheduleLabel }}</n-tag>
         </n-space>
         <n-space align="center" :size="8" wrap>
           <n-select
@@ -85,7 +85,15 @@ const currentRun = computed(() => {
 
 const rows = computed(() => (Array.isArray(currentRun.value?.results) ? currentRun.value.results : []))
 
-const scheduleText = computed(() => String(props.dashboardConfig?.e2e_daily_time || '').trim())
+const scheduleLabel = computed(() => {
+  const interval = props.dashboardConfig?.e2e_interval_hours
+  const hours = Number(interval)
+  if (Number.isFinite(hours) && hours >= 3 && hours <= 24) {
+    return `每隔 ${hours} 小时`
+  }
+  const daily = String(props.dashboardConfig?.e2e_daily_time || '').trim()
+  return daily ? `每日 ${daily}` : ''
+})
 
 function formatTime(value) {
   if (!value) return '--'

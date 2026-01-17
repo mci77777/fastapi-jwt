@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -197,3 +197,140 @@ async def test_e2e_mapped_models_stats_returns_latest(async_client) -> None:
         items = anon.get("results") or []
         assert isinstance(items, list)
         assert items[0].get("model_key") == "xai"
+
+
+@pytest.mark.asyncio
+async def test_e2e_mapped_model_runs_returns_paginated(async_client) -> None:
+    db = get_sqlite_manager(fastapi_app)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+
+    within_30d = now - timedelta(days=2)
+    too_old = now - timedelta(days=31)
+
+    results_json = json.dumps(
+        [
+            {"model_key": "xai", "success": True, "latency_ms": 120.0, "request_id": "r1", "thinkingml_ok": True},
+            {"model_key": "deepseek", "success": False, "latency_ms": 80.0, "request_id": "r2", "error": "failed"},
+        ],
+        ensure_ascii=False,
+    )
+
+    await db.execute(
+        """
+        INSERT INTO e2e_mapped_model_runs
+        (run_id, user_type, auth_mode, prompt_text, prompt_mode, result_mode,
+         models_total, models_success, models_failed, started_at, finished_at,
+         duration_ms, status, error_summary, results_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "run-recent-1",
+            "permanent",
+            "password",
+            "hello",
+            "server",
+            "xml_plaintext",
+            2,
+            1,
+            1,
+            within_30d.isoformat(),
+            within_30d.isoformat(),
+            200.0,
+            "failed",
+            "partial_fail",
+            results_json,
+            within_30d.strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+    )
+
+    await db.execute(
+        """
+        INSERT INTO e2e_mapped_model_runs
+        (run_id, user_type, auth_mode, prompt_text, prompt_mode, result_mode,
+         models_total, models_success, models_failed, started_at, finished_at,
+         duration_ms, status, error_summary, results_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "run-too-old",
+            "permanent",
+            "password",
+            "hello",
+            "server",
+            "xml_plaintext",
+            2,
+            2,
+            0,
+            too_old.isoformat(),
+            too_old.isoformat(),
+            100.0,
+            "success",
+            "",
+            results_json,
+            too_old.strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+    )
+
+    with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+        mock_verifier = mock_get_verifier.return_value
+        mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={}, user_type="permanent")
+
+        resp = await async_client.get(
+            "/api/v1/stats/e2e-mapped-model-runs",
+            params={"user_type": "permanent", "time_window": "30d", "limit": 10, "offset": 0},
+            headers={"Authorization": "Bearer mock.supabase.jwt"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("code") == 200
+        data = body.get("data") or {}
+        assert data.get("user_type") == "permanent"
+        assert data.get("time_window") == "30d"
+        assert data.get("total") == 1
+
+        runs = data.get("runs") or []
+        assert isinstance(runs, list)
+        assert len(runs) == 1
+        assert runs[0].get("run_id") == "run-recent-1"
+        items = runs[0].get("results") or []
+        assert isinstance(items, list)
+        assert items[0].get("model_key") == "xai"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_config_includes_e2e_interval_hours(async_client) -> None:
+    with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+        mock_verifier = mock_get_verifier.return_value
+        mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={}, user_type="permanent")
+
+        resp = await async_client.get("/api/v1/stats/config", headers={"Authorization": "Bearer mock.supabase.jwt"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("code") == 200
+        config = (body.get("data") or {}).get("config") or {}
+        assert int(config.get("e2e_interval_hours") or 0) == 24
+
+
+@pytest.mark.asyncio
+async def test_dashboard_config_can_update_e2e_interval_hours(async_client) -> None:
+    with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+        mock_verifier = mock_get_verifier.return_value
+        mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={}, user_type="permanent")
+
+        updated = await async_client.put(
+            "/api/v1/stats/config",
+            headers={"Authorization": "Bearer mock.supabase.jwt"},
+            json={
+                "websocket_push_interval": 10,
+                "http_poll_interval": 30,
+                "log_retention_size": 100,
+                "e2e_interval_hours": 6,
+                "e2e_daily_time": "05:00",
+                "e2e_prompt_text": "hello",
+            },
+        )
+        assert updated.status_code == 200
+        body = updated.json()
+        assert body.get("code") == 200
+        config = (body.get("data") or {}).get("config") or {}
+        assert int(config.get("e2e_interval_hours") or 0) == 6
