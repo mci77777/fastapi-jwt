@@ -15,6 +15,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.auth import AuthenticatedUser, get_current_user
+from app.auth.dashboard_access import is_dashboard_admin_user
 from app.core.middleware import get_current_request_id, reset_current_request_id, set_current_request_id
 from app.core.sse_guard import check_sse_concurrency, unregister_sse_connection
 from app.db.sqlite_manager import get_sqlite_manager
@@ -361,6 +362,10 @@ async def create_message(
     # 普通用户（free）与匿名用户一致：按 model_key 做日配额（deepseek 无限）。订阅用户（pro）不做配额。
     quota_model_key = _normalize_quota_model_key(requested_model)
     daily_limit = _FREE_TIER_DAILY_MODEL_LIMITS.get(quota_model_key)
+    # Dashboard 管理员：用于本地运维/E2E/Prompt 迭代，不受 free tier 日配额限制。
+    # （生产环境普通用户仍按配额执行；pro 也不做配额。）
+    if is_dashboard_admin_user(current_user):
+        daily_limit = None
     if daily_limit is not None and daily_limit > 0:
         is_pro = False
         if not current_user.is_anonymous:

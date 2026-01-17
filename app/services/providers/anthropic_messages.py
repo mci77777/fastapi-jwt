@@ -24,6 +24,26 @@ logger = logging.getLogger(__name__)
 class AnthropicMessagesAdapter:
     dialect = "anthropic.messages"
 
+    def _format_upstream_error(self, raw: bytes) -> str:
+        try:
+            data = json.loads(raw)
+        except Exception:
+            text = raw.decode("utf-8", errors="replace").strip()
+            return text[:240] if text else "unknown_error"
+
+        if isinstance(data, dict):
+            err = data.get("error")
+            if isinstance(err, dict):
+                msg = err.get("message") or err.get("error") or err.get("type")
+                if isinstance(msg, str) and msg.strip():
+                    return msg.strip()[:240]
+            msg = data.get("message") or data.get("msg") or data.get("detail")
+            if isinstance(msg, str) and msg.strip():
+                return msg.strip()[:240]
+            return json.dumps(data, ensure_ascii=False)[:240]
+
+        return str(data)[:240]
+
     def build_request(
         self,
         endpoint: dict[str, Any],
@@ -65,7 +85,12 @@ class AnthropicMessagesAdapter:
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream("POST", url, json=body, headers=headers) as response:
-                response.raise_for_status()
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    raw = await response.aread()
+                    detail = self._format_upstream_error(raw)
+                    raise ProviderError(f"upstream_http_{response.status_code}:{detail}") from exc
                 upstream_request_id = response.headers.get("request-id") or response.headers.get("x-request-id")
                 content_type = str(response.headers.get("content-type") or "").lower()
 

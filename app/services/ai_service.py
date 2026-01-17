@@ -2348,13 +2348,18 @@ class AIService:
         if openai_req.get("top_p") is not None:
             payload["top_p"] = openai_req["top_p"]
 
-        raw_tools = openai_req.get("tools")
-        if isinstance(raw_tools, list):
-            payload["tools"] = self._map_openai_tools_to_anthropic(raw_tools)
-
         tool_choice = openai_req.get("tool_choice")
         mapped_tool_choice = self._map_openai_tool_choice_to_anthropic(tool_choice)
-        if mapped_tool_choice is not None:
+        tool_choice_none = isinstance(mapped_tool_choice, dict) and mapped_tool_choice.get("type") == "none"
+
+        # 兼容性：部分本地代理/兼容层对 tools schema 更严格；当 tool_choice=none 时不下发 tools/tool_choice，
+        # 以避免上游 400 且与“当前后端不执行 tool_calls”的现实一致。
+        if not tool_choice_none:
+            raw_tools = openai_req.get("tools")
+            if isinstance(raw_tools, list):
+                payload["tools"] = self._map_openai_tools_to_anthropic(raw_tools)
+
+        if mapped_tool_choice is not None and not tool_choice_none:
             payload["tool_choice"] = mapped_tool_choice
 
         return payload

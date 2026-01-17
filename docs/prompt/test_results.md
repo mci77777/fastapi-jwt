@@ -9,25 +9,27 @@
 | v3.0 structure | 1902 | 59% | 3/3 | 2/3 | 0/3 | 结构优化 |
 | v3.1 enforce | 1402 | 70% | 3/3 | 3/3 | 1/3 | 强化约束 |
 | v4.0 unified | 1261 | 73% | 5/5 | 4/5 | 2/5 | 统一版本 |
-| **v5.0 production** | **1026** | **78%** | **10/10** | N/A* | N/A | **最终版本** |
+| v5.0 production | 1026 | 78% | 10/10 | N/A* | N/A | grok 最优压缩 |
+| **v6.0 stable** | **1500** | **68%** | **3/3** | N/A | N/A | **deepseek 3/3；claude-sonnet 3/3（runs=3, turns=1）✅** |
 
 *注：gemini-pro/minimax 在 v5.0 测试时出现端点错误（非 prompt 问题）
 
-## 最终版本 v5.0
+## 当前版本 v6.0
 
-**字符数**: 1026 bytes（较基线压缩 78%）
+**字符数**: 1500 bytes（较基线压缩 68%）
 
 ### 测试结果 (2026-01-17)
 
 | 模型 | 状态 | 通过率 | 测试规格 | 备注 |
 |------|------|--------|----------|------|
-| grok | ✅ PASS | 10/10 (100%) | runs=5, turns=2 | grok-4-1-fast-reasoning |
+| grok | ✅ PASS | 3/3 (100%) | runs=3, turns=1 | grok-4-1-fast-reasoning |
+| deepseek | ✅ PASS | 3/3 (100%) | runs=3, turns=1 | deepseek-reasoner |
+| claude-sonnet | ✅ PASS | 3/3 (100%) | runs=3, turns=1 | claude-sonnet-4-5-thinking |
 
 ### 关键改进
-1. **字符压缩 78%**：4627 → 1026 bytes
-2. **结构清晰**：必须输出的完整结构示例前置
-3. **规则精简**：去除冗余说明，保留核心约束
-4. **强制要求明确**：thinking/phase/title/final 必须存在
+1. **跨模型稳定**：deepseek / grok / claude-sonnet 结构校验稳定通过
+2. **SERP 注释块稳定**：明确 `<final>` 内末尾三行无缩进格式
+3. **避免重复标签**：禁止 ``` 代码块/复述模板，减少模型“粘贴示例”导致解析失败
 
 ---
 
@@ -53,17 +55,22 @@
 - 目标：最终生产版本
 - 结果：grok 10/10 (100%)，多轮对话稳定
 
+### v5.0 → v6.0
+- 目标：补齐 deepseek/claude-sonnet 的稳定性
+- 结果：deepseek/xai/claude-sonnet runs=3 全部 PASS
+
 ---
 
 ## 端点可用性说明
 
-以下模型因端点问题无法完成 prompt 迭代测试：
-- deepseek: 472 错误
-- claude-sonnet: 400 错误
-- gpt-5.2: 400 错误
-- gemini-flash: upstream_empty_content
+已验证可用：
+- deepseek：PASS（openai 端点）
+- claude-sonnet：PASS（反重力 Anthropic Messages 端点）
 
-建议修复端点后重新测试 v5.0 版本。
+未复测（需后续补齐）：
+- gemini-pro / minimax
+- gpt-5.2
+- gemini-flash
 
 ---
 
@@ -76,7 +83,8 @@ docs/prompt/
 ├── v3.0_structure.md     # 结构优化版本
 ├── v3.1_enforce.md       # 强化约束版本
 ├── v4.0_unified.md       # 统一版本
-├── v5.0_production.md    # 最终生产版本 ✅
+├── v5.0_production.md    # grok 最优压缩版本
+├── v6.0_deepseek_stable.md # 当前稳定版本 ✅
 ├── test_results.md       # 本文档
 └── CHANGELOG.md          # 变更日志
 ```
