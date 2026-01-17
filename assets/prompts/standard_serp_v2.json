@@ -2,7 +2,7 @@
   "id": "standard_serp_v2",
   "displayName": "ThinkingBox · GymBro (SERP v2)",
   "description": "Strict-XML + SERP v2（SSOT: md + tool）",
-  "version": "4.5.8",
+  "version": "5.0.0",
   "protocols": [
     "ThinkingML-v4.5"
   ],
