@@ -1535,6 +1535,39 @@ class AIService:
                 except Exception as exc:  # pragma: no cover
                     logger.warning("写入对话日志失败 message_id=%s request_id=%s error=%s", message_id, request_id, exc)
 
+            # 请求追踪：保存详细日志（仅在追踪开启时）
+            if getattr(self._db, "save_detailed_conversation_log", None):
+                try:
+                    # 构造 request_detail 和 response_detail
+                    request_detail = {
+                        "text": getattr(message, "text", None),
+                        "model": getattr(message, "model", None),
+                        "conversation_id": getattr(message, "conversation_id", None),
+                        "metadata": getattr(message, "metadata", None),
+                    }
+                    response_detail = {
+                        "model_used": model_used,
+                        "provider": provider_used,
+                        "endpoint_id": endpoint_id_used,
+                        "latency_ms": latency_ms,
+                        "success": success,
+                        "provider_metadata": provider_metadata,
+                    }
+                    await self._db.save_detailed_conversation_log(
+                        user_id=user.uid,
+                        message_id=message_id,
+                        conversation_id=getattr(message, "conversation_id", None) or "",
+                        request_id=request_id or "",
+                        request_detail=request_detail,
+                        response_detail=response_detail,
+                        model_used=model_used or "",
+                        latency_ms=latency_ms,
+                        status="success" if success else "error",
+                        error_message=error_message,
+                    )
+                except Exception as exc:  # pragma: no cover
+                    logger.debug("保存详细追踪日志失败（可能追踪已关闭） message_id=%s error=%s", message_id, exc)
+
             await broker.close(message_id)
 
     async def _generate_reply(
