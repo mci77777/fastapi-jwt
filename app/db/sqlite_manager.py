@@ -780,6 +780,103 @@ class SQLiteManager:
             await self._conn.commit()
         return total
 
+    async def get_tracing_enabled(self) -> bool:
+        """获取请求追踪开关状态（默认关闭）。"""
+        async with self._lock:
+            cursor = await self._conn.execute(
+                "SELECT config_json FROM dashboard_config WHERE id = 1"
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return False
+
+            try:
+                config = json.loads(row["config_json"])
+                return bool(config.get("request_tracing_enabled", False))
+            except (json.JSONDecodeError, KeyError):
+                return False
+
+    async def set_tracing_enabled(self, enabled: bool) -> None:
+        """设置请求追踪开关。"""
+        async with self._lock:
+            cursor = await self._conn.execute(
+                "SELECT config_json FROM dashboard_config WHERE id = 1"
+            )
+            row = await cursor.fetchone()
+
+            if row is None:
+                config = {"request_tracing_enabled": enabled}
+                await self._conn.execute(
+                    "INSERT INTO dashboard_config (id, config_json) VALUES (1, ?)",
+                    (json.dumps(config),)
+                )
+            else:
+                try:
+                    config = json.loads(row["config_json"])
+                except json.JSONDecodeError:
+                    config = {}
+                config["request_tracing_enabled"] = enabled
+                await self._conn.execute(
+                    "UPDATE dashboard_config SET config_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
+                    (json.dumps(config),)
+                )
+            await self._conn.commit()
+
+    async def save_detailed_conversation_log(
+        self,
+        user_id: str,
+        message_id: str,
+        conversation_id: str,
+        request_id: str,
+        request_detail: dict,
+        response_detail: dict,
+        model_used: str,
+        latency_ms: float,
+        status: str,
+        error_message: str = None,
+    ) -> None:
+        """保存详细的对话日志（仅在追踪开启时）。"""
+        enabled = await self.get_tracing_enabled()
+        if not enabled:
+            return
+
+        async with self._lock:
+            await self._conn.execute(
+                """INSERT INTO conversation_logs
+                   (user_id, message_id, conversation_id, request_id,
+                    request_detail_json, response_detail_json,
+                    model_used, latency_ms, status, error_message)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    user_id, message_id, conversation_id, request_id,
+                    json.dumps(request_detail, ensure_ascii=False),
+                    json.dumps(response_detail, ensure_ascii=False),
+                    model_used, latency_ms, status, error_message
+                )
+            )
+            await self._conn.commit()
+
+            # 自动清理超过 50 条的旧记录
+            await self._conn.execute(
+                """DELETE FROM conversation_logs
+                   WHERE id NOT IN (
+                       SELECT id FROM conversation_logs
+                       ORDER BY created_at DESC LIMIT 50
+                   )"""
+            )
+            await self._conn.commit()
+
+    async def get_recent_conversation_logs(self, limit: int = 50) -> list[dict]:
+        """获取最近的对话日志（最多 50 条）。"""
+        async with self._lock:
+            cursor = await self._conn.execute(
+                """SELECT * FROM conversation_logs
+                   ORDER BY created_at DESC LIMIT ?""",
+                (min(limit, 50),)
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
     async def _ensure_columns(self, table: str, ddl_map: dict[str, str]) -> None:
         if not ddl_map:
             return
