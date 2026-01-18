@@ -262,3 +262,32 @@ export function parsePrometheusMetrics(text) {
 
   return metrics
 }
+
+// ==================== 请求追踪 ====================
+
+/**
+ * 获取请求追踪配置
+ * @returns {Promise} 追踪配置 { enabled: boolean }
+ */
+export function getTracingConfig() {
+  return request.get('/tracing/config')
+}
+
+/**
+ * 设置请求追踪配置
+ * @param {boolean} enabled - 是否启用追踪
+ * @returns {Promise} 更新后的配置 { enabled: boolean }
+ */
+export function setTracingConfig(enabled) {
+  return request.post('/tracing/config', { enabled })
+}
+
+/**
+ * 获取对话日志列表（最近 50 条）
+ * @param {Object} params - 查询参数
+ * @param {number} params.limit - 最大返回条数（默认 50，最大 50）
+ * @returns {Promise} 日志列表 { logs: Array, total: number }
+ */
+export function getConversationLogs(params = {}) {
+  return request.get('/tracing/logs', { params })
+}
