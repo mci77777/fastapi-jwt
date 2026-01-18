@@ -15,6 +15,8 @@ import SupabaseStatusCard from '@/components/dashboard/SupabaseStatusCard.vue'
 import ModelObservabilityCard from '@/components/dashboard/ModelObservabilityCard.vue'
 import ModelSwitcher from '@/components/dashboard/ModelSwitcher.vue'
 import PromptSelector from '@/components/dashboard/PromptSelector.vue'
+import RequestTracingCard from '@/components/dashboard/RequestTracingCard.vue'
+import ConversationLogsModal from '@/components/dashboard/ConversationLogsModal.vue'
 
 // Dashboard API
 import {
@@ -38,6 +40,7 @@ const showConfigModal = ref(false)
 const showStatDetailModal = ref(false)
 const showMappedModelsModal = ref(false)
 const showSupabaseModal = ref(false)
+const showTracingLogsModal = ref(false)
 const selectedStat = ref(null)
 
 // 统计数据
@@ -446,6 +449,21 @@ async function handleConfigSave(config) {
 }
 
 /**
+ * 打开追踪日志模态框
+ */
+function handleViewTracingLogs() {
+  showTracingLogsModal.value = true
+}
+
+/**
+ * 处理追踪配置变更
+ */
+function handleTracingConfigChange(enabled) {
+  console.log('[Dashboard] 追踪配置已变更:', enabled)
+}
+
+
+/**
  * 处理服务器指标更新
  */
 function handleMetricsUpdate(metrics) {
@@ -553,6 +571,11 @@ onBeforeUnmount(() => {
           @reset-layout="resetCardOrder"
           @show-supabase-modal="showSupabaseModal = true"
         />
+
+        <RequestTracingCard
+          @view-logs="handleViewTracingLogs"
+          @config-change="handleTracingConfigChange"
+        />
       </div>
     </div>
 
@@ -583,6 +606,7 @@ onBeforeUnmount(() => {
         @status-change="() => {}"
       />
     </NModal>
+    <ConversationLogsModal v-model:show="showTracingLogsModal" />
   </div>
 </template>
 
