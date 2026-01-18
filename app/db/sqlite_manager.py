@@ -174,9 +174,12 @@ CREATE TABLE IF NOT EXISTS conversation_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
     message_id TEXT NOT NULL,
+    conversation_id TEXT,
     request_id TEXT,
     request_payload TEXT,
     response_payload TEXT,
+    request_detail_json TEXT,
+    response_detail_json TEXT,
     model_used TEXT,
     latency_ms REAL,
     status TEXT NOT NULL,
@@ -187,6 +190,7 @@ CREATE TABLE IF NOT EXISTS conversation_logs (
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_created ON conversation_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_user ON conversation_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_status ON conversation_logs(status);
+CREATE INDEX IF NOT EXISTS idx_conversation_logs_conversation ON conversation_logs(conversation_id);
 
 -- Web Dashboard 请求日志（前端脱敏后的 request/response raw 记录，默认不写入；由开关控制）
 CREATE TABLE IF NOT EXISTS request_raw_logs (
@@ -383,9 +387,21 @@ class SQLiteManager:
                 "conversation_logs",
                 {
                     "request_id": "ALTER TABLE conversation_logs ADD COLUMN request_id TEXT",
+                    "conversation_id": "ALTER TABLE conversation_logs ADD COLUMN conversation_id TEXT",
+                    "request_detail_json": "ALTER TABLE conversation_logs ADD COLUMN request_detail_json TEXT",
+                    "response_detail_json": "ALTER TABLE conversation_logs ADD COLUMN response_detail_json TEXT",
                 },
             )
             await self._conn.commit()
+
+            # 创建新索引（如果不存在）
+            try:
+                await self._conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_conversation_logs_conversation ON conversation_logs(conversation_id)"
+                )
+                await self._conn.commit()
+            except Exception:
+                pass
 
             await self._ensure_columns(
                 "local_users",
