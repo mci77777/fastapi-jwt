@@ -25,7 +25,7 @@ import CrudModal from '@/components/table/CrudModal.vue'
 import CrudTable from '@/components/table/CrudTable.vue'
 import TheIcon from '@/components/icon/TheIcon.vue'
 
-import { renderIcon } from '@/utils'
+	import { getToken, renderIcon } from '@/utils'
 import { useCRUD } from '@/composables'
 import api from '@/api'
 
@@ -43,15 +43,28 @@ const bulkChecking = ref(false)
 const syncingRowId = ref(null)
 const checkingRowId = ref(null)
 
-// LLM App config（默认 SSE 输出模式）
+// LLM App config（App 默认转发模式）
 const llmAppConfigLoading = ref(false)
 const llmAppConfigSaving = ref(false)
 const llmAppDefaultResultMode = ref('raw_passthrough')
+const llmAppDefaultResultModeLegacyAuto = ref(false)
 const llmAppResultModeOptions = [
-  { label: 'XML 纯文本（content_delta）', value: 'xml_plaintext' },
-  { label: 'RAW 透明转发（upstream_raw）', value: 'raw_passthrough' },
-  { label: 'AUTO（自动判断）', value: 'auto' },
+  { label: '透明转发（SSE content_delta）', value: 'raw_passthrough' },
+  { label: 'XML 文本转发（SSE content_delta）', value: 'xml_plaintext' },
 ]
+
+// SSE 探针：用于定位网关缓冲导致的“假流式 / 大 chunk”
+const sseProbeRunning = ref(false)
+const sseProbeEvents = ref([])
+
+const sseProbeSummary = computed(() => {
+  const items = Array.isArray(sseProbeEvents.value) ? sseProbeEvents.value : []
+  if (!items.length) return { ok: false, note: 'no_data', gaps: [] }
+  const gaps = []
+  for (let i = 1; i < items.length; i += 1) gaps.push(items[i] - items[i - 1])
+  const maxGapMs = gaps.length ? Math.max(...gaps) : 0
+  return { ok: maxGapMs < 1500, note: maxGapMs ? `max_gap_ms=${maxGapMs}` : 'ok', gaps }
+})
 
 // Web 搜索（Exa）配置（写入到 /api/v1/llm/app/config；后端仅返回 masked）
 const webSearchConfigSaving = ref(false)
@@ -67,16 +80,20 @@ async function loadLlmAppConfig() {
     const res = await api.getLlmAppConfig()
     const data = res?.data?.data || res?.data || {}
     const mode = String(data?.default_result_mode || '').trim()
-    llmAppDefaultResultMode.value = ['xml_plaintext', 'raw_passthrough', 'auto'].includes(mode)
-      ? mode
-      : 'raw_passthrough'
+    if (mode === 'auto') {
+      llmAppDefaultResultModeLegacyAuto.value = true
+      llmAppDefaultResultMode.value = null
+    } else {
+      llmAppDefaultResultModeLegacyAuto.value = false
+      llmAppDefaultResultMode.value = ['xml_plaintext', 'raw_passthrough'].includes(mode) ? mode : 'raw_passthrough'
+    }
 
     webSearchEnabled.value = Boolean(data?.web_search_enabled)
     webSearchProvider.value = String(data?.web_search_provider || 'exa').trim().toLowerCase() || 'exa'
     webSearchExaApiKeyMasked.value = String(data?.web_search_exa_api_key_masked || '').trim()
     webSearchExaApiKeySource.value = String(data?.web_search_exa_api_key_source || 'none').trim()
   } catch (error) {
-    message.error(error?.message || '加载 App 输出模式配置失败')
+    message.error(error?.message || '加载 App 转发模式配置失败')
   } finally {
     llmAppConfigLoading.value = false
   }
@@ -86,17 +103,129 @@ async function handleSaveLlmAppConfig() {
   llmAppConfigSaving.value = true
   try {
     const mode = String(llmAppDefaultResultMode.value || '').trim()
+    if (!['xml_plaintext', 'raw_passthrough'].includes(mode)) {
+      message.warning('请选择转发模式（透明转发 / XML 文本转发）')
+      return
+    }
     const res = await api.upsertLlmAppConfig({ default_result_mode: mode })
     const data = res?.data?.data || res?.data || {}
     const saved = String(data?.default_result_mode || '').trim()
-    llmAppDefaultResultMode.value = ['xml_plaintext', 'raw_passthrough', 'auto'].includes(saved)
-      ? saved
-      : mode
-    message.success('已更新 App 默认输出模式')
+    if (saved === 'auto') {
+      llmAppDefaultResultModeLegacyAuto.value = true
+      llmAppDefaultResultMode.value = null
+      message.warning('后端返回 legacy:auto，请选择一种并保存')
+      return
+    }
+    llmAppDefaultResultModeLegacyAuto.value = false
+    llmAppDefaultResultMode.value = ['xml_plaintext', 'raw_passthrough'].includes(saved) ? saved : mode
+    message.success('已更新 App 默认转发模式')
   } catch (error) {
-    message.error(error?.message || '保存 App 输出模式配置失败')
+    message.error(error?.message || '保存 App 转发模式配置失败')
   } finally {
     llmAppConfigSaving.value = false
+  }
+}
+
+async function consumeSseReader(reader, { onEvent } = {}) {
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let currentEvent = 'message'
+  let dataLines = []
+
+  const flushEvent = () => {
+    if (!dataLines.length) return null
+    const rawData = dataLines.join('\n')
+    dataLines = []
+    let parsed = rawData
+    try {
+      parsed = JSON.parse(rawData)
+    } catch {
+      // ignore
+    }
+    return { event: currentEvent || 'message', data: parsed }
+  }
+
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    for (;;) {
+      const idx = buffer.indexOf('\n')
+      if (idx === -1) break
+      const line = buffer.slice(0, idx).replace(/\r$/, '')
+      buffer = buffer.slice(idx + 1)
+
+      if (!line) {
+        const ev = flushEvent()
+        if (ev) {
+          const receivedAtMs = Date.now()
+          const stop = await onEvent?.(ev, receivedAtMs)
+          if (stop) return
+        }
+        currentEvent = 'message'
+        continue
+      }
+
+      if (line.startsWith('event:')) {
+        currentEvent = line.slice('event:'.length).trim() || 'message'
+        continue
+      }
+      if (line.startsWith('data:')) {
+        dataLines.push(line.slice('data:'.length).trim())
+      }
+    }
+  }
+}
+
+async function handleRunSseProbe() {
+  if (sseProbeRunning.value) return
+  const token = getToken()
+  if (!token) {
+    message.warning('请先登录（JWT）')
+    return
+  }
+
+  sseProbeRunning.value = true
+  sseProbeEvents.value = []
+
+  try {
+    const baseURL = import.meta.env.VITE_BASE_API || '/api/v1'
+    const normalizedBase = String(baseURL).replace(/\/+$/, '')
+    const url = `${normalizedBase}/base/sse_probe`
+
+    const requestId = `system-probe-${Date.now()}`
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'text/event-stream',
+        'X-Request-Id': requestId,
+      },
+    })
+    if (!response.ok) {
+      const text = await response.text().catch(() => '')
+      throw new Error(`SSE 探针失败：${response.status} ${text}`)
+    }
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('SSE 探针响应不支持流式读取')
+
+    await consumeSseReader(reader, {
+      onEvent: async (ev, receivedAtMs) => {
+        if (ev.event === 'probe') {
+          sseProbeEvents.value.push(receivedAtMs)
+          if (sseProbeEvents.value.length > 50) sseProbeEvents.value.splice(0, sseProbeEvents.value.length - 50)
+        }
+        if (ev.event === 'completed') return true
+        return false
+      },
+    })
+
+    message.success(sseProbeSummary.value.ok ? 'SSE 探针：通过（无明显缓冲）' : 'SSE 探针：疑似缓冲/压缩')
+  } catch (error) {
+    message.error(error?.message || 'SSE 探针失败')
+  } finally {
+    sseProbeRunning.value = false
   }
 }
 
@@ -810,23 +939,47 @@ onBeforeUnmount(() => {
         </div>
       </NAlert>
 
-      <NCard :loading="llmAppConfigLoading" title="App SSE 输出模式（默认）" size="small">
+      <NCard :loading="llmAppConfigLoading" title="App 转发模式（默认）" size="small">
         <NSpace align="center" wrap>
           <NSelect
             v-model:value="llmAppDefaultResultMode"
             :options="llmAppResultModeOptions"
+            placeholder="选择转发模式（透明转发 / XML 文本转发）"
             style="min-width: 280px"
           />
           <NButton type="primary" :loading="llmAppConfigSaving" @click="handleSaveLlmAppConfig">
             保存
           </NButton>
-          <NTag round :bordered="false" :type="llmAppDefaultResultMode === 'raw_passthrough' ? 'warning' : 'success'">
+          <NButton secondary :loading="sseProbeRunning" @click="handleRunSseProbe">
+            SSE 探针
+          </NButton>
+          <NTag v-if="sseProbeEvents.length" round :bordered="false" :type="sseProbeSummary.ok ? 'success' : 'warning'">
+            {{ sseProbeSummary.ok ? 'PASS' : 'SUSPECT' }}
+          </NTag>
+          <NTag
+            v-if="llmAppDefaultResultModeLegacyAuto"
+            round
+            :bordered="false"
+            type="warning"
+          >
+            legacy:auto
+          </NTag>
+          <NTag
+            v-else
+            round
+            :bordered="false"
+            :type="llmAppDefaultResultMode === 'raw_passthrough' ? 'warning' : 'success'"
+          >
             {{ llmAppDefaultResultMode }}
           </NTag>
         </NSpace>
         <NAlert type="warning" :bordered="false" class="mt-2">
-          App 侧若不传 <code>result_mode</code>，后端将按此默认值决定输出：
-          <code>xml_plaintext</code>（解析后带 XML 标签的纯文本流）或 <code>raw_passthrough</code>（上游 RAW 透明流）。
+          App 侧若不传 <code>result_mode</code>，后端将按此默认值输出：
+          <code>raw_passthrough</code>（透明转发）或 <code>xml_plaintext</code>（XML 文本转发）。
+          两者都通过 <code>event: content_delta</code> 以 SSE 流式下发。
+        </NAlert>
+        <NAlert v-if="llmAppDefaultResultModeLegacyAuto" type="warning" :bordered="false" class="mt-2">
+          检测到历史值 <code>auto</code>：为避免歧义，请在上方选择一种并保存（接口保持兼容不变）。
         </NAlert>
       </NCard>
 

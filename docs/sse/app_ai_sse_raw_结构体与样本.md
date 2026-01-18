@@ -35,6 +35,8 @@ data: <one-line-json>
 - `xml_plaintext`：服务端解析上游响应并以 `content_delta` 流式输出，同时做 ThinkingML 最小纠错/标签归一化，保证结构契约稳定（允许包含 `<final>...</final>` 等 XML 标签）。
 - `auto`：服务端自动判定（优先 `xml_plaintext`；若无法产出 `content_delta`，则降级为 `raw_passthrough`；必要时可能产生 `upstream_raw` 诊断帧）。
 
+> 提示：**透明转发 / XML 文本转发**都走 SSE `event: content_delta`；`upstream_raw` 仅用于 `auto`/诊断（可忽略）。
+
 ### 1.2 现状：后端会“拆分转发”超长块（避免单个超长 SSE 事件）
 
 问题场景（历史）：上游可能一次性返回一整段大文本（例如 3k+ chars），若后端直接透传为单个 `content_delta`/`upstream_raw`，App 侧会呈现“像单个大 token 一次性到达”，无法体现流式体验。
