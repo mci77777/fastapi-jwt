@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
 from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
+from app.auth.dashboard_access import is_dashboard_admin_user
 from app.db import SQLiteManager, get_sqlite_manager
 from app.auth.jwt_verifier import get_jwt_verifier
 from app.log import logger
@@ -815,3 +816,74 @@ async def update_dashboard_config(
 
     config_data = await _get_dashboard_config_payload(db)
     return {"code": 200, "data": config_data, "msg": "success"}
+
+
+# ============================================================================
+# Request Tracing API
+# ============================================================================
+
+
+class TracingConfigResponse(BaseModel):
+    enabled: bool
+
+
+class TracingConfigRequest(BaseModel):
+    enabled: bool
+
+
+class ConversationLogsResponse(BaseModel):
+    logs: list[dict]
+    total: int
+
+
+@router.get("/tracing/config", response_model=TracingConfigResponse)
+async def get_tracing_config(
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> TracingConfigResponse:
+    """获取请求追踪配置（仅 Dashboard 管理员）。"""
+    if not is_dashboard_admin_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="仅 Dashboard 管理员可访问"
+        )
+
+    db = get_sqlite_manager(request.app)
+    enabled = await db.get_tracing_enabled()
+    return TracingConfigResponse(enabled=enabled)
+
+
+@router.post("/tracing/config", response_model=TracingConfigResponse)
+async def set_tracing_config(
+    payload: TracingConfigRequest,
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> TracingConfigResponse:
+    """设置请求追踪配置（仅 Dashboard 管理员）。"""
+    if not is_dashboard_admin_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="仅 Dashboard 管理员可访问"
+        )
+
+    db = get_sqlite_manager(request.app)
+    await db.set_tracing_enabled(payload.enabled)
+    return TracingConfigResponse(enabled=payload.enabled)
+
+
+@router.get("/tracing/logs", response_model=ConversationLogsResponse)
+async def get_conversation_logs(
+    request: Request,
+    limit: int = 50,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> ConversationLogsResponse:
+    """获取最近的对话日志（仅 Dashboard 管理员，最多 50 条）。"""
+    if not is_dashboard_admin_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="仅 Dashboard 管理员可访问"
+        )
+
+    db = get_sqlite_manager(request.app)
+    logs = await db.get_recent_conversation_logs(limit=min(limit, 50))
+    return ConversationLogsResponse(logs=logs, total=len(logs))
