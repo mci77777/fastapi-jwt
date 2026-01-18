@@ -102,6 +102,7 @@ def _load_schedule_time(conn: sqlite3.Connection) -> str:
 
 def _latest_run_times(conn: sqlite3.Connection) -> dict[str, datetime | None]:
     latest: dict[str, datetime | None] = {user_type: None for user_type in USER_TYPES}
+    mode = "full"
     try:
         rows = conn.execute(
             """
@@ -112,6 +113,31 @@ def _latest_run_times(conn: sqlite3.Connection) -> dict[str, datetime | None]:
             """
         ).fetchall()
     except Exception:
+        # 兼容：旧表可能缺少 finished_at 列（仅有 started_at/created_at）
+        mode = "fallback"
+        try:
+            rows = conn.execute(
+                """
+                SELECT user_type, started_at, created_at
+                FROM e2e_mapped_model_runs
+                WHERE user_type IN ('anonymous', 'permanent')
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+        except Exception:
+            return latest
+
+    if mode == "fallback":
+        for user_type, started_at, created_at in rows:
+            key = str(user_type or "").strip()
+            if key not in latest or latest[key] is not None:
+                continue
+            dt_value = _parse_datetime_local(started_at)
+            if dt_value is None:
+                dt_value = _parse_datetime_local(created_at)
+            latest[key] = dt_value
+            if all(latest.values()):
+                break
         return latest
 
     for user_type, finished_at, started_at, created_at in rows:

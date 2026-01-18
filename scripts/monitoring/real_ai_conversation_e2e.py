@@ -68,6 +68,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--runs", type=int, default=_as_int(os.getenv("E2E_RUNS"), 1))
     parser.add_argument("--turns", type=int, default=_as_int(os.getenv("E2E_TURNS"), 1))
     parser.add_argument(
+        "--prompt-text",
+        default=os.getenv("E2E_PROMPT_TEXT", ""),
+        help="可选：覆盖第 1 轮用户输入（用于复现/回归特定场景）。",
+    )
+    parser.add_argument(
         "--tool-choice",
         default=os.getenv("E2E_TOOL_CHOICE", "none"),
         help="OpenAI tool_choice：auto/none/required。默认 none（避免后端 tool_calls 未实现导致结构不稳定）。",
@@ -89,6 +94,34 @@ def _parse_args() -> argparse.Namespace:
 def _print(msg: str, *, verbose: bool) -> None:
     if verbose:
         print(msg)
+
+
+def _normalize_model_key(value: str) -> str:
+    return str(value or "").strip().lower()
+
+
+def _resolve_mapped_model_name(name: str, *, mapped_by_lower: dict[str, str]) -> str | None:
+    """把用户输入的模型名解析为 /llm/models?view=mapped 返回的真实 name。"""
+
+    raw = str(name or "").strip()
+    if not raw:
+        return None
+
+    lowered = _normalize_model_key(raw)
+    if lowered in mapped_by_lower:
+        return mapped_by_lower[lowered]
+
+    # 兼容：历史/别名（不改变后端 SSOT，仅用于脚本选择）
+    alias_candidates: dict[str, tuple[str, ...]] = {
+        # 某些环境映射名为 grok/GROK；历史也可能叫 xai
+        "grok": ("grok", "xai"),
+        "x.ai": ("xai", "grok"),
+        "xai": ("xai", "grok"),
+    }
+    for candidate in alias_candidates.get(lowered, ()):
+        if candidate in mapped_by_lower:
+            return mapped_by_lower[candidate]
+    return None
 
 
 def _unwrap_data(payload: Any) -> Any:
@@ -483,12 +516,18 @@ async def _run_single_turn(
         )
 
 
-def _turn_prompts(turns: int) -> list[str]:
+def _turn_prompts(turns: int, *, first_turn_text: str | None = None) -> list[str]:
     base = [
         "给我一份三分化训练方案，适合新手，包含动作与每周频率。",
         "请把每次训练的热身与收操补齐，并把总时长控制在 60 分钟内。",
         "用 RPE 给出强度建议，并说明如何做渐进超负荷。",
     ]
+    override = str(first_turn_text or "").strip()
+    if override:
+        if base:
+            base[0] = override
+        else:
+            base = [override]
     if turns <= len(base):
         return base[:turns]
     more = [f"把第 {i+1} 轮建议进一步量化（组数/次数/休息）。" for i in range(len(base), turns)]
@@ -562,24 +601,42 @@ async def main() -> int:
         resp.raise_for_status()
         payload = resp.json() or {}
         items = _unwrap_data(payload) or []
-        mapped = sorted({str(item.get("name") or "").strip() for item in items if isinstance(item, dict) and str(item.get("name") or "").strip()})
+        mapped = sorted(
+            {
+                str(item.get("name") or "").strip()
+                for item in items
+                if isinstance(item, dict) and str(item.get("name") or "").strip()
+            }
+        )
+        mapped_by_lower = {_normalize_model_key(name): name for name in mapped}
 
         if not mapped:
             print("FAIL mapped_models_empty")
             return 2
 
-        selected = [str(x).strip() for x in (args.models or []) if str(x).strip()]
+        selected_raw = [str(x).strip() for x in (args.models or []) if str(x).strip()]
+        selected = [
+            resolved
+            for raw in selected_raw
+            if (resolved := _resolve_mapped_model_name(raw, mapped_by_lower=mapped_by_lower)) is not None
+        ]
         if not selected:
             # 默认优先目标；若不存在再退回全量
-            preferred = [x for x in ("xai", "deepseek") if x in mapped]
+            preferred_raw = ["xai", "deepseek"]
+            preferred = [
+                resolved
+                for raw in preferred_raw
+                if (resolved := _resolve_mapped_model_name(raw, mapped_by_lower=mapped_by_lower)) is not None
+            ]
             selected = preferred or mapped
 
-        missing = [m for m in selected if m not in mapped]
+        missing = [raw for raw in selected_raw if _resolve_mapped_model_name(raw, mapped_by_lower=mapped_by_lower) is None]
         if missing:
             print(f"FAIL mapped_models_missing={','.join(missing)}")
             return 2
 
-        turn_texts = _turn_prompts(int(args.turns))
+        prompt_text = str(args.prompt_text or "").strip()
+        turn_texts = _turn_prompts(int(args.turns), first_turn_text=prompt_text or None)
 
         total = 0
         passed = 0

@@ -511,7 +511,7 @@ async def main() -> int:
                                 str(system_message.get("content") or "") if isinstance(system_message, dict) else ""
                             )
 
-                            assert "STRICT TAG SPECIFICATION" in system_content
+                            assert "输出格式强制要求" in system_content
                             assert "GymBro ToolCall 工具指令集" in system_content
                             assert isinstance(upstream_payload.get("tools"), list) and upstream_payload.get("tools")
                             assert upstream_payload.get("tool_choice") == "auto"

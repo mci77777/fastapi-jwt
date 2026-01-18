@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, status
@@ -702,7 +702,7 @@ class DashboardConfig(BaseModel):
     http_poll_interval: int = Field(30, ge=5, le=600, description="HTTP 轮询间隔（秒）")
     log_retention_size: int = Field(100, ge=10, le=1000, description="日志保留条数")
     e2e_interval_hours: Optional[int] = Field(
-        None,
+        24,
         ge=3,
         le=24,
         description="E2E 运行间隔（小时，3~24；配置后优先于 e2e_daily_time）",
@@ -728,7 +728,7 @@ async def _get_dashboard_config_payload(db: SQLiteManager) -> dict[str, Any]:
         websocket_push_interval=10,
         http_poll_interval=30,
         log_retention_size=100,
-        e2e_interval_hours=None,
+        e2e_interval_hours=24,
         e2e_daily_time="05:00",
         e2e_prompt_text="每日测试连通性和tools工具可用性",
     ).dict()

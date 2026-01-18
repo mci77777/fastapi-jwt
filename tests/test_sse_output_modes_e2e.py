@@ -321,6 +321,177 @@ async def test_sse_xml_plaintext_streaming_contains_xml_tags(async_client: Async
 
 
 @pytest.mark.asyncio
+async def test_sse_xml_plaintext_strips_wrapping_code_fence(async_client: AsyncClient, mock_jwt_token: str):
+    endpoint_id, mapping_id = await _setup_openai_endpoint_mapping()
+    try:
+        with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+            mock_verifier = MagicMock()
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-xml-fence", claims={})
+            mock_get_verifier.return_value = mock_verifier
+
+            inner = _build_valid_thinkingml_reply(normalize_title_variants=True)
+            reply = f"```xml\n{inner}\n```"
+            lines = [
+                f'data: {json.dumps({"choices": [{"delta": {"content": reply}}]}, ensure_ascii=False)}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+
+            with patch("app.services.providers.openai_chat_completions.httpx.AsyncClient") as mock_httpx:
+                _mock_httpx_streaming_sse(mock_httpx, lines=lines, headers={"x-request-id": "upstream-rid"})
+
+                created = await async_client.post(
+                    "/api/v1/messages",
+                    headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": "rid-create"},
+                    json={
+                        "text": "hi",
+                        "model": "gpt",
+                        "result_mode": "xml_plaintext",
+                        "metadata": {"result_mode": "xml_plaintext"},
+                    },
+                )
+                assert created.status_code == status.HTTP_202_ACCEPTED
+                message_id = created.json()["message_id"]
+                conversation_id = created.json()["conversation_id"]
+
+                events = await _collect_sse_events(
+                    async_client,
+                    f"/api/v1/messages/{message_id}/events?conversation_id={conversation_id}",
+                    headers={"Authorization": f"Bearer {mock_jwt_token}", "Accept": "text/event-stream"},
+                )
+
+                deltas = [
+                    e["data"]["delta"]
+                    for e in events
+                    if e["event"] == "content_delta" and isinstance(e["data"], dict)
+                ]
+                assembled = "".join(deltas)
+                assert "```" not in assembled
+                assert assembled.lstrip().startswith("<thinking>")
+                ok, reason = _validate_thinkingml(assembled)
+                assert ok, reason
+    finally:
+        await _cleanup_openai_endpoint_mapping(endpoint_id, mapping_id)
+
+
+@pytest.mark.asyncio
+async def test_sse_xml_plaintext_drops_trailing_text_after_final(async_client: AsyncClient, mock_jwt_token: str):
+    endpoint_id, mapping_id = await _setup_openai_endpoint_mapping()
+    try:
+        with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+            mock_verifier = MagicMock()
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-xml-tail", claims={})
+            mock_get_verifier.return_value = mock_verifier
+
+            reply = _build_valid_thinkingml_reply(normalize_title_variants=True) + "\nSHOULD_NOT_LEAK"
+            lines = [
+                f'data: {json.dumps({"choices":[{"delta":{"content":reply}}]}, ensure_ascii=False)}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+
+            with patch("app.services.providers.openai_chat_completions.httpx.AsyncClient") as mock_httpx:
+                _mock_httpx_streaming_sse(mock_httpx, lines=lines, headers={"x-request-id": "upstream-rid"})
+
+                created = await async_client.post(
+                    "/api/v1/messages",
+                    headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": "rid-create"},
+                    json={
+                        "text": "hi",
+                        "model": "gpt",
+                        "result_mode": "xml_plaintext",
+                        "metadata": {"result_mode": "xml_plaintext"},
+                    },
+                )
+                assert created.status_code == status.HTTP_202_ACCEPTED
+                message_id = created.json()["message_id"]
+                conversation_id = created.json()["conversation_id"]
+
+                events = await _collect_sse_events(
+                    async_client,
+                    f"/api/v1/messages/{message_id}/events?conversation_id={conversation_id}",
+                    headers={"Authorization": f"Bearer {mock_jwt_token}", "Accept": "text/event-stream"},
+                )
+
+                deltas = [
+                    e["data"]["delta"]
+                    for e in events
+                    if e["event"] == "content_delta" and isinstance(e["data"], dict)
+                ]
+                assembled = "".join(deltas)
+                assert "SHOULD_NOT_LEAK" not in assembled
+                assert assembled.rstrip().endswith("</final>")
+                ok, reason = _validate_thinkingml(assembled)
+                assert ok, reason
+    finally:
+        await _cleanup_openai_endpoint_mapping(endpoint_id, mapping_id)
+
+
+@pytest.mark.asyncio
+async def test_sse_xml_plaintext_escapes_unexpected_tags_across_chunks(async_client: AsyncClient, mock_jwt_token: str):
+    endpoint_id, mapping_id = await _setup_openai_endpoint_mapping()
+    try:
+        with patch("app.auth.dependencies.get_jwt_verifier") as mock_get_verifier:
+            mock_verifier = MagicMock()
+            mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-xml-unexpected-tag", claims={})
+            mock_get_verifier.return_value = mock_verifier
+
+            base = _build_valid_thinkingml_reply(normalize_title_variants=True)
+            injected = base.replace("\n<!-- <serp_queries>", "\n<xxx>\n<!-- <serp_queries>", 1)
+            idx = injected.find("<xxx>")
+            assert idx >= 0
+            part1 = injected[: idx + 2]  # "<x"
+            part2 = injected[idx + 2 :]
+
+            lines = [
+                f"data: {json.dumps({'choices': [{'delta': {'content': part1}}]}, ensure_ascii=False)}",
+                "",
+                f"data: {json.dumps({'choices': [{'delta': {'content': part2}}]}, ensure_ascii=False)}",
+                "",
+                "data: [DONE]",
+                "",
+            ]
+
+            with patch("app.services.providers.openai_chat_completions.httpx.AsyncClient") as mock_httpx:
+                _mock_httpx_streaming_sse(mock_httpx, lines=lines, headers={"x-request-id": "upstream-rid"})
+
+                created = await async_client.post(
+                    "/api/v1/messages",
+                    headers={"Authorization": f"Bearer {mock_jwt_token}", "X-Request-Id": "rid-create"},
+                    json={
+                        "text": "hi",
+                        "model": "gpt",
+                        "result_mode": "xml_plaintext",
+                        "metadata": {"result_mode": "xml_plaintext"},
+                    },
+                )
+                assert created.status_code == status.HTTP_202_ACCEPTED
+                message_id = created.json()["message_id"]
+                conversation_id = created.json()["conversation_id"]
+
+                events = await _collect_sse_events(
+                    async_client,
+                    f"/api/v1/messages/{message_id}/events?conversation_id={conversation_id}",
+                    headers={"Authorization": f"Bearer {mock_jwt_token}", "Accept": "text/event-stream"},
+                )
+
+                deltas = [
+                    e["data"]["delta"]
+                    for e in events
+                    if e["event"] == "content_delta" and isinstance(e["data"], dict)
+                ]
+                assembled = "".join(deltas)
+                assert "<xxx>" not in assembled
+                assert "&lt;xxx&gt;" in assembled
+                ok, reason = _validate_thinkingml(assembled)
+                assert ok, reason
+    finally:
+        await _cleanup_openai_endpoint_mapping(endpoint_id, mapping_id)
+
+
+@pytest.mark.asyncio
 async def test_sse_raw_passthrough_streaming_sends_raw_content_delta(async_client: AsyncClient, mock_jwt_token: str):
     endpoint_id, mapping_id = await _setup_openai_endpoint_mapping()
     try:
@@ -392,7 +563,9 @@ async def test_sse_xml_plaintext_non_sse_response_is_rechunked(async_client: Asy
             mock_verifier.verify_token.return_value = AuthenticatedUser(uid="test-user-123", claims={})
             mock_get_verifier.return_value = mock_verifier
 
-            reply = _build_valid_thinkingml_reply(normalize_title_variants=False) + ("\n" + ("A" * 180))
+            reply = _build_valid_thinkingml_reply(normalize_title_variants=False)
+            # 触发 broker 的超长拆分（>256 chars -> 多条 content_delta），且需位于 </final> 之前（尾部会被丢弃）。
+            reply = reply.replace("\n<!-- <serp_queries>", "\n" + ("A" * 400) + "\n<!-- <serp_queries>", 1)
             payload = {"choices": [{"message": {"content": reply}}]}
 
             with patch("app.services.providers.openai_chat_completions.httpx.AsyncClient") as mock_httpx:

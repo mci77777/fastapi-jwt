@@ -1,0 +1,43 @@
+{
+  "version": "1.0.0",
+  "description": "Project-local conversation context index",
+  "lastUpdated": "2026-01-17T22:33:11+08:00",
+  "statistics": {
+    "totalConversations": 2,
+    "totalTags": 8,
+    "oldestConversation": "2026-01-17",
+    "newestConversation": "2026-01-17"
+  },
+  "conversations": [
+    {
+      "id": "8a042b1f-17f0-4e63-871c-8fecde90982a",
+      "title": "system prompt 迭代：v7.1 讨论规范稳定性 + SSE 尾部收敛",
+      "file": "2026-01-17_system-prompt-iteration-v7.1.md",
+      "project": "vue-fastapi-admin",
+      "project_path": "X:/project/vue-fastapi-admin",
+      "created_at": "2026-01-17T20:27:00+08:00",
+      "updated_at": "2026-01-17T20:27:00+08:00",
+      "tags": ["prompt", "thinkingml", "claude-sonnet", "jwt-e2e", "sse"],
+      "summary": "修复 claude-sonnet 在“讨论 prompt/规范”场景夹带标签/marker 导致 ThinkingML 校验失败：prompt v7.1 + SSE 流式最小转义/截断，JWT E2E 通过。",
+      "type": "development",
+      "status": "active",
+      "lineCount": 65,
+      "relatedContexts": []
+    },
+    {
+      "id": "25c75577-a10a-4e6c-90ae-899a1a6e82eb",
+      "title": "system prompt 迭代：v7.3 SERP 必须 + meta 兜底",
+      "file": "2026-01-17_system-prompt-iteration-v7.3.md",
+      "project": "vue-fastapi-admin",
+      "project_path": "X:/project/vue-fastapi-admin",
+      "created_at": "2026-01-17T22:33:11+08:00",
+      "updated_at": "2026-01-17T22:33:11+08:00",
+      "tags": ["prompt", "thinkingml", "claude-sonnet", "serp", "meta-guard", "e2e"],
+      "summary": "v7.3 强化 SERP 与 meta 请求兜底，修复 claude-sonnet 在“讨论 system prompt/规则/XML/实现细节”场景漏 serp_queries/输出代码围栏导致校验失败。",
+      "type": "development",
+      "status": "active",
+      "lineCount": 38,
+      "relatedContexts": []
+    }
+  ]
+}

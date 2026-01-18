@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -84,6 +85,29 @@ STREAM_CHUNK_SIZE_CHARS = 128
 _STREAM_CHUNK_BREAKPOINTS = ("\n", "。", "？", "！", ".", "?", "!", " ", "\t")
 
 _SERP_QUERIES_FALLBACK_BLOCK = "<!-- <serp_queries>\n[]\n</serp_queries> -->"
+
+_ALLOWED_THINKINGML_TAG_NAMES = {"think", "serp", "thinking", "phase", "title", "final"}
+_THINKINGML_PURE_TAG_RE = re.compile(r"<\s*/?\s*([a-zA-Z]+)(?:\s+[^>]*)?>")
+
+_PARSING_ERROR_MARKER = "<<ParsingError>>"
+_PARSING_ERROR_MARKER_ESCAPED = "&lt;&lt;ParsingError&gt;&gt;"
+
+
+def _escape_unexpected_thinkingml_tags(text: str) -> str:
+    """将非白名单的“纯字母 XML 标签”转义为纯文本，避免破坏 Strict XML 结构。"""
+
+    raw = str(text or "")
+    if "<" not in raw:
+        return raw
+
+    def _repl(match: re.Match[str]) -> str:
+        tag = str(match.group(1) or "").strip()
+        if tag in _ALLOWED_THINKINGML_TAG_NAMES:
+            return match.group(0)
+        token = match.group(0)
+        return token.replace("<", "&lt;").replace(">", "&gt;")
+
+    return _THINKINGML_PURE_TAG_RE.sub(_repl, raw)
 
 
 def _split_text_for_streaming(text: str, *, max_size: int) -> list[str]:
@@ -303,6 +327,10 @@ class MessageChannelMeta:
     thinkingml_phase_title_closed: bool = False
     thinkingml_final_seen: bool = False
     thinkingml_inside_final: bool = False
+    thinkingml_final_closed: bool = False
+    thinkingml_drop_leading_code_fence: bool = False
+    thinkingml_parsing_error_pending: str = ""
+    thinkingml_unexpected_tag_pending: str = ""
 
 
 class MessageEventBroker:
@@ -344,6 +372,62 @@ class MessageEventBroker:
     def get_meta(self, message_id: str) -> Optional[MessageChannelMeta]:
         return self._meta.get(message_id)
 
+    def _strip_thinkingml_code_fence_prefix(self, meta: MessageChannelMeta, delta: str) -> str:
+        """移除包裹整个 XML 的起始代码块围栏（常见：```xml\\n...）。
+
+        说明：
+        - 仅在尚未进入 ThinkingML 主体前生效（未见 <thinking>/<final>）。
+        - 仅用于提升 Strict XML 稳定性；不修改 <final> 内部的 Markdown 代码块。
+        """
+
+        if not delta:
+            return delta
+        if meta.thinkingml_seen_thinking_open or meta.thinkingml_final_seen:
+            return delta
+        if meta.thinkingml_inside_thinking or meta.thinkingml_inside_final:
+            return delta
+
+        text = delta
+        if meta.thinkingml_drop_leading_code_fence:
+            nl = text.find("\n")
+            if nl == -1:
+                return ""
+            meta.thinkingml_drop_leading_code_fence = False
+            return text[nl + 1 :]
+
+        # 允许少量前导空白/BOM；若遇到 ``` 则丢弃到行末（含语言标记）
+        idx = 0
+        while idx < len(text) and text[idx] in ("\ufeff", " ", "\t", "\r", "\n"):
+            idx += 1
+        if idx < len(text) and text.startswith("```", idx):
+            nl = text.find("\n", idx)
+            if nl == -1:
+                meta.thinkingml_drop_leading_code_fence = True
+                return ""
+            return text[nl + 1 :]
+
+        return delta
+
+    def _strip_thinkingml_code_fence_suffix(self, meta: MessageChannelMeta, delta: str) -> str:
+        """移除包裹整个 XML 的结束代码块围栏（常见：...\\n```）。"""
+
+        if not delta:
+            return delta
+        if meta.thinkingml_inside_thinking or meta.thinkingml_inside_final:
+            return delta
+        if not meta.thinkingml_final_seen:
+            return delta
+
+        stripped = delta.rstrip()
+        if not stripped.endswith("```"):
+            return delta
+
+        pos = stripped.rfind("```")
+        if pos >= 0 and (pos == 0 or stripped[pos - 1] in ("\n", "\r")):
+            return stripped[:pos].rstrip("\r\n")
+
+        return delta
+
     def _sanitize_thinkingml_delta(self, meta: MessageChannelMeta, delta: str) -> str:
         """对单次 delta 做流式最小纠错（不改变拼接后的全文语义）。
 
@@ -354,6 +438,11 @@ class MessageEventBroker:
 
         if not delta:
             return delta
+
+        # 结构契约： </final> 后禁止任何输出。为保证下游拼接文本稳定性，一旦闭合 final 则丢弃后续所有 delta。
+        if meta.thinkingml_final_closed:
+            meta.thinkingml_pending = ""
+            return ""
 
         out: list[str] = []
         pending = meta.thinkingml_pending
@@ -432,7 +521,11 @@ class MessageEventBroker:
                         emit("&lt;/final&gt;")
                     elif meta.thinkingml_inside_final:
                         meta.thinkingml_inside_final = False
+                        meta.thinkingml_final_closed = True
                         emit(tag)
+                        meta.thinkingml_pending = ""
+                        meta.thinkingml_literal_thinking_window = 0
+                        return "".join(out)
                     else:
                         emit("&lt;/final&gt;")
                 elif tag == _SERP_OPEN:
@@ -542,6 +635,48 @@ class MessageEventBroker:
         meta.thinkingml_literal_thinking_window = literal_window
         return "".join(out)
 
+    def _escape_parsing_error_marker_stream(self, meta: MessageChannelMeta, delta: str) -> str:
+        if not delta:
+            return delta
+
+        combined = f"{meta.thinkingml_parsing_error_pending}{delta}"
+        meta.thinkingml_parsing_error_pending = ""
+        if _PARSING_ERROR_MARKER in combined:
+            combined = combined.replace(_PARSING_ERROR_MARKER, _PARSING_ERROR_MARKER_ESCAPED)
+
+        # 若已闭合 final，则不再允许任何后续输出：不能保留 pending（避免在 </final> 后被 flush）。
+        if meta.thinkingml_final_closed:
+            return combined
+
+        # 跨 chunk 识别 marker：最多保留 marker_len-1 的后缀（仅当该后缀是 marker 的前缀）。
+        max_suffix = min(len(_PARSING_ERROR_MARKER) - 1, len(combined))
+        for size in range(max_suffix, 0, -1):
+            suffix = combined[-size:]
+            if _PARSING_ERROR_MARKER.startswith(suffix):
+                meta.thinkingml_parsing_error_pending = suffix
+                return combined[:-size]
+
+        return combined
+
+    def _escape_unexpected_tags_stream(self, meta: MessageChannelMeta, delta: str) -> str:
+        if not delta:
+            return delta
+
+        combined = f"{meta.thinkingml_unexpected_tag_pending}{delta}"
+        meta.thinkingml_unexpected_tag_pending = ""
+
+        if meta.thinkingml_final_closed:
+            return _escape_unexpected_thinkingml_tags(combined)
+
+        # 缓冲可能跨 chunk 的“纯字母标签”尾部（避免 `<answer>` 被拆成 `<ans` + `wer>` 导致漏转义）。
+        last_lt = combined.rfind("<")
+        last_gt = combined.rfind(">")
+        if last_lt > last_gt:
+            meta.thinkingml_unexpected_tag_pending = combined[last_lt:]
+            combined = combined[:last_lt]
+
+        return _escape_unexpected_thinkingml_tags(combined)
+
     async def publish(self, message_id: str, event: MessageEvent) -> None:
         queue = self._channels.get(message_id)
         if queue:
@@ -579,7 +714,13 @@ class MessageEventBroker:
                                 str(getattr(meta, "result_mode", "") or "").strip() != "raw_passthrough"
                                 and str(getattr(meta, "effective_result_mode", "") or "").strip() != "raw_passthrough"
                             )
-                            fixed = self._sanitize_thinkingml_delta(meta, delta) if sanitize_delta else delta
+                            fixed = delta
+                            if sanitize_delta:
+                                fixed = self._strip_thinkingml_code_fence_prefix(meta, fixed)
+                                fixed = self._sanitize_thinkingml_delta(meta, fixed) if fixed else fixed
+                                fixed = self._strip_thinkingml_code_fence_suffix(meta, fixed) if fixed else fixed
+                                fixed = self._escape_unexpected_tags_stream(meta, fixed) if fixed else fixed
+                                fixed = self._escape_parsing_error_marker_stream(meta, fixed) if fixed else fixed
                             e.data["delta"] = fixed
                             if not fixed:
                                 # 本次 chunk 仅用于跨边界识别标签前缀，不对外发送空 delta。
@@ -600,7 +741,7 @@ class MessageEventBroker:
                     elif e.event in {"completed", "error"}:
                         # flush：输出最后残留的前缀（最多 9 个字符），避免拼接后丢失。
                         pending = meta.thinkingml_pending
-                        if pending:
+                        if pending and not meta.thinkingml_final_closed:
                             meta.thinkingml_pending = ""
                             meta.delta_seq += 1
                             flush_event = MessageEvent(
@@ -613,6 +754,45 @@ class MessageEventBroker:
                                 },
                             )
                             await queue.put(flush_event)
+                        elif pending:
+                            meta.thinkingml_pending = ""
+
+                        # flush：ParsingError marker 跨 chunk pending（避免尾部残留导致拼接后误判）。
+                        marker_pending = str(getattr(meta, "thinkingml_parsing_error_pending", "") or "")
+                        if marker_pending:
+                            meta.thinkingml_parsing_error_pending = ""
+                            if not meta.thinkingml_final_closed:
+                                safe = marker_pending.replace("<", "&lt;").replace(">", "&gt;")
+                                meta.delta_seq += 1
+                                await queue.put(
+                                    MessageEvent(
+                                        event="content_delta",
+                                        data={
+                                            "message_id": message_id,
+                                            "request_id": request_id or "",
+                                            "seq": meta.delta_seq,
+                                            "delta": safe,
+                                        },
+                                    )
+                                )
+
+                        tag_pending = str(getattr(meta, "thinkingml_unexpected_tag_pending", "") or "")
+                        if tag_pending:
+                            meta.thinkingml_unexpected_tag_pending = ""
+                            if not meta.thinkingml_final_closed:
+                                safe = tag_pending.replace("<", "&lt;").replace(">", "&gt;")
+                                meta.delta_seq += 1
+                                await queue.put(
+                                    MessageEvent(
+                                        event="content_delta",
+                                        data={
+                                            "message_id": message_id,
+                                            "request_id": request_id or "",
+                                            "seq": meta.delta_seq,
+                                            "delta": safe,
+                                        },
+                                    )
+                                )
 
                         # auto：completed/error 时确保写入最终 effective（便于 App 对账/诊断）
                         if meta.result_mode == "auto":
@@ -1670,7 +1850,12 @@ class AIService:
 
         temperature = message.temperature if message.temperature is not None else (message.metadata or {}).get("temperature")
         top_p = message.top_p if message.top_p is not None else (message.metadata or {}).get("top_p")
-        max_tokens = message.max_tokens if message.max_tokens is not None else (message.metadata or {}).get("max_tokens")
+        max_tokens = (
+            message.max_tokens if message.max_tokens is not None else _parse_optional_int((message.metadata or {}).get("max_tokens"))
+        )
+        if max_tokens is None:
+            # 兼容性：部分 OpenAI 兼容网关在未提供 max_tokens 时会默认 0，导致空回复（upstream_empty_content）。
+            max_tokens = 1024
 
         messages = message.messages
         if not messages:
@@ -1686,6 +1871,28 @@ class AIService:
         if not explicit_system_prompt and not message.skip_prompt:
             prompt_type_system, prompt_type_tools = self._resolve_prompt_types(message)
 
+        resolved_tools = await self._resolve_tools(tools)
+        tools_from_active_prompt = False
+        if resolved_tools is None:
+            # 透传模式：不注入默认 tools；只有客户端显式提供 tools 才下发。
+            if message.skip_prompt:
+                resolved_tools = None
+            else:
+                resolved_tools = await self._get_active_prompt_tools_for(prompt_type_tools)
+                tools_from_active_prompt = True
+
+        # KISS/兼容性：当前后端不执行 tool_calls。
+        # - server 模式下，若客户端未显式指定 tool_choice，则不向上游发送 tools（避免某些代理对 tool 名/格式校验更严格导致 400）。
+        resolved_tools = gate_active_tools_schema(
+            tools_schema=resolved_tools,
+            tools_from_active_prompt=tools_from_active_prompt,
+            tool_choice=tool_choice,
+        )
+
+        # KISS：仅在实际下发 tools schema 时，才把 tool.md 作为 system prompt 补丁注入；
+        # 否则会增加噪声并影响部分模型的 Strict XML 稳定性（例如把工具说明复述到输出里）。
+        include_tools_prompt = bool(resolved_tools) or prompt_type_tools == "agent_tools"
+
         # 语义收敛：
         # - skip_prompt=true：允许完整透传 messages（含 system），服务端不注入默认 prompt。
         # - skip_prompt=false：服务端注入 prompt，并忽略客户端 messages 中的 system role（避免被绕过）。
@@ -1699,30 +1906,16 @@ class AIService:
                 final_messages.append({"role": "system", "content": system_prompt.strip()})
             else:
                 default_prompt = (
-                    await self._get_active_prompt_text_for(prompt_type_system, prompt_type_tools)
+                    await self._get_active_prompt_text_for(
+                        prompt_type_system,
+                        prompt_type_tools,
+                        include_tools_prompt=include_tools_prompt,
+                    )
                     or "You are GymBro's AI assistant."
                 )
                 if default_prompt:
                     final_messages.append({"role": "system", "content": default_prompt})
             final_messages.extend(user_messages)
-
-        resolved_tools = await self._resolve_tools(tools)
-        tools_from_active_prompt = False
-        if resolved_tools is None:
-            # 透传模式：不注入默认 tools；只有客户端显式提供 tools 才下发。
-            if message.skip_prompt:
-                resolved_tools = None
-            else:
-                resolved_tools = await self._get_active_prompt_tools_for(prompt_type_tools)
-                tools_from_active_prompt = True
-
-        # KISS/兼容性：当前后端不执行 tool_calls。
-        # - server 模式下，若客户端未显式指定 tool_choice，则不向上游发送 tools（避免本地代理对工具名格式校验更严格导致 400）。
-        resolved_tools = gate_active_tools_schema(
-            tools_schema=resolved_tools,
-            tools_from_active_prompt=tools_from_active_prompt,
-            tool_choice=tool_choice,
-        )
 
         payload: dict[str, Any] = {
             "model": model,
@@ -1766,7 +1959,13 @@ class AIService:
                 return {"type": "function", "function": {"name": name.strip()}}
         return value
 
-    async def _get_active_prompt_text_for(self, system_prompt_type: str, tools_prompt_type: str) -> Optional[str]:
+    async def _get_active_prompt_text_for(
+        self,
+        system_prompt_type: str,
+        tools_prompt_type: str,
+        *,
+        include_tools_prompt: bool = True,
+    ) -> Optional[str]:
         if self._ai_config_service is None:
             return None
         try:
@@ -1776,12 +1975,14 @@ class AIService:
                 page=1,
                 page_size=1,
             )
-            tools_prompts, _ = await self._ai_config_service.list_prompts(
-                only_active=True,
-                prompt_type=str(tools_prompt_type or "tools"),
-                page=1,
-                page_size=1,
-            )
+            tools_prompts: list[dict[str, Any]] = []
+            if include_tools_prompt:
+                tools_prompts, _ = await self._ai_config_service.list_prompts(
+                    only_active=True,
+                    prompt_type=str(tools_prompt_type or "tools"),
+                    page=1,
+                    page_size=1,
+                )
         except Exception:
             return None
         system_text = str(system_prompts[0].get("content") or "").strip() if system_prompts else None
