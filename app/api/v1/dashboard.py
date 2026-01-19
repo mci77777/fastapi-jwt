@@ -88,7 +88,7 @@ async def dashboard_websocket(
     # JWT 验证
     try:
         user = await get_current_user_ws(token)
-    except HTTPException as exc:
+    except HTTPException:
         await websocket.close(code=1008, reason="Unauthorized")
         logger.warning("WebSocket connection rejected: unauthorized")
         return
@@ -875,6 +875,7 @@ async def set_tracing_config(
 async def get_conversation_logs(
     request: Request,
     limit: int = 50,
+    kind: str = Query("trace", pattern="^(trace|summary|all)$", description="日志类型筛选：trace/summary/all"),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ConversationLogsResponse:
     """获取最近的对话日志（仅 Dashboard 管理员，最多 50 条）。"""
@@ -885,5 +886,5 @@ async def get_conversation_logs(
         )
 
     db = get_sqlite_manager(request.app)
-    logs = await db.get_recent_conversation_logs(limit=min(limit, 50))
+    logs = await db.get_recent_conversation_logs(limit=min(limit, 50), kind=kind)
     return ConversationLogsResponse(logs=logs, total=len(logs))

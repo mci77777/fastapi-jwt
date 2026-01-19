@@ -12,6 +12,7 @@ import {
   syncModel,
   syncAllModels,
   syncMappings,
+  importMappingsLocal,
 } from '@/api/aiModelSuite'
 import api from '@/api'
 
@@ -166,6 +167,12 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
       } finally {
         this.syncMappingsLoading = false
       }
+    },
+    async importMappingsLocal(file) {
+      if (!file) return { status: 'skipped:missing_file' }
+      const response = await importMappingsLocal(file)
+      await this.loadMappings()
+      return response?.data || {}
     },
     async pullMappingsFromSupabase(options = {}) {
       const result = await this.syncMappings({ direction: 'pull', ...options })

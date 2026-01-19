@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
@@ -153,6 +154,53 @@ async def sync_model_groups(
             detail=create_response(code=503, msg=str(exc)),
         ) from exc
     return create_response(data=result, msg=f"模型映射同步完成({direction.value})")
+
+
+@router.post("/model-groups/import-local-json")
+async def import_local_model_groups(
+    request: Request,
+    file: UploadFile = File(...),
+    _: None = Depends(require_llm_admin),  # noqa: B008
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """从本地 JSON 文件导入模型映射（upsert，不删除）。"""
+
+    try:
+        raw = await file.read()
+    finally:
+        await file.close()
+
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("utf-8-sig", errors="ignore")
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=create_response(code=422, msg="invalid_json"),
+        ) from exc
+
+    mappings: Any = None
+    if isinstance(payload, dict):
+        mappings = payload.get("mappings")
+    elif isinstance(payload, list):
+        mappings = payload
+
+    if not isinstance(mappings, list):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=create_response(code=422, msg="invalid_mappings_payload"),
+        )
+
+    service = get_mapping_service(request)
+    result = await service.import_local_mappings(mappings)
+    return create_response(
+        data=result,
+        msg=f"导入完成：成功 {result.get('imported_count', 0)} 条，跳过 {result.get('skipped_count', 0)} 条",
+    )
 
 
 __all__ = ["router", "ModelMappingPayload", "ActivateMappingRequest"]

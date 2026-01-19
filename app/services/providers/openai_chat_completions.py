@@ -21,6 +21,9 @@ PublishFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
+_TRACE_UPSTREAM_RAW_MAX_FRAMES = 20
+_TRACE_UPSTREAM_RAW_MAX_CHARS = 8000
+
 
 class OpenAIChatCompletionsAdapter:
     dialect = "openai.chat_completions"
@@ -89,6 +92,8 @@ class OpenAIChatCompletionsAdapter:
         saw_function_call = False
         upstream_request_id: Optional[str] = None
         usage: Optional[dict[str, Any]] = None
+        raw_frames = 0
+        raw_chars = 0
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             for index, auth_headers in enumerate(auth_candidates):
@@ -169,10 +174,21 @@ class OpenAIChatCompletionsAdapter:
 
                     async for event_name, raw_text in iter_sse_frames(response):
                         if emit_raw and raw_text:
-                            await publish(
-                                "upstream_raw",
-                                {"dialect": self.dialect, "upstream_event": event_name, "raw": raw_text},
-                            )
+                            if raw_frames < _TRACE_UPSTREAM_RAW_MAX_FRAMES and raw_chars < _TRACE_UPSTREAM_RAW_MAX_CHARS:
+                                remaining = max(0, _TRACE_UPSTREAM_RAW_MAX_CHARS - raw_chars)
+                                chunk = raw_text[:remaining] if remaining else ""
+                                if chunk:
+                                    raw_frames += 1
+                                    raw_chars += len(chunk)
+                                    await publish(
+                                        "upstream_raw",
+                                        {
+                                            "dialect": self.dialect,
+                                            "upstream_event": event_name,
+                                            "raw": chunk,
+                                            "raw_truncated": len(chunk) < len(raw_text),
+                                        },
+                                    )
                         if raw_text == "[DONE]":
                             break
                         if not raw_text:

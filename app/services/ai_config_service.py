@@ -14,8 +14,6 @@ from urllib.parse import urlsplit
 
 import httpx
 
-_SUPPORTED_PROVIDER_PROTOCOLS: tuple[str, ...] = ("openai", "claude")
-
 from app.db import SQLiteManager
 from app.settings.config import Settings
 from app.services.ai_url import build_resolved_endpoints, normalize_ai_base_url
@@ -23,6 +21,8 @@ from app.services.upstream_auth import is_retryable_auth_error, iter_auth_header
 from app.services.prompt_tools_assembly import assemble_system_prompt, extract_tools_schema, gate_active_tools_schema
 
 logger = logging.getLogger(__name__)
+
+_SUPPORTED_PROVIDER_PROTOCOLS: tuple[str, ...] = ("openai", "claude")
 
 DISALLOWED_TEST_ENDPOINT_PREFIXES = ("test-", "test_")
 
@@ -2110,7 +2110,6 @@ class AIConfigService:
                 }
             )
 
-        synced_rows: list[dict[str, Any]] = []
         deleted_count = 0
         try:
             async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
@@ -2122,8 +2121,7 @@ class AIConfigService:
                         json=payload,
                     )
                     response.raise_for_status()
-                    data = response.json()
-                    synced_rows = data if isinstance(data, list) else []
+                    response.json()
 
                 if delete_missing:
                     keep_ids = {row["id"] for row in payload if isinstance(row, dict) and isinstance(row.get("id"), str)}

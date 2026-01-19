@@ -575,6 +575,78 @@ class ModelMappingService:
             "remote_total": len(remote_snapshot),
         }
 
+    async def import_local_mappings(self, mappings: list[dict[str, Any]]) -> dict[str, Any]:
+        """从本地 JSON 快照导入映射（仅 upsert，不删除）。"""
+
+        await self._ensure_sqlite_imported()
+        imported_count = 0
+        skipped_count = 0
+        errors: list[dict[str, Any]] = []
+
+        for index, item in enumerate(mappings):
+            if not isinstance(item, dict):
+                skipped_count += 1
+                errors.append({"index": index, "reason": "invalid_item"})
+                continue
+
+            scope_type = item.get("scope_type")
+            scope_key = item.get("scope_key")
+            raw_id = item.get("id")
+            if (not scope_type or not scope_key) and isinstance(raw_id, str) and ":" in raw_id:
+                parsed_scope_type, parsed_scope_key = raw_id.split(":", 1)
+                scope_type = scope_type or parsed_scope_type
+                scope_key = scope_key or parsed_scope_key
+
+            scope_type = _normalize_scope_type(scope_type)
+            scope_key = str(scope_key or "").strip()
+            if not scope_type or not scope_key:
+                skipped_count += 1
+                errors.append({"index": index, "id": raw_id, "reason": "missing_scope"})
+                continue
+
+            name = item.get("name") if isinstance(item.get("name"), str) else None
+
+            default_model = item.get("default_model")
+            if isinstance(default_model, str):
+                default_model = default_model.strip() or None
+            else:
+                default_model = None
+
+            candidates: list[str] = []
+            raw_candidates = item.get("candidates")
+            if isinstance(raw_candidates, list):
+                for value in raw_candidates:
+                    text = str(value or "").strip()
+                    if text:
+                        candidates.append(text)
+            candidates = list(dict.fromkeys(candidates))
+
+            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            payload = {
+                "scope_type": scope_type,
+                "scope_key": scope_key,
+                "name": name,
+                "default_model": default_model,
+                "candidates": candidates,
+                "is_active": bool(item.get("is_active", True)),
+                "metadata": metadata,
+            }
+
+            try:
+                await self.upsert_mapping(payload)
+            except Exception as exc:  # pragma: no cover - 单条失败不应阻断批量导入
+                skipped_count += 1
+                errors.append({"index": index, "id": raw_id, "reason": str(exc)})
+                continue
+
+            imported_count += 1
+
+        return {
+            "imported_count": imported_count,
+            "skipped_count": skipped_count,
+            "errors": errors,
+        }
+
     async def resolve_for_message(
         self,
         *,

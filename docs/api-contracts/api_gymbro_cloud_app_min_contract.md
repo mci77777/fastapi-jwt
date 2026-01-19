@@ -293,12 +293,13 @@ App 侧建议持久化字段（例如 `coach_cloud_model`）：
   - `{"state":"routed","message_id":"...","request_id":"...","provider":"xai","resolved_model":"grok-4-1-fast-reasoning","endpoint_id":123,"upstream_request_id":null}`
 - `event: content_delta`：`{"message_id":"...","request_id":"...","seq":1,"delta":"..."}`
 - `event: upstream_raw`：`{"message_id":"...","request_id":"...","seq":1,"dialect":"openai.chat_completions","upstream_event":null,"raw":"..."}`
-- `event: completed`：`{"message_id":"...","request_id":"...","reply":"...","reply_len":1234,"provider":"...","resolved_model":"...","endpoint_id":123,"upstream_request_id":"...|null","metadata":null}`
+- `event: completed`：`{"message_id":"...","request_id":"...","reply_len":1234,"reply_snapshot_included":false,"result_mode_effective":"raw_passthrough|xml_plaintext","provider":"...","resolved_model":"...","endpoint_id":123,"upstream_request_id":"...|null","metadata":null}`
 - `event: error`：`{"message_id":"...","request_id":"...","code":"...","message":"...","error":"...","provider":"...|null","resolved_model":"...|null","endpoint_id":123|null}`
 - `event: heartbeat`：`{"message_id":"...","request_id":"...","ts":1736253242000}`
 
-> `result_mode=xml_plaintext` 时，reply 优先由 `content_delta.delta` 拼接得到；`completed.reply` 仅作兜底（例如晚订阅/漏订阅）。结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。  
-> `result_mode=raw_passthrough` 时，reply 同样以 `content_delta.delta` 拼接为准（透明转发 token 文本，不做 XML/ThinkingML 修复）；`completed.reply` 仅作兜底与对账。
+> `result_mode=xml_plaintext` 时，reply **只能**由 `content_delta.delta` 拼接得到（Strict-XML / ThinkingML v4.5），结构契约见：`docs/ai预期响应结构.md`。  
+> `result_mode=raw_passthrough` 时，reply 同样只能以 `content_delta.delta` 拼接为准（透明转发 token 文本，不做 XML/ThinkingML 修复）。  
+> `completed` **不再**返回 `reply` 全文；`reply_len` 仅用于统计/校验参考（不保证逐字一致）。
 
 ### SSE 事件字典（SSOT，可机读）
 
@@ -352,7 +353,7 @@ event: content_delta
 data: {"message_id":"0123456789abcdef0123456789abcdef","request_id":"req_demo_001","seq":1,"delta":"Hello"}
 
 event: completed
-data: {"message_id":"0123456789abcdef0123456789abcdef","request_id":"req_demo_001","provider":"xai","resolved_model":"grok-4-1-fast-reasoning","endpoint_id":123,"upstream_request_id":null,"reply":"Hello","reply_len":5,"metadata":null}
+data: {"message_id":"0123456789abcdef0123456789abcdef","request_id":"req_demo_001","provider":"xai","resolved_model":"grok-4-1-fast-reasoning","endpoint_id":123,"upstream_request_id":null,"reply_len":5,"reply_snapshot_included":false,"result_mode_effective":"raw_passthrough","metadata":null}
 ```
 
 ### 常见“只有 status/heartbeat 无内容”的原因（后端侧）

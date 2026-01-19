@@ -1,6 +1,5 @@
 
 import asyncio
-import json
 import logging
 import time
 from typing import Any, Dict, Optional
@@ -144,7 +143,6 @@ class MailAuthService:
                     # 简单匹配逻辑：查找包含 'code' 或 'verify' 的邮件
                     # 实际需要下载邮件内容 self.get_message(email_id, item['id'])
                     msg_detail = await self.get_message(email_id, item['id'])
-                    subject = msg_detail.get("subject", "")
                     body = msg_detail.get("text", "") or msg_detail.get("html", "")
                     
                     # 假设验证码是 6 位数字

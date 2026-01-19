@@ -71,13 +71,22 @@
 
       <NTabPane name="request" tab="请求日志" display-directive="show">
         <div class="log-content">
+          <div class="request-filter-bar">
+            <NSelect v-model:value="requestCategoryFilter" size="small" :options="requestCategoryOptions" style="width: 140px" />
+            <NSelect v-model:value="requestKindFilter" size="small" :options="requestKindOptions" style="width: 140px" />
+            <NSelect v-model:value="requestStatusFilter" size="small" :options="requestStatusOptions" style="width: 140px" />
+            <NInput v-model:value="requestKeyword" size="small" clearable placeholder="搜索 URL / request_id" />
+          </div>
           <div v-if="requestLogItems.length === 0" class="log-empty">
             <span>暂无请求日志（打开开关后开始记录）</span>
+          </div>
+          <div v-else-if="filteredRequestLogItems.length === 0" class="log-empty">
+            <span>无匹配结果（请调整筛选条件）</span>
           </div>
 
           <div v-else class="log-list">
             <div
-              v-for="item in requestLogItems"
+              v-for="item in filteredRequestLogItems"
               :key="item.id"
               class="log-item request-log-item"
               @click="handleRequestLogClick(item.id)"
@@ -87,6 +96,9 @@
                   <NTag size="small" :bordered="false" type="info">{{ item.method || 'REQ' }}</NTag>
                   <NTag size="small" :bordered="false" :type="getRequestStatusTagType(item.status)">
                     {{ formatRequestStatus(item.status) }}
+                  </NTag>
+                  <NTag v-if="getRequestCategory(item)" size="small" :bordered="false" type="default">
+                    {{ getRequestCategory(item) }}
                   </NTag>
                   <NTag v-if="item.kind" size="small" :bordered="false" type="default">{{ item.kind }}</NTag>
                 </div>
@@ -125,7 +137,7 @@
     <template #footer>
       <div class="log-footer">
         <span v-if="activeTab === 'system'" class="log-count">共 {{ filteredLogs.length }} 条日志</span>
-        <span v-else class="log-count">共 {{ requestLogItems.length }} 条请求日志</span>
+        <span v-else class="log-count">显示 {{ filteredRequestLogItems.length }} / {{ requestLogItems.length }} 条请求日志</span>
 
         <div v-if="activeTab === 'system'">
           <NButton text size="small" @click="handleRefresh">
@@ -142,7 +154,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { NCard, NTag, NSelect, NButton, NInputNumber, NSwitch, NTabs, NTabPane, useMessage } from 'naive-ui'
+import { NCard, NTag, NSelect, NInput, NButton, NInputNumber, NSwitch, NTabs, NTabPane, useMessage } from 'naive-ui'
 import { useRequestLogStore } from '@/store'
 import { getToken } from '@/utils'
 
@@ -231,8 +243,101 @@ const requestLogRetentionSizeModel = computed({
 })
 
 const requestLogItems = computed(() => requestLogStore.items || [])
+const requestCategoryFilter = ref('all')
+const requestKindFilter = ref('all')
+const requestStatusFilter = ref('all')
+const requestKeyword = ref('')
 const expandedRequestLogIds = ref([])
 const sqliteLoading = ref(false)
+
+function getRequestCategory(item) {
+  const rawUrl = String(item?.url || '').trim()
+  if (!rawUrl) return ''
+
+  const kind = String(item?.kind || '').trim().toLowerCase()
+  const method = String(item?.method || '').trim().toUpperCase()
+  if (kind === 'eventsource' || method === 'EVENT') return 'sse'
+
+  let urlObj = null
+  try {
+    const origin = globalThis.location?.origin || 'http://localhost'
+    urlObj = new URL(rawUrl, origin)
+  } catch {
+    urlObj = null
+  }
+
+  const host = urlObj?.host ? String(urlObj.host) : ''
+  const localHost = globalThis.location?.host ? String(globalThis.location.host) : ''
+  if (host && localHost && host !== localHost) return 'external'
+
+  const path = String(urlObj?.pathname || rawUrl)
+  const normalized = path.replace(/^\/+/, '')
+  const idx = normalized.indexOf('api/v1/')
+  const rest = idx >= 0 ? normalized.slice(idx + 'api/v1/'.length) : normalized
+
+  if (rest.startsWith('messages')) return 'messages'
+  if (rest.startsWith('llm/')) return 'llm'
+  if (rest.startsWith('stats/') || rest.startsWith('logs/') || rest.startsWith('dashboard/')) return 'dashboard'
+  if (rest.startsWith('ai/') || rest.startsWith('base/') || rest.startsWith('auth/')) return 'auth'
+  return 'other'
+}
+
+const requestCategoryOptions = computed(() => {
+  const base = [{ label: '全部分类', value: 'all' }]
+  const set = new Set()
+  ;(requestLogItems.value || []).forEach((it) => {
+    const c = getRequestCategory(it)
+    if (c) set.add(c)
+  })
+  Array.from(set)
+    .sort()
+    .forEach((c) => base.push({ label: c, value: c }))
+  return base
+})
+
+const requestKindOptions = computed(() => {
+  const base = [{ label: '全部来源', value: 'all' }]
+  const set = new Set()
+  ;(requestLogItems.value || []).forEach((it) => {
+    const k = String(it?.kind || '').trim()
+    if (k) set.add(k)
+  })
+  Array.from(set)
+    .sort()
+    .forEach((k) => base.push({ label: k, value: k }))
+  return base
+})
+
+const requestStatusOptions = [
+  { label: '全部状态', value: 'all' },
+  { label: 'OK', value: 'success' },
+  { label: 'APP_ERR', value: 'app_error' },
+  { label: 'ERROR', value: 'error' },
+  { label: 'PENDING', value: 'pending' },
+  { label: 'EVENT', value: 'event' },
+]
+
+const filteredRequestLogItems = computed(() => {
+  const list = Array.isArray(requestLogItems.value) ? requestLogItems.value : []
+  const kw = String(requestKeyword.value || '').trim().toLowerCase()
+  return list.filter((it) => {
+    if (requestCategoryFilter.value !== 'all') {
+      if (getRequestCategory(it) !== requestCategoryFilter.value) return false
+    }
+    if (requestKindFilter.value !== 'all') {
+      if (String(it?.kind || '') !== requestKindFilter.value) return false
+    }
+    if (requestStatusFilter.value !== 'all') {
+      if (String(it?.status || '') !== requestStatusFilter.value) return false
+    }
+    if (kw) {
+      const url = String(it?.url || '').toLowerCase()
+      const rid = String(it?.request_id || '').toLowerCase()
+      if (!url.includes(kw) && !rid.includes(kw)) return false
+    }
+    return true
+  })
+})
 
 function resolveBaseApiUrl(path) {
   const rawBaseApi = import.meta.env.VITE_BASE_API || '/api/v1'
@@ -468,6 +573,17 @@ function handleRefresh() {
   height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+.request-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 6px;
+}
+
+.request-filter-bar :deep(.n-input) {
+  flex: 1;
 }
 
 .log-window :deep(.n-card__content) {

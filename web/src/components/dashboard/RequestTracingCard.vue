@@ -12,7 +12,7 @@
       </n-space>
 
       <n-alert v-if="tracingEnabled" type="info" size="small" :show-icon="false">
-        自动保存最近 50 条对话的详细日志（请求/响应），超出自动清理
+        自动保存最近 50 条 trace 详细日志（App 请求 / 上游 raw / SSE 统计），超出自动清理
       </n-alert>
 
       <n-space v-if="tracingEnabled">

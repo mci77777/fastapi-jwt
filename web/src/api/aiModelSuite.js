@@ -30,6 +30,13 @@ export const syncMappings = (options = {}) =>
     overwrite: !!options.overwrite,
     delete_missing: !!options.deleteMissing,
   })
+export const importMappingsLocal = (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.post('/llm/model-groups/import-local-json', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
 
 export const fetchPrompts = (params = {}) => request.get('/llm/prompts', { params })
 export const fetchPromptTests = (promptId, params = {}) =>

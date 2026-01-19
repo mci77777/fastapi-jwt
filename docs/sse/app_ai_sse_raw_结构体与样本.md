@@ -22,7 +22,7 @@ data: <one-line-json>
 其中 `<event_name>` 是 GymBro 自定义事件（统一对外）：`status` / `content_delta` / `upstream_raw` / `completed` / `error` / `heartbeat`。  
 **App 端最小必实现集合（推荐）**：`status` / `content_delta` / `completed` / `error` / `heartbeat`（`upstream_raw` 仅用于调试/诊断，可忽略）。
 
-> 重要：**最终答案（reply）优先由 `content_delta.delta` 流式拼接得到（SSOT）**；`completed.reply` 仅作兜底（例如晚订阅/漏订阅）。
+> 重要：**最终答案（reply_text）只能由 `content_delta.delta` 流式拼接得到（SSOT）**；`completed` 不再返回 `reply` 全文。
 
 ---
 
@@ -112,8 +112,8 @@ export interface CompletedEventData {
   upstream_request_id: string | null;
   result_mode?: string | null; // 客户端请求的 result_mode（创建时固化）
   result_mode_effective?: string | null; // auto 模式的最终判定（或与 result_mode 相同）
-  reply: string; // 兜底全文（客户端仍建议优先拼接 content_delta）
   reply_len: number;
+  reply_snapshot_included: boolean; // 固定为 false（不下发 reply 全文）
   metadata: Record<string, unknown> | null; // provider 侧额外信息（可选）
 }
 
@@ -146,7 +146,7 @@ export interface HeartbeatEventData {
 可选（仅调试/诊断）：若你需要对账上游 RAW，可额外维护 `raw_frames[]`（依赖 `upstream_raw` 事件；App 端通常不需要实现）。
 
 兜底策略：
-- 若只收到 `completed`（未收到 `content_delta`），则用 `completed.reply` 作为 `reply_text`。
+- 若只收到 `completed`（未收到 `content_delta`），应视为异常（已无 `reply` 全文可还原）；建议重试并上报 `request_id`。
 - 若收到 `error`，本次对话以失败终止（即使之前已收到部分 `content_delta`）。
 
 > 注意：App 侧默认不传 `result_mode`，服务端默认使用持久化配置（未配置则 `raw_passthrough`）；因此正常只需要处理 `content_delta`。
@@ -175,7 +175,7 @@ event: content_delta
 data: {"delta":"<thinking>\n","message_id":"0ffae7ec7fdf40b48f3ccd814560df1b","request_id":"7f317393-24fe-4229-bef9-208cede90b6b","seq":1}
 
 event: completed
-data: {"message_id":"0ffae7ec7fdf40b48f3ccd814560df1b","request_id":"7f317393-24fe-4229-bef9-208cede90b6b","provider":"openai","resolved_model":"gpt-5.2","endpoint_id":31,"upstream_request_id":null,"reply":"<thinking>\n<phase id=\"1\">\n<title>理解与回应</title>\n...（略）...\n</final>","reply_len":416,"metadata":null}
+data: {"message_id":"0ffae7ec7fdf40b48f3ccd814560df1b","request_id":"7f317393-24fe-4229-bef9-208cede90b6b","provider":"openai","resolved_model":"gpt-5.2","endpoint_id":31,"upstream_request_id":null,"reply_len":416,"reply_snapshot_included":false,"result_mode_effective":"xml_plaintext","metadata":null}
 ```
 
 ### 4.3 RAW（SSE 行协议）示例：passthrough + prompt 注入（输出尖括号标签）
@@ -187,7 +187,7 @@ event: content_delta
 data: {"delta":"<thinking>\n用","message_id":"f5a03dc5a6d240afa2a4fe6ce77328eb","request_id":"5bccf6cd-ca32-4254-8c0d-42e8a5be803d","seq":1}
 
 event: completed
-data: {"message_id":"f5a03dc5a6d240afa2a4fe6ce77328eb","request_id":"5bccf6cd-ca32-4254-8c0d-42e8a5be803d","provider":"openai","resolved_model":"claude-sonnet-4-5-20250929","endpoint_id":31,"upstream_request_id":null,"reply":"<thinking>\n...（略）...\n</final>","reply_len":132,"metadata":null}
+data: {"message_id":"f5a03dc5a6d240afa2a4fe6ce77328eb","request_id":"5bccf6cd-ca32-4254-8c0d-42e8a5be803d","provider":"openai","resolved_model":"claude-sonnet-4-5-20250929","endpoint_id":31,"upstream_request_id":null,"reply_len":132,"reply_snapshot_included":false,"result_mode_effective":"raw_passthrough","metadata":null}
 ```
 
 ### 4.4 RAW（SSE 行协议）示例：`error`（终止）
@@ -214,7 +214,7 @@ event: content_delta
 data: {"message_id":"msg_xxx","request_id":"rid_xxx","seq":3,"delta":"...\\n</final>"}
 
 event: completed
-data: {"message_id":"msg_xxx","request_id":"rid_xxx","reply_len":3799,"reply":"<thinking>...<final>...</final>"}
+data: {"message_id":"msg_xxx","request_id":"rid_xxx","reply_len":3799,"reply_snapshot_included":false,"result_mode_effective":"xml_plaintext"}
 ```
 
 ---

@@ -88,11 +88,11 @@
         "upstream_request_id": { "type": ["string", "null"] },
         "result_mode": { "type": ["string", "null"] },
         "result_mode_effective": { "type": ["string", "null"] },
-        "reply": { "type": "string" },
         "reply_len": { "type": "integer", "minimum": 0 },
+        "reply_snapshot_included": { "type": "boolean" },
         "metadata": { "type": ["object", "null"], "additionalProperties": true }
       },
-      "required": ["message_id", "request_id", "reply", "reply_len"]
+      "required": ["message_id", "request_id", "reply_len", "reply_snapshot_included"]
     },
     "ErrorData": {
       "type": "object",

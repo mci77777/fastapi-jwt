@@ -107,7 +107,7 @@ python scripts/verification/verify_jwks_cache.py
 # 2. 生成 Token 并执行匿名 E2E
 python e2e/anon_jwt_sse/scripts/generate_test_token.py --method auto --verify
 python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py
-# 产物：默认输出到 e2e/anon_jwt_sse/artifacts/anon_e2e_trace.json + anon_e2e_trace.txt（TXT 含 completed.reply 原文，便于人工核对尖括号标签）
+# 产物：默认输出到 e2e/anon_jwt_sse/artifacts/anon_e2e_trace.json + anon_e2e_trace.txt（TXT 含 content_delta 拼接后的 reply_text 原文，便于人工核对尖括号标签）
 #
 # 可选：prompt 模式（server / passthrough）与 TXT 内容（text / raw / both）
 # python e2e/anon_jwt_sse/scripts/run_e2e_enhanced.py --prompt-mode passthrough --extra-system-prompt "<text>" --result-mode both

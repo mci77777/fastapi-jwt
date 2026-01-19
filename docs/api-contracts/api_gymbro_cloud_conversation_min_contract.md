@@ -171,7 +171,7 @@
 ```
 
 #### `event: completed`
-- 终止事件（包含 `reply` 兜底；仍建议拼接 `content_delta.delta` 作为流式 SSOT）
+- 终止事件（不包含 `reply` 全文；reply 只能由 `content_delta.delta` 拼接得到）
 ```json
 {
   "message_id": "<message_id>",
@@ -180,13 +180,13 @@
   "resolved_model": "upstream provider model id",
   "endpoint_id": 123,
   "upstream_request_id": "<redacted>|null",
-  "reply": "<full reply text>",
   "reply_len": 1234,
+  "reply_snapshot_included": false,
   "metadata": null
 }
 ```
 
-> reply 的结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）。
+> reply 的结构契约见：`docs/ai预期响应结构.md`（Strict-XML / ThinkingML v4.5）；客户端需以 `content_delta.delta` 拼接为准。
 
 #### `event: error`
 - 处理失败（可用于兜底 UI）
@@ -395,8 +395,8 @@ curl -X POST https://api.gymbro.cloud/api/v1/messages \
           "properties": {
             "message_id": { "type": "string" },
             "request_id": { "type": "string" },
-            "reply": { "type": "string" },
-            "reply_len": { "type": "integer" }
+            "reply_len": { "type": "integer" },
+            "reply_snapshot_included": { "type": "boolean" }
           }
         }
       }

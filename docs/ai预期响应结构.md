@@ -113,7 +113,7 @@
 
 ## 6) GymBro SSE 事件契约（对外 SSOT）
 
-> 重要：reply 优先由 `content_delta.delta` 拼接得到（SSOT）；`completed.reply` 仅作兜底（例如晚订阅/漏订阅）。
+> 重要：reply **只能**由 `content_delta.delta` 拼接得到（SSOT）；`completed` 不再返回 `reply` 全文。
 
 ### 6.1 事件集合（最小）
 - `status`
@@ -142,9 +142,9 @@
 {"message_id":"<opaque>","request_id":"<opaque>","seq":12,"delta":"...chunk..."}
 ```
 
-`completed`（终止事件；包含 `reply` 兜底，仍建议客户端拼接 `content_delta.delta`）：
+`completed`（终止事件；不包含 `reply` 全文，客户端以 `content_delta.delta` 拼接为准）：
 ```json
-{"message_id":"<opaque>","request_id":"<opaque>","provider":"openai","resolved_model":"<vendor_model>","endpoint_id":1,"upstream_request_id":"<opaque|null>","reply":"<full reply text>","reply_len":601,"metadata":null}
+{"message_id":"<opaque>","request_id":"<opaque>","provider":"openai","resolved_model":"<vendor_model>","endpoint_id":1,"upstream_request_id":"<opaque|null>","reply_len":601,"reply_snapshot_included":false,"metadata":null}
 ```
 
 `error`（终止事件；保留 legacy `error` 字段兼容旧客户端）：
@@ -163,9 +163,8 @@
 
 1) 订阅 SSE 自定义事件：`status/content_delta/completed/error/heartbeat`  
 2) 按 `seq`（或到达顺序）拼接 `content_delta.delta` 得到 `reply_text`  
-3) 若 `completed.reply` 存在，可作为“晚订阅/漏订阅”的兜底；否则以拼接结果为准  
-4) `completed.reply_len` 仅用于校验拼接结果长度（不保证逐字一致，避免因转义/编码差异误判）  
-5) 若收到 `error`，应视为失败终止（即使之前收到部分 `content_delta`）
+3) `completed.reply_len` 仅用于校验拼接结果长度（不保证逐字一致，避免因转义/编码差异误判）  
+4) 若收到 `error`，应视为失败终止（即使之前收到部分 `content_delta`）
 
 ---
 

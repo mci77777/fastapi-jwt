@@ -7,6 +7,8 @@ GIT_REVISION = `git rev-parse HEAD`
 
 # Prefer repo-local pytest (avoids PATH/env drift).
 PYTEST := $(if $(wildcard .venv/bin/pytest),.venv/bin/pytest,pytest)
+# Prefer repo-local ruff (avoids PATH/env drift).
+RUFF := $(if $(wildcard .venv/bin/ruff),.venv/bin/ruff,ruff)
 
 # Introspection targets
 # ---------------------
@@ -62,7 +64,7 @@ check-format: ## Dry-run code formatter
 
 .PHONY: lint
 lint: ## Run ruff
-	ruff check ./app 
+	$(RUFF) check ./app 
  
 .PHONY: format
 format: ## Run code formatter

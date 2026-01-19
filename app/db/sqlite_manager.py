@@ -44,7 +44,6 @@ PRAGMA foreign_keys = ON;
 CREATE INDEX IF NOT EXISTS idx_ai_endpoints_is_active ON ai_endpoints(is_active);
 CREATE INDEX IF NOT EXISTS idx_ai_endpoints_status ON ai_endpoints(status);
 CREATE INDEX IF NOT EXISTS idx_ai_endpoints_name ON ai_endpoints(name);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_endpoints_supabase_id ON ai_endpoints(supabase_id);
 
 CREATE TABLE IF NOT EXISTS ai_prompts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +63,6 @@ CREATE TABLE IF NOT EXISTS ai_prompts (
 
 CREATE INDEX IF NOT EXISTS idx_ai_prompts_is_active ON ai_prompts(is_active);
 CREATE INDEX IF NOT EXISTS idx_ai_prompts_name ON ai_prompts(name);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_prompts_supabase_id ON ai_prompts(supabase_id);
 
 CREATE TABLE IF NOT EXISTS ai_prompt_tests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -176,6 +174,7 @@ CREATE TABLE IF NOT EXISTS conversation_logs (
     message_id TEXT NOT NULL,
     conversation_id TEXT,
     request_id TEXT,
+    kind TEXT,                    -- summary / trace
     request_payload TEXT,
     response_payload TEXT,
     request_detail_json TEXT,
@@ -190,7 +189,6 @@ CREATE TABLE IF NOT EXISTS conversation_logs (
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_created ON conversation_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_user ON conversation_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_status ON conversation_logs(status);
-CREATE INDEX IF NOT EXISTS idx_conversation_logs_conversation ON conversation_logs(conversation_id);
 
 -- Web Dashboard 请求日志（前端脱敏后的 request/response raw 记录，默认不写入；由开关控制）
 CREATE TABLE IF NOT EXISTS request_raw_logs (
@@ -383,11 +381,28 @@ class SQLiteManager:
             except Exception:
                 pass
             await self._conn.commit()
+
+            # 兼容：历史 SQLite 缺字段时，不能在 INIT_SCRIPT 里直接建索引
+            # （CREATE TABLE IF NOT EXISTS 不会补齐列；索引引用缺失列会导致启动失败）
+            try:
+                await self._conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_endpoints_supabase_id ON ai_endpoints(supabase_id)"
+                )
+            except Exception:
+                pass
+            try:
+                await self._conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_prompts_supabase_id ON ai_prompts(supabase_id)"
+                )
+            except Exception:
+                pass
+            await self._conn.commit()
             await self._ensure_columns(
                 "conversation_logs",
                 {
                     "request_id": "ALTER TABLE conversation_logs ADD COLUMN request_id TEXT",
                     "conversation_id": "ALTER TABLE conversation_logs ADD COLUMN conversation_id TEXT",
+                    "kind": "ALTER TABLE conversation_logs ADD COLUMN kind TEXT",
                     "request_detail_json": "ALTER TABLE conversation_logs ADD COLUMN request_detail_json TEXT",
                     "response_detail_json": "ALTER TABLE conversation_logs ADD COLUMN response_detail_json TEXT",
                 },
@@ -590,21 +605,34 @@ class SQLiteManager:
             await self._conn.execute(
                 """
                 INSERT INTO conversation_logs
-                (user_id, message_id, request_id, request_payload, response_payload, model_used, latency_ms, status, error_message)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (user_id, message_id, request_id, kind, request_payload, response_payload, model_used, latency_ms, status, error_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, message_id, request_id, request_payload, response_payload, model_used, latency_ms, status, error_message),
+                (
+                    user_id,
+                    message_id,
+                    request_id,
+                    "summary",
+                    request_payload,
+                    response_payload,
+                    model_used,
+                    latency_ms,
+                    status,
+                    error_message,
+                ),
             )
 
             # 维护循环缓冲区：删除超过 100 条的旧记录
             await self._conn.execute(
                 """
                 DELETE FROM conversation_logs
-                WHERE id NOT IN (
-                    SELECT id FROM conversation_logs
-                    ORDER BY id DESC
-                    LIMIT 100
-                )
+                WHERE (kind = 'summary' OR kind IS NULL)
+                  AND id NOT IN (
+                      SELECT id FROM conversation_logs
+                      WHERE (kind = 'summary' OR kind IS NULL)
+                      ORDER BY id DESC
+                      LIMIT 100
+                  )
                 """
             )
 
@@ -638,8 +666,8 @@ class SQLiteManager:
 
         return [dict(row) for row in rows]
 
-    async def patch_conversation_log_response_payload(self, message_id: str, patch: dict[str, Any]) -> None:
-        """按 message_id 合并更新 response_payload（JSON）。
+    async def patch_conversation_log_response_payload(self, message_id: str, patch: dict[str, Any]) -> bool:
+        """按 message_id 合并更新 response_payload/response_detail_json（JSON）。
 
         说明：用于补齐 SSE 会话信息等“后置产生”的数据，避免依赖落盘日志。
         """
@@ -649,7 +677,7 @@ class SQLiteManager:
         async with self._lock:
             cursor = await self._conn.execute(
                 """
-                SELECT id, response_payload
+                SELECT id, response_payload, response_detail_json
                 FROM conversation_logs
                 WHERE message_id = ?
                 ORDER BY created_at DESC
@@ -661,10 +689,16 @@ class SQLiteManager:
             await cursor.close()
 
             if not row:
-                return
+                return False
 
             record_id = row["id"]
+            target_field = "response_payload"
             existing_raw = row["response_payload"]
+            detail_raw = row["response_detail_json"]
+            if isinstance(detail_raw, str) and detail_raw.strip():
+                target_field = "response_detail_json"
+                existing_raw = detail_raw
+
             existing: dict[str, Any] = {}
             if isinstance(existing_raw, str) and existing_raw.strip():
                 try:
@@ -677,14 +711,56 @@ class SQLiteManager:
             merged = dict(existing)
             merged.update(patch or {})
             await self._conn.execute(
-                """
-                UPDATE conversation_logs
-                SET response_payload = ?
-                WHERE id = ?
-                """,
+                f"UPDATE conversation_logs SET {target_field} = ? WHERE id = ?",
                 (json.dumps(merged, ensure_ascii=False), record_id),
             )
             await self._conn.commit()
+            return True
+
+    async def patch_conversation_trace_response_detail(self, message_id: str, patch: dict[str, Any]) -> bool:
+        """按 message_id 合并更新 trace 记录的 response_detail_json（JSON）。
+
+        用途：SSE 结束后补写对账信息时，避免因 trace 记录尚未落库导致写入丢失。
+        """
+        if self._conn is None:
+            raise RuntimeError("SQLiteManager has not been initialised.")
+
+        async with self._lock:
+            cursor = await self._conn.execute(
+                """
+                SELECT id, response_detail_json
+                FROM conversation_logs
+                WHERE message_id = ? AND kind = 'trace'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (message_id,),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+
+            if not row:
+                return False
+
+            record_id = row["id"]
+            existing_raw = row["response_detail_json"]
+            existing: dict[str, Any] = {}
+            if isinstance(existing_raw, str) and existing_raw.strip():
+                try:
+                    parsed = json.loads(existing_raw)
+                    if isinstance(parsed, dict):
+                        existing = parsed
+                except json.JSONDecodeError:
+                    existing = {}
+
+            merged = dict(existing)
+            merged.update(patch or {})
+            await self._conn.execute(
+                "UPDATE conversation_logs SET response_detail_json = ? WHERE id = ?",
+                (json.dumps(merged, ensure_ascii=False), record_id),
+            )
+            await self._conn.commit()
+            return True
 
     async def log_request_raw(
         self,
@@ -843,12 +919,12 @@ class SQLiteManager:
         async with self._lock:
             await self._conn.execute(
                 """INSERT INTO conversation_logs
-                   (user_id, message_id, conversation_id, request_id,
+                   (user_id, message_id, conversation_id, request_id, kind,
                     request_detail_json, response_detail_json,
                     model_used, latency_ms, status, error_message)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    user_id, message_id, conversation_id, request_id,
+                    user_id, message_id, conversation_id, request_id, "trace",
                     json.dumps(request_detail, ensure_ascii=False),
                     json.dumps(response_detail, ensure_ascii=False),
                     model_used, latency_ms, status, error_message
@@ -859,21 +935,52 @@ class SQLiteManager:
             # 自动清理超过 50 条的旧记录
             await self._conn.execute(
                 """DELETE FROM conversation_logs
-                   WHERE id NOT IN (
-                       SELECT id FROM conversation_logs
-                       ORDER BY created_at DESC LIMIT 50
-                   )"""
+                   WHERE kind = 'trace'
+                     AND id NOT IN (
+                         SELECT id FROM conversation_logs
+                         WHERE kind = 'trace'
+                         ORDER BY created_at DESC
+                         LIMIT 50
+                     )"""
             )
             await self._conn.commit()
 
-    async def get_recent_conversation_logs(self, limit: int = 50) -> list[dict]:
-        """获取最近的对话日志（最多 50 条）。"""
+    async def get_recent_conversation_logs(self, limit: int = 50, *, kind: str = "trace") -> list[dict]:
+        """获取最近的对话日志（最多 50 条）。
+
+        kind:
+        - trace：仅详细追踪日志（含 legacy：kind=NULL 且 request_detail_json 非空）
+        - summary：仅摘要日志（kind=summary 或 legacy：kind=NULL 且 request_detail_json 为空）
+        - all：全部
+        """
+        safe_limit = min(int(limit or 0), 50)
+        safe_limit = max(1, safe_limit)
+        kind_norm = str(kind or "trace").strip().lower()
+        if kind_norm not in {"trace", "summary", "all"}:
+            kind_norm = "trace"
+
+        if kind_norm == "all":
+            sql = "SELECT * FROM conversation_logs ORDER BY created_at DESC LIMIT ?"
+            params = (safe_limit,)
+        elif kind_norm == "summary":
+            sql = """
+                SELECT * FROM conversation_logs
+                WHERE (kind = 'summary' OR (kind IS NULL AND request_detail_json IS NULL))
+                ORDER BY created_at DESC
+                LIMIT ?
+            """
+            params = (safe_limit,)
+        else:
+            sql = """
+                SELECT * FROM conversation_logs
+                WHERE (kind = 'trace' OR (kind IS NULL AND request_detail_json IS NOT NULL))
+                ORDER BY created_at DESC
+                LIMIT ?
+            """
+            params = (safe_limit,)
+
         async with self._lock:
-            cursor = await self._conn.execute(
-                """SELECT * FROM conversation_logs
-                   ORDER BY created_at DESC LIMIT ?""",
-                (min(limit, 50),)
-            )
+            cursor = await self._conn.execute(sql, params)
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 

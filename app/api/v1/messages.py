@@ -623,6 +623,13 @@ async def stream_message_events(
     if result_mode not in {"xml_plaintext", "raw_passthrough", "auto"}:
         result_mode = "xml_plaintext"
 
+    trace_enabled = False
+    try:
+        db = get_sqlite_manager(request.app)
+        trace_enabled = bool(await db.get_tracing_enabled())
+    except Exception:
+        trace_enabled = False
+
     # 输出事件白名单：避免客户端在某模式下收到无意义事件（同时降低敏感数据暴露面）。
     def _current_allowed_events() -> set[str]:
         if result_mode == "raw_passthrough":
@@ -643,7 +650,30 @@ async def stream_message_events(
         started = time.time()
         end_reason = "unknown"
         frames: list[dict[str, Any]] = []
+        dropped_frames = 0
+        stored_chars = 0
+        max_frames = 400 if trace_enabled else 200
+        max_chars = 200_000 if trace_enabled else 20_000
+        stats: dict[str, Any] = {
+            "delta_count": 0,
+            "delta_total_len": 0,
+            "delta_max_len": 0,
+            "raw_count": 0,
+            "raw_total_len": 0,
+            "raw_max_len": 0,
+            "first_delta_ts_ms": None,
+            "last_delta_ts_ms": None,
+        }
         terminal_sent = False
+
+        def _append_frame(event: str, data: dict[str, Any], *, approx_chars: int = 0) -> None:
+            nonlocal dropped_frames, stored_chars
+            if len(frames) >= max_frames or stored_chars + approx_chars > max_chars:
+                dropped_frames += 1
+                return
+            frames.append({"ts_ms": int(time.time() * 1000), "event": event, "data": data})
+            stored_chars += max(0, int(approx_chars))
+
         try:
             # 兼容部分反向代理的缓冲策略：先发送一段 SSE 注释 padding，促使尽早 flush。
             # 注意：以 ":" 开头的行是 SSE 注释，客户端会忽略，不影响协议。
@@ -661,7 +691,11 @@ async def stream_message_events(
                         "ts": int(time.time() * 1000),
                     }
                     heartbeat = json.dumps(heartbeat_data, ensure_ascii=False, separators=(",", ":"))
-                    frames.append({"event": "heartbeat", "data": {"message_id": message_id, "ts": heartbeat_data["ts"]}})
+                    _append_frame(
+                        "heartbeat",
+                        {"message_id": message_id, "ts": heartbeat_data["ts"]},
+                        approx_chars=64,
+                    )
                     yield f"event: heartbeat\ndata: {heartbeat}\n\n"
                     continue
 
@@ -669,17 +703,56 @@ async def stream_message_events(
                     end_reason = "channel_closed"
                     break
 
-                if item.event not in _current_allowed_events():
+                allowed = item.event in _current_allowed_events()
+                if not allowed:
+                    # 追踪开启时：允许记录 upstream_raw 以便对账（但仍不向客户端输出，避免破坏既有契约）
+                    if trace_enabled and item.event == "upstream_raw":
+                        raw = (item.data or {}).get("raw")
+                        seq = (item.data or {}).get("seq")
+                        dialect = (item.data or {}).get("dialect")
+                        upstream_event = (item.data or {}).get("upstream_event")
+                        raw_len = len(raw) if isinstance(raw, str) else 0
+                        preview = ""
+                        if isinstance(raw, str) and raw:
+                            preview = raw[:200]
+                        stats["raw_count"] += 1
+                        stats["raw_total_len"] += raw_len
+                        stats["raw_max_len"] = max(int(stats["raw_max_len"] or 0), raw_len)
+                        _append_frame(
+                            "upstream_raw",
+                            {
+                                "filtered_out": True,
+                                "message_id": (item.data or {}).get("message_id"),
+                                "seq": seq,
+                                "dialect": dialect,
+                                "upstream_event": upstream_event,
+                                "raw_len": raw_len,
+                                "raw_preview": preview,
+                                "raw_truncated": bool((item.data or {}).get("raw_truncated", False)),
+                            },
+                            approx_chars=len(preview),
+                        )
                     continue
 
-                # 脱敏记录 SSE 帧（用于交接/排障，不写入原文内容）
+                # 记录 SSE 帧（默认脱敏；追踪开启时可写入原文，用于端到端对账）
                 safe_data = dict(item.data or {})
                 if item.event == "content_delta":
                     delta = str(safe_data.get("delta") or "")
+                    seq = safe_data.get("seq")
+                    ts_ms = int(time.time() * 1000)
+                    if not stats["first_delta_ts_ms"]:
+                        stats["first_delta_ts_ms"] = ts_ms
+                    stats["last_delta_ts_ms"] = ts_ms
+                    stats["delta_count"] += 1
+                    stats["delta_total_len"] += len(delta)
+                    stats["delta_max_len"] = max(int(stats["delta_max_len"] or 0), len(delta))
                     safe_data = {
                         "message_id": safe_data.get("message_id"),
+                        "seq": seq,
                         "delta_len": len(delta),
                     }
+                    if trace_enabled:
+                        safe_data["delta"] = delta
                 elif item.event in {"tool_start", "tool_result"}:
                     tool_name = str(safe_data.get("tool_name") or safe_data.get("name") or "").strip()
                     args = safe_data.get("args") if isinstance(safe_data.get("args"), dict) else {}
@@ -699,19 +772,37 @@ async def stream_message_events(
                     }
                 elif item.event == "upstream_raw":
                     raw = safe_data.get("raw")
+                    raw_len = len(raw) if isinstance(raw, str) else 0
+                    stats["raw_count"] += 1
+                    stats["raw_total_len"] += raw_len
+                    stats["raw_max_len"] = max(int(stats["raw_max_len"] or 0), raw_len)
                     safe_data = {
                         "message_id": safe_data.get("message_id"),
                         "seq": safe_data.get("seq"),
                         "dialect": safe_data.get("dialect"),
                         "upstream_event": safe_data.get("upstream_event"),
-                        "raw_len": len(raw) if isinstance(raw, str) else 0,
+                        "raw_len": raw_len,
+                        "raw_truncated": bool(safe_data.get("raw_truncated", False)),
                     }
+                    if trace_enabled and isinstance(raw, str) and raw:
+                        safe_data["raw"] = raw
                 elif item.event == "completed":
+                    reply = safe_data.get("reply")
+                    reply_len = len(reply) if isinstance(reply, str) else int(safe_data.get("reply_len") or 0)
                     safe_data = {
                         "message_id": safe_data.get("message_id"),
-                        "reply_len": safe_data.get("reply_len"),
+                        "reply_len": reply_len,
+                        "result_mode_effective": safe_data.get("result_mode_effective"),
+                        "reply_snapshot_included": safe_data.get("reply_snapshot_included"),
                     }
-                frames.append({"event": item.event, "data": safe_data})
+                    if trace_enabled and isinstance(reply, str) and reply:
+                        safe_data["reply_preview"] = reply[:200]
+                approx = 0
+                if item.event == "content_delta" and trace_enabled:
+                    approx = int(safe_data.get("delta_len") or 0)
+                elif item.event == "upstream_raw" and trace_enabled:
+                    approx = int(safe_data.get("raw_len") or 0)
+                _append_frame(item.event, safe_data, approx_chars=approx)
 
                 if item.event == "content_delta":
                     data = item.data or {}
@@ -745,7 +836,14 @@ async def stream_message_events(
                         len(reply) if isinstance(reply, str) else int(data.get("reply_len") or 0),
                     )
 
-                yield f"event: {item.event}\ndata: {json.dumps(item.data, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                out_data = item.data
+                if item.event == "completed" and isinstance(item.data, dict):
+                    out_data = dict(item.data)
+                    # 源头遏制：completed 不返回 reply 全文（强制客户端以 content_delta 拼接为准）。
+                    out_data.pop("reply", None)
+                    out_data["reply_snapshot_included"] = False
+
+                yield f"event: {item.event}\ndata: {json.dumps(out_data, ensure_ascii=False, separators=(',', ':'))}\n\n"
                 if item.event in {"completed", "error"}:
                     terminal_sent = True
                     end_reason = "terminal_event_sent"
@@ -769,7 +867,11 @@ async def stream_message_events(
                         },
                     )
                 try:
-                    frames.append({"event": fallback.event, "data": {"message_id": message_id, "hint": "terminal_fallback"}})
+                    _append_frame(
+                        fallback.event,
+                        {"message_id": message_id, "hint": "terminal_fallback"},
+                        approx_chars=64,
+                    )
                     yield f"event: {fallback.event}\ndata: {json.dumps(fallback.data, ensure_ascii=False, separators=(',', ':'))}\n\n"
                     terminal_sent = True
                     end_reason = f"{end_reason}:terminal_fallback"
@@ -781,17 +883,28 @@ async def stream_message_events(
             try:
                 db = get_sqlite_manager(request.app)
                 duration = time.time() - started
-                await db.patch_conversation_log_response_payload(
-                    message_id,
-                    {
-                        "sse": {
-                            "request_id": create_request_id or stream_request_id or "",
-                            "duration_s": round(duration, 3),
-                            "end_reason": end_reason,
-                            "frames": frames,
-                        }
-                    },
-                )
+                patch = {
+                    "sse": {
+                        "request_id": create_request_id or stream_request_id or "",
+                        "duration_s": round(duration, 3),
+                        "end_reason": end_reason,
+                        "stats": stats,
+                        "frames": frames,
+                        "dropped_frames": dropped_frames,
+                    }
+                }
+
+                if trace_enabled:
+                    ok = False
+                    for _ in range(20):
+                        ok = await db.patch_conversation_trace_response_detail(message_id, patch)
+                        if ok:
+                            break
+                        await asyncio.sleep(0.2)
+                    if not ok:
+                        await db.patch_conversation_log_response_payload(message_id, patch)
+                else:
+                    await db.patch_conversation_log_response_payload(message_id, patch)
             except Exception:
                 # 不阻塞 SSE 清理
                 pass

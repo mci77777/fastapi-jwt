@@ -20,6 +20,9 @@ PublishFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
+_TRACE_UPSTREAM_RAW_MAX_FRAMES = 20
+_TRACE_UPSTREAM_RAW_MAX_CHARS = 8000
+
 
 class AnthropicMessagesAdapter:
     dialect = "anthropic.messages"
@@ -82,6 +85,8 @@ class AnthropicMessagesAdapter:
         reply_parts: list[str] = []
         upstream_request_id: Optional[str] = None
         usage: Optional[dict[str, Any]] = None
+        raw_frames = 0
+        raw_chars = 0
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream("POST", url, json=body, headers=headers) as response:
@@ -113,10 +118,24 @@ class AnthropicMessagesAdapter:
                             except Exception:
                                 text = ""
                             if text:
-                                await publish(
-                                    "upstream_raw",
-                                    {"dialect": self.dialect, "upstream_event": None, "raw": text},
-                                )
+                                if (
+                                    raw_frames < _TRACE_UPSTREAM_RAW_MAX_FRAMES
+                                    and raw_chars < _TRACE_UPSTREAM_RAW_MAX_CHARS
+                                ):
+                                    remaining = max(0, _TRACE_UPSTREAM_RAW_MAX_CHARS - raw_chars)
+                                    chunk_text = text[:remaining] if remaining else ""
+                                    if chunk_text:
+                                        raw_frames += 1
+                                        raw_chars += len(chunk_text)
+                                        await publish(
+                                            "upstream_raw",
+                                            {
+                                                "dialect": self.dialect,
+                                                "upstream_event": None,
+                                                "raw": chunk_text,
+                                                "raw_truncated": len(chunk_text) < len(text),
+                                            },
+                                        )
                     else:
                         raw_bytes.extend(await response.aread())
                     raw = bytes(raw_bytes)
@@ -149,10 +168,21 @@ class AnthropicMessagesAdapter:
 
                 async for event_name, raw_text in iter_sse_frames(response):
                     if emit_raw and raw_text:
-                        await publish(
-                            "upstream_raw",
-                            {"dialect": self.dialect, "upstream_event": event_name, "raw": raw_text},
-                        )
+                        if raw_frames < _TRACE_UPSTREAM_RAW_MAX_FRAMES and raw_chars < _TRACE_UPSTREAM_RAW_MAX_CHARS:
+                            remaining = max(0, _TRACE_UPSTREAM_RAW_MAX_CHARS - raw_chars)
+                            chunk = raw_text[:remaining] if remaining else ""
+                            if chunk:
+                                raw_frames += 1
+                                raw_chars += len(chunk)
+                                await publish(
+                                    "upstream_raw",
+                                    {
+                                        "dialect": self.dialect,
+                                        "upstream_event": event_name,
+                                        "raw": chunk,
+                                        "raw_truncated": len(chunk) < len(raw_text),
+                                    },
+                                )
                     if raw_text == "[DONE]":
                         break
                     if not raw_text:

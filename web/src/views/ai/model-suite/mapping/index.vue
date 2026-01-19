@@ -42,6 +42,8 @@ const isEdit = ref(false)
 	  metadata: {},
 })
 const endpointSelection = ref(null)
+const importInputRef = ref(null)
+const importingLocal = ref(false)
 
 	const scopeOptions = [
 	  { label: 'Prompt', value: 'prompt' },
@@ -173,6 +175,38 @@ function handlePromptChange(value) {
 	  })
 	  message.success('已导出本地 JSON')
 	}
+
+  function triggerImportLocal() {
+    importInputRef.value?.click()
+  }
+
+  async function handleImportLocalChange(event) {
+    const file = event?.target?.files?.[0]
+    if (!file) return
+    importingLocal.value = true
+    try {
+      const result = await store.importMappingsLocal(file)
+      const imported = Number(result?.imported_count || 0)
+      const skipped = Number(result?.skipped_count || 0)
+      message.success(`导入完成：成功 ${imported} 条，跳过 ${skipped} 条`)
+      if (Array.isArray(result?.errors) && result.errors.length) {
+        const preview = result.errors
+          .slice(0, 5)
+          .map((item) => `#${item.index ?? '-'} ${item.reason || 'unknown_error'}`)
+          .join('\n')
+        dialog.warning({
+          title: '部分条目导入失败',
+          content:
+            preview + (result.errors.length > 5 ? `\n... 还有 ${result.errors.length - 5} 条` : ''),
+        })
+      }
+    } catch (error) {
+      message.error('导入失败：' + (error?.message || '未知错误'))
+    } finally {
+      importingLocal.value = false
+      if (event?.target) event.target.value = ''
+    }
+  }
 
 	async function handleSyncToSupabase() {
 	  try {
@@ -333,6 +367,9 @@ function handleDeleteMapping(record) {
 	      <NSpace justify="space-between" align="center" class="mb-3">
 	        <NSpace>
 	          <NButton type="primary" @click="openCreate">新增映射</NButton>
+	          <NButton secondary :loading="importingLocal" @click="triggerImportLocal"
+	            >导入本地 JSON</NButton
+	          >
 	          <NButton secondary @click="handleExportLocal">导出本地 JSON</NButton>
 	          <NButton secondary :loading="syncMappingsLoading" @click="handleSyncToSupabase"
 	            >同步到 Supabase</NButton
@@ -346,6 +383,13 @@ function handleDeleteMapping(record) {
 	        </NSpace>
 	        <NButton secondary :loading="mappingsLoading" @click="store.loadMappings()">刷新</NButton>
 	      </NSpace>
+	      <input
+	        ref="importInputRef"
+	        type="file"
+	        accept="application/json"
+	        style="display: none"
+	        @change="handleImportLocalChange"
+	      />
 	      <NTable :loading="mappingsLoading" :single-line="false" class="mt-4" size="small" striped>
 	        <thead>
 	          <tr>

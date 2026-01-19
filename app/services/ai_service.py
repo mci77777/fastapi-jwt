@@ -9,7 +9,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from time import perf_counter
 from typing import Any, AsyncIterator, Dict, Optional
 from uuid import UUID
@@ -75,7 +75,7 @@ _STREAM_SANITIZE_TAGS = (
 
 _ALLOWED_RESULT_MODES = {"xml_plaintext", "raw_passthrough", "auto"}
 # App 侧默认 SSE 输出模式（SSOT：若未配置 llm_app_settings.default_result_mode，则回退到此默认值）。
-# 目标：默认“原始内容”流式转发到 App（`content_delta` 真流式）；`completed.reply` 仅作晚订阅/兜底。
+# 目标：默认“原始内容”流式转发到 App（`content_delta` 真流式）；`completed` 不下发 reply 全文，仅携带长度/元信息。
 DEFAULT_LLM_APP_RESULT_MODE = "raw_passthrough"
 
 # SSE 拆分转发（端到端兜底）：即使上游一次性返回大块文本/RAW，也不应下游只收到“单个超长 token”。
@@ -269,6 +269,22 @@ def _is_dashboard_admin_user(user: AuthenticatedUser) -> bool:
         return False
     username = str(user_metadata.get("username") or "").strip()
     return username == "admin" or bool(user_metadata.get("is_admin", False))
+
+
+def _bool_from_any(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        raw = value.strip().lower()
+        if raw in {"0", "false", "no", "off", "n"}:
+            return False
+        if raw in {"1", "true", "yes", "on", "y"}:
+            return True
+    return bool(value)
 
 
 @dataclass(slots=True)
@@ -1381,7 +1397,7 @@ class AIService:
                     effective_mode = "xml_plaintext"
             if effective_mode != "raw_passthrough":
                 reply_text = _sanitize_thinkingml_reply(reply_text)
-                # 兜底：上游未严格遵守 ThinkingML 时，保证 completed.reply 仍可被前端校验/解析。
+                # 兜底：上游未严格遵守 ThinkingML 时，保证拼接后的 reply_text 仍可被前端校验/解析。
                 if _looks_like_thinkingml_v45(reply_text):
                     reply_text = _ensure_final_has_serp_queries_block(reply_text)
                 else:
@@ -1437,26 +1453,22 @@ class AIService:
                 except Exception as exc:  # pragma: no cover
                     logger.warning("写入对话记录失败 message_id=%s request_id=%s error=%s", message_id, request_id, exc)
 
-            await broker.publish(
-                message_id,
-                MessageEvent(
-                    event="completed",
-                    data={
-                        "message_id": message_id,
-                        "request_id": request_id,
-                        "result_mode": requested_result_mode,
-                        "result_mode_effective": effective_mode,
-                        "provider": provider_used,
-                        "resolved_model": model_used,
-                        "endpoint_id": endpoint_id_used,
-                        "upstream_request_id": upstream_request_id,
-                        # 兼容 App：提供最终全文（避免“只拿到 completed 但没有拼接到 reply”）。
-                        "reply": reply_text,
-                        "reply_len": len(reply_text),
-                        "metadata": provider_metadata,
-                    },
-                ),
-            )
+            completed_data: dict[str, Any] = {
+                "message_id": message_id,
+                "request_id": request_id,
+                "result_mode": requested_result_mode,
+                "result_mode_effective": effective_mode,
+                "provider": provider_used,
+                "resolved_model": model_used,
+                "endpoint_id": endpoint_id_used,
+                "upstream_request_id": upstream_request_id,
+                "reply_len": len(reply_text),
+                # SSOT：App 侧必须依赖 content_delta 拼接；completed 不再携带 reply 全文，避免客户端误用导致“一次性大 chunk”。
+                "reply_snapshot_included": False,
+                "metadata": provider_metadata,
+            }
+
+            await broker.publish(message_id, MessageEvent(event="completed", data=completed_data))
             success = True
         except ProviderError as exc:  # pragma: no cover - 运行时防护
             error_message = (str(exc) or type(exc).__name__)[:200]
@@ -1540,10 +1552,23 @@ class AIService:
                 try:
                     # 构造 request_detail 和 response_detail
                     request_detail = {
-                        "text": getattr(message, "text", None),
-                        "model": getattr(message, "model", None),
-                        "conversation_id": getattr(message, "conversation_id", None),
-                        "metadata": getattr(message, "metadata", None),
+                        "app_request": {
+                            "text": getattr(message, "text", None),
+                            "messages": getattr(message, "messages", None),
+                            "model": getattr(message, "model", None),
+                            "conversation_id": getattr(message, "conversation_id", None),
+                            "metadata": getattr(message, "metadata", None),
+                            "skip_prompt": bool(getattr(message, "skip_prompt", False)),
+                            "result_mode": getattr(message, "result_mode", None),
+                            "dialect": getattr(message, "dialect", None),
+                            "payload": getattr(message, "payload", None),
+                            "system_prompt": getattr(message, "system_prompt", None),
+                            "tools": getattr(message, "tools", None),
+                            "tool_choice": getattr(message, "tool_choice", None),
+                            "temperature": getattr(message, "temperature", None),
+                            "top_p": getattr(message, "top_p", None),
+                            "max_tokens": getattr(message, "max_tokens", None),
+                        },
                     }
                     response_detail = {
                         "model_used": model_used,
@@ -1552,6 +1577,11 @@ class AIService:
                         "latency_ms": latency_ms,
                         "success": success,
                         "provider_metadata": provider_metadata,
+                        "upstream": {
+                            "request_payload": request_payload,
+                            "response_payload": response_payload,
+                            "upstream_request_id": upstream_request_id,
+                        },
                     }
                     await self._db.save_detailed_conversation_log(
                         user_id=user.uid,
@@ -1600,8 +1630,14 @@ class AIService:
             requested_result_mode = str((message.metadata or {}).get("result_mode") or "").strip()
         if requested_result_mode not in _ALLOWED_RESULT_MODES:
             requested_result_mode = DEFAULT_LLM_APP_RESULT_MODE
-        # 仅 auto 模式需要透传 upstream_raw 用于判定/诊断；raw_passthrough 输出仍走 content_delta（不额外发送 upstream_raw）。
-        emit_raw = requested_result_mode == "auto"
+        # 仅 auto 模式需要透传 upstream_raw 用于判定/诊断；追踪开启时也允许采样 upstream_raw 以便对账（不对外默认放行）。
+        tracing_enabled = False
+        if getattr(self._db, "get_tracing_enabled", None):
+            try:
+                tracing_enabled = bool(await self._db.get_tracing_enabled())
+            except Exception:
+                tracing_enabled = False
+        emit_raw = requested_result_mode == "auto" or tracing_enabled
 
         if self._ai_config_service is None:
             reply_text = await self._call_openai_completion_settings(message)

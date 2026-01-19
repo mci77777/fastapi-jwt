@@ -293,3 +293,40 @@ async def test_resolve_model_key_skips_blocked(tmp_path: Path) -> None:
         assert resolved2["resolved_model"] is None
     finally:
         await db.close()
+
+
+@pytest.mark.anyio("asyncio")
+async def test_import_local_mappings(tmp_path: Path) -> None:
+    service, ai_service, db = await _new_service(tmp_path)
+    try:
+        result = await service.import_local_mappings(
+            [
+                {
+                    "scope_type": "module",
+                    "scope_key": "chat",
+                    "name": "Chat Module",
+                    "default_model": "gpt-4o-mini",
+                    "candidates": ["gpt-4o-mini"],
+                    "is_active": True,
+                    "metadata": {},
+                },
+                {
+                    "id": "prompt:1",
+                    "default_model": "gpt-4o",
+                    "candidates": ["gpt-4o"],
+                    "is_active": True,
+                    "metadata": {"env": "test"},
+                },
+                {"scope_type": "", "scope_key": ""},
+            ]
+        )
+
+        assert result["imported_count"] == 2
+        assert result["skipped_count"] == 1
+        assert len(result["errors"]) == 1
+
+        items = await service.list_mappings()
+        assert any(item.get("id") == "module:chat" for item in items)
+        assert 1 in ai_service.updated_payload
+    finally:
+        await db.close()

@@ -40,7 +40,6 @@ def _assert_completed_required_fields(events: list[dict[str, Any]]) -> dict[str,
     data = completed.get("data")
     assert isinstance(data, dict)
     for key in (
-        "reply",
         "reply_len",
         "provider",
         "resolved_model",
