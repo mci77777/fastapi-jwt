@@ -188,6 +188,52 @@ function handlePromptChange(value) {
 	  }
 	}
 
+  async function handleOverwriteSupabase() {
+    dialog.warning({
+      title: '确认覆盖 Supabase',
+      content: '将以本地映射覆盖 Supabase（并删除 Supabase 中本地不存在的映射）。建议先导出本地 JSON 备份。',
+      positiveText: '覆盖',
+      negativeText: '取消',
+      async onPositiveClick() {
+        try {
+          const result = await store.syncMappings({ direction: 'push', deleteMissing: true })
+          const pushed = result?.push || {}
+          const status = String(pushed?.status || '')
+          if (status.startsWith('skipped:')) {
+            message.warning(`已跳过同步：${status}`)
+            return
+          }
+          message.success(`覆盖成功：已同步 ${pushed?.synced_count || 0} 条，删除 ${pushed?.deleted_count || 0} 条`)
+        } catch (error) {
+          message.error('覆盖失败：' + (error?.message || '未知错误'))
+        }
+      },
+    })
+  }
+
+  async function handlePullFromSupabase() {
+    dialog.warning({
+      title: '确认从 Supabase 拉取',
+      content: '将从 Supabase 拉取映射并覆盖本地（不会删除本地多余项）。建议先导出本地 JSON 备份。',
+      positiveText: '拉取',
+      negativeText: '取消',
+      async onPositiveClick() {
+        try {
+          const pulled = await store.pullMappingsFromSupabase({ overwrite: true })
+          const status = String(pulled?.status || '')
+          if (status.startsWith('skipped:')) {
+            message.warning(`已跳过拉取：${status}`)
+            return
+          }
+          await store.loadMappings()
+          message.success(`拉取成功：更新 ${pulled?.pulled_count || 0} 条，跳过 ${pulled?.skipped_count || 0} 条`)
+        } catch (error) {
+          message.error('拉取失败：' + (error?.message || '未知错误'))
+        }
+      },
+    })
+  }
+
 	async function handleSubmit() {
 	  await store.saveMapping({
     scope_type: formModel.scope_type,
@@ -290,6 +336,12 @@ function handleDeleteMapping(record) {
 	          <NButton secondary @click="handleExportLocal">导出本地 JSON</NButton>
 	          <NButton secondary :loading="syncMappingsLoading" @click="handleSyncToSupabase"
 	            >同步到 Supabase</NButton
+	          >
+	          <NButton secondary :loading="syncMappingsLoading" @click="handleOverwriteSupabase"
+	            >覆盖 Supabase</NButton
+	          >
+	          <NButton secondary :loading="syncMappingsLoading" @click="handlePullFromSupabase"
+	            >从 Supabase 拉取</NButton
 	          >
 	        </NSpace>
 	        <NButton secondary :loading="mappingsLoading" @click="store.loadMappings()">刷新</NButton>

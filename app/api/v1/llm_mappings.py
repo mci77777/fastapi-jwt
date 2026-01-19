@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import AuthenticatedUser, get_current_user
 
-from .llm_common import create_response, get_mapping_service, require_llm_admin
+from .llm_common import SyncDirection, SyncRequest, create_response, get_mapping_service, require_llm_admin
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 
@@ -102,6 +102,7 @@ async def delete_model_group(
 @router.post("/model-groups/sync-to-supabase")
 async def sync_mappings_to_supabase(
     request: Request,
+    delete_missing: bool = False,
     _: None = Depends(require_llm_admin),  # noqa: B008
     current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
@@ -112,10 +113,46 @@ async def sync_mappings_to_supabase(
     """
     service = get_mapping_service(request)
     try:
-        result = await service.sync_to_supabase(delete_missing=False)
+        result = await service.sync_to_supabase(delete_missing=bool(delete_missing))
     except RuntimeError as exc:
-        return create_response(code=424, msg=str(exc), data={"error": str(exc)})
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=create_response(code=503, msg=str(exc)),
+        ) from exc
     return create_response(data=result, msg=f"已同步 {result.get('synced_count', 0)} 条映射到 Supabase")
+
+
+@router.post("/model-groups/sync")
+async def sync_model_groups(
+    request: Request,
+    body: SyncRequest | None = None,
+    _: None = Depends(require_llm_admin),  # noqa: B008
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """模型映射双向同步（push/pull）。
+
+    - push：本地 SQLite -> Supabase model_mappings
+    - pull：Supabase model_mappings -> 本地 SQLite（仅 scope_type != prompt）
+    """
+
+    service = get_mapping_service(request)
+    payload = body or SyncRequest()
+    direction = payload.direction
+    try:
+        result: dict[str, Any] = {}
+        if direction in (SyncDirection.PUSH, SyncDirection.BOTH):
+            result["push"] = await service.sync_to_supabase(delete_missing=payload.delete_missing)
+        if direction in (SyncDirection.PULL, SyncDirection.BOTH):
+            result["pull"] = await service.sync_from_supabase(
+                overwrite=payload.overwrite,
+                delete_missing=payload.delete_missing,
+            )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=create_response(code=503, msg=str(exc)),
+        ) from exc
+    return create_response(data=result, msg=f"模型映射同步完成({direction.value})")
 
 
 __all__ = ["router", "ModelMappingPayload", "ActivateMappingRequest"]

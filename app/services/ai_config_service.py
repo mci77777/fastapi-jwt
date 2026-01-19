@@ -232,6 +232,11 @@ class AIConfigService:
         await self._trim_backups(name, keep=keep)
         return latest_path
 
+    async def write_backup(self, name: str, payload: Any, *, keep: int = 3) -> Path:
+        """对外暴露的备份写入（用于跨服务复用同一备份目录/策略）。"""
+
+        return await self._write_backup(name, payload, keep=keep)
+
     async def _collect_local_supabase_ids(self) -> set[int]:
         rows = await self._db.fetchall("SELECT supabase_id FROM ai_endpoints WHERE supabase_id IS NOT NULL")
         ids: set[int] = set()
@@ -1059,6 +1064,54 @@ class AIConfigService:
         if not self._supabase_available():
             raise RuntimeError("supabase_not_configured")
         return f"https://{self._settings.supabase_project_id}.supabase.co/rest/v1"
+
+    @staticmethod
+    def _summarize_supabase_http_error(table: str, exc: httpx.HTTPStatusError) -> str:
+        """将 Supabase HTTP 错误压缩为可诊断且不泄露敏感信息的消息。"""
+
+        status_code = exc.response.status_code
+        code: str | None = None
+        message: str | None = None
+        hint: str | None = None
+
+        try:
+            body = exc.response.json()
+            if isinstance(body, dict):
+                raw_code = body.get("code")
+                if isinstance(raw_code, str) and raw_code.strip():
+                    code = raw_code.strip()
+                raw_message = body.get("message")
+                if isinstance(raw_message, str) and raw_message.strip():
+                    message = raw_message.strip()
+                raw_hint = body.get("hint")
+                if isinstance(raw_hint, str) and raw_hint.strip():
+                    hint = raw_hint.strip()
+        except Exception:  # pragma: no cover - 解析失败不影响主流程
+            pass
+
+        if not message:
+            try:
+                text = (exc.response.text or "").strip()
+                if text:
+                    message = text
+            except Exception:  # pragma: no cover
+                message = None
+
+        parts = [f"Supabase 请求失败（table={table}，HTTP {status_code}）"]
+        if code:
+            parts.append(f"code={code}")
+        if message:
+            parts.append(f"message={message}")
+
+        normalized_message = (message or "").lower()
+        if status_code == 404 and ("schema cache" in normalized_message or f"public.{table}" in normalized_message):
+            parts.append("建议：在 Supabase 执行 scripts/deployment/sql/create_ai_config_tables.sql 创建表后重试")
+        elif status_code in (401, 403):
+            parts.append("建议：检查 SUPABASE_SERVICE_ROLE_KEY 是否为 service_role，并确认 RLS 策略允许写入")
+        elif hint:
+            parts.append(f"hint={hint}")
+
+        return "；".join(parts)
 
     async def _fetch_supabase_models(self) -> list[dict[str, Any]]:
         headers = self._supabase_headers()
@@ -1995,6 +2048,18 @@ class AIConfigService:
             data = response.json()
         return data if isinstance(data, list) else []
 
+    async def fetch_model_mappings_from_supabase(self) -> list[dict[str, Any]]:
+        """从 Supabase 拉取 model_mappings（仅返回数据，不做本地落库）。"""
+
+        if not self._supabase_available():
+            raise RuntimeError("supabase_not_configured")
+        try:
+            return await self._fetch_supabase_model_mappings()
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(self._summarize_supabase_http_error("model_mappings", exc)) from exc
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"supabase_request_failed:{type(exc).__name__}") from exc
+
     async def push_model_mappings_to_supabase(
         self,
         mappings: list[dict[str, Any]],
@@ -2046,34 +2111,39 @@ class AIConfigService:
             )
 
         synced_rows: list[dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
-            if payload:
-                response = await client.post(
-                    f"{base_url}/model_mappings",
-                    headers=headers,
-                    params={"on_conflict": "id"},
-                    json=payload,
-                )
-                response.raise_for_status()
-                data = response.json()
-                synced_rows = data if isinstance(data, list) else []
-
-            deleted_count = 0
-            if delete_missing:
-                keep_ids = {row["id"] for row in payload if isinstance(row, dict) and isinstance(row.get("id"), str)}
-                remote_ids = {
-                    str(row.get("id"))
-                    for row in remote_snapshot
-                    if isinstance(row, dict) and row.get("id") is not None
-                }
-                for obsolete_id in sorted(remote_ids - keep_ids):
-                    resp = await client.delete(
+        deleted_count = 0
+        try:
+            async with httpx.AsyncClient(timeout=self._settings.http_timeout_seconds) as client:
+                if payload:
+                    response = await client.post(
                         f"{base_url}/model_mappings",
                         headers=headers,
-                        params={"id": f"eq.{obsolete_id}"},
+                        params={"on_conflict": "id"},
+                        json=payload,
                     )
-                    resp.raise_for_status()
-                    deleted_count += 1
+                    response.raise_for_status()
+                    data = response.json()
+                    synced_rows = data if isinstance(data, list) else []
+
+                if delete_missing:
+                    keep_ids = {row["id"] for row in payload if isinstance(row, dict) and isinstance(row.get("id"), str)}
+                    remote_ids = {
+                        str(row.get("id"))
+                        for row in remote_snapshot
+                        if isinstance(row, dict) and row.get("id") is not None
+                    }
+                    for obsolete_id in sorted(remote_ids - keep_ids):
+                        resp = await client.delete(
+                            f"{base_url}/model_mappings",
+                            headers=headers,
+                            params={"id": f"eq.{obsolete_id}"},
+                        )
+                        resp.raise_for_status()
+                        deleted_count += 1
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(self._summarize_supabase_http_error("model_mappings", exc)) from exc
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"supabase_request_failed:{type(exc).__name__}") from exc
 
         return {
             "status": "synced",

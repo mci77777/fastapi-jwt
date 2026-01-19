@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from app.db.sqlite_manager import SQLiteManager
@@ -161,5 +162,74 @@ async def test_push_endpoint_deletes_remote_when_requested(tmp_path, monkeypatch
 
         assert result["supabase_id"] == 321
         assert deleted == [999]
+    finally:
+        await service._db.close()
+
+
+class _DummySupabase404Client:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, url, *_, **__):
+        request = httpx.Request("GET", url)
+        return httpx.Response(
+            404,
+            json={
+                "code": "PGRST205",
+                "message": "Could not find the table 'public.model_mappings' in the schema cache",
+                "hint": "Perhaps you meant the table 'public.user_settings'",
+                "details": None,
+            },
+            request=request,
+        )
+
+    async def post(self, url, *_, **__):
+        request = httpx.Request("POST", url)
+        return httpx.Response(
+            404,
+            json={
+                "code": "PGRST205",
+                "message": "Could not find the table 'public.model_mappings' in the schema cache",
+                "hint": "Perhaps you meant the table 'public.user_settings'",
+                "details": None,
+            },
+            request=request,
+        )
+
+    async def delete(self, url, *_, **__):
+        request = httpx.Request("DELETE", url)
+        return httpx.Response(204, request=request)
+
+
+@pytest.mark.anyio("asyncio")
+async def test_push_model_mappings_to_supabase_404_is_diagnosable(tmp_path, monkeypatch):
+    service = await _make_service(tmp_path)
+    try:
+        monkeypatch.setattr("app.services.ai_config_service.httpx.AsyncClient", lambda *_, **__: _DummySupabase404Client())
+        with pytest.raises(RuntimeError) as excinfo:
+            await service.push_model_mappings_to_supabase(
+                [
+                    {
+                        "id": "mapping:xai",
+                        "scope_type": "mapping",
+                        "scope_key": "xai",
+                        "name": "xAI",
+                        "default_model": "grok-2",
+                        "candidates": ["grok-2"],
+                        "is_active": True,
+                        "updated_at": "2026-01-18T00:00:00+00:00",
+                        "source": "sqlite",
+                        "metadata": {},
+                    }
+                ],
+                delete_missing=False,
+            )
+
+        msg = str(excinfo.value)
+        assert "model_mappings" in msg
+        assert "create_ai_config_tables.sql" in msg
     finally:
         await service._db.close()

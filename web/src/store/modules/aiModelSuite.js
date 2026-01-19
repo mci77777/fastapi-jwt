@@ -11,7 +11,7 @@ import {
   updateModel,
   syncModel,
   syncAllModels,
-  syncMappingsToSupabase,
+  syncMappings,
 } from '@/api/aiModelSuite'
 import api from '@/api'
 
@@ -152,16 +152,24 @@ export const useAiModelSuiteStore = defineStore('aiModelSuite', {
       }
     },
     async syncMappingsToSupabase() {
+      const result = await this.syncMappings({ direction: 'push' })
+      return result?.push || {}
+    },
+    async syncMappings(options = {}) {
       if (this.syncMappingsLoading) {
-        return { status: 'skipped:sync_in_progress', synced_count: 0, deleted_count: 0 }
+        return { status: 'skipped:sync_in_progress' }
       }
       this.syncMappingsLoading = true
       try {
-        const response = await syncMappingsToSupabase()
+        const response = await syncMappings(options)
         return response?.data || {}
       } finally {
         this.syncMappingsLoading = false
       }
+    },
+    async pullMappingsFromSupabase(options = {}) {
+      const result = await this.syncMappings({ direction: 'pull', ...options })
+      return result?.pull || {}
     },
     async saveMapping(payload) {
       await saveMapping(payload)

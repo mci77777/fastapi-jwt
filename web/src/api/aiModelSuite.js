@@ -24,6 +24,12 @@ export const activateMapping = (mappingId, data = {}) =>
   request.post(`/llm/model-groups/${mappingId}/activate`, data)
 export const deleteMapping = (mappingId) => request.delete(`/llm/model-groups/${mappingId}`)
 export const syncMappingsToSupabase = () => request.post('/llm/model-groups/sync-to-supabase')
+export const syncMappings = (options = {}) =>
+  request.post('/llm/model-groups/sync', {
+    direction: options.direction ?? 'push',
+    overwrite: !!options.overwrite,
+    delete_missing: !!options.deleteMissing,
+  })
 
 export const fetchPrompts = (params = {}) => request.get('/llm/prompts', { params })
 export const fetchPromptTests = (promptId, params = {}) =>

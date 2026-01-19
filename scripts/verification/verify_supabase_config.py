@@ -127,6 +127,7 @@ class SupabaseConfigValidator:
                 "messages",
                 "ai_model",
                 "ai_prompt",
+                "model_mappings",
                 "user_entitlements",
                 "user_entitlements_list",
                 "app_users_admin_view",
@@ -216,7 +217,13 @@ async def main():
             if missing:
                 log_info("7. 运行 SQL 脚本创建数据库表")
                 log_info(f"   缺失表: {', '.join(missing)}")
-                log_info("   建议脚本位置: scripts/deployment/sql/create_supabase_tables.sql")
+                ai_tables = {"ai_model", "ai_prompt", "model_mappings"}
+                missing_ai = [name for name in missing if name in ai_tables]
+                missing_core = [name for name in missing if name not in ai_tables]
+                if missing_core:
+                    log_info("   建议脚本位置: scripts/deployment/sql/create_supabase_tables.sql")
+                if missing_ai:
+                    log_info("   建议脚本位置: scripts/deployment/sql/create_ai_config_tables.sql")
 
     return 0 if results["overall_status"] == "PASS" else 1
 

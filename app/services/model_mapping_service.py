@@ -447,6 +447,134 @@ class ModelMappingService:
         mappings = await self.list_mappings()
         return await self._ai_service.push_model_mappings_to_supabase(mappings, delete_missing=delete_missing)
 
+    async def sync_from_supabase(
+        self,
+        *,
+        overwrite: bool = False,
+        delete_missing: bool = False,
+    ) -> dict[str, Any]:
+        """从 Supabase 拉取映射并写入 SQLite（仅 scope_type != prompt 的映射）。"""
+
+        await self._ensure_sqlite_imported()
+
+        try:
+            remote_snapshot = await self._ai_service.fetch_model_mappings_from_supabase()
+        except RuntimeError as exc:
+            if str(exc) == "supabase_not_configured":
+                return {
+                    "status": "skipped:supabase_not_configured",
+                    "pulled_count": 0,
+                    "skipped_count": 0,
+                    "deleted_count": 0,
+                }
+            raise
+
+        # 备份：便于回滚（与 push 使用同一备份名，始终保持 latest 可用）
+        try:
+            local_snapshot = [item.to_dict() for item in await self._collect_sqlite_mappings()]
+            await self._ai_service.write_backup("sqlite_model_mappings", local_snapshot)
+            await self._ai_service.write_backup("supabase_model_mappings", remote_snapshot)
+        except Exception:  # pragma: no cover - 备份失败不阻断拉取
+            pass
+
+        def _parse_ts(value: Any) -> datetime | None:
+            if not isinstance(value, str) or not value.strip():
+                return None
+            text = value.strip().replace("Z", "+00:00")
+            try:
+                return datetime.fromisoformat(text)
+            except ValueError:
+                return None
+
+        def _normalize_ts(value: Any) -> str | None:
+            if not isinstance(value, str) or not value.strip():
+                return None
+            return value.strip().replace("Z", "+00:00")
+
+        pulled_count = 0
+        skipped_count = 0
+        seen_ids: set[str] = set()
+
+        for item in remote_snapshot:
+            if not isinstance(item, dict):
+                continue
+            raw_id = item.get("id")
+            if not isinstance(raw_id, str) or not raw_id.strip():
+                continue
+
+            normalized_id = _normalize_mapping_id(raw_id.strip())
+            if ":" not in normalized_id:
+                continue
+            scope_type, scope_key = normalized_id.split(":", 1)
+            scope_type = _normalize_scope_type(scope_type)
+            scope_key = str(scope_key or "").strip()
+            if not scope_type or not scope_key:
+                continue
+            if scope_type == "prompt":
+                continue
+
+            mapping_id = _mapping_id(scope_type, scope_key)
+            seen_ids.add(mapping_id)
+
+            local_row = await self._db.fetchone("SELECT updated_at FROM llm_model_mappings WHERE id = ?", (mapping_id,))
+            local_ts = _parse_ts(local_row.get("updated_at") if local_row else None)
+            remote_ts = _parse_ts(item.get("updated_at"))
+            if not overwrite and local_ts and remote_ts and local_ts >= remote_ts:
+                skipped_count += 1
+                continue
+
+            candidates: list[str] = []
+            raw_candidates = item.get("candidates")
+            if isinstance(raw_candidates, list):
+                for value in raw_candidates:
+                    text = str(value or "").strip()
+                    if text:
+                        candidates.append(text)
+            candidates = list(dict.fromkeys(candidates))
+
+            default_text: str | None = None
+            raw_default = item.get("default_model")
+            if isinstance(raw_default, str) and raw_default.strip():
+                default_text = raw_default.strip()
+            if default_text and default_text not in candidates:
+                candidates.append(default_text)
+
+            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            mapping = {
+                "default_model": default_text,
+                "candidates": candidates,
+                "is_active": bool(item.get("is_active", True)),
+                "updated_at": _normalize_ts(item.get("updated_at")) or _utc_now(),
+                "metadata": metadata,
+            }
+            name = item.get("name") if isinstance(item.get("name"), str) else None
+            await self._upsert_sqlite_mapping(scope_type, scope_key, name, mapping)
+            pulled_count += 1
+
+        deleted_count = 0
+        if delete_missing:
+            before_row = await self._db.fetchone("SELECT COUNT(1) AS cnt FROM llm_model_mappings")
+            before_count = int(before_row.get("cnt") or 0) if before_row else 0
+            if seen_ids:
+                placeholders = ",".join(["?"] * len(seen_ids))
+                await self._db.execute(
+                    f"DELETE FROM llm_model_mappings WHERE id NOT IN ({placeholders})",
+                    list(seen_ids),
+                )
+            else:
+                await self._db.execute("DELETE FROM llm_model_mappings")
+            after_row = await self._db.fetchone("SELECT COUNT(1) AS cnt FROM llm_model_mappings")
+            after_count = int(after_row.get("cnt") or 0) if after_row else 0
+            deleted_count = max(0, before_count - after_count)
+
+        return {
+            "status": "pulled",
+            "pulled_count": pulled_count,
+            "skipped_count": skipped_count,
+            "deleted_count": deleted_count,
+            "remote_total": len(remote_snapshot),
+        }
+
     async def resolve_for_message(
         self,
         *,
