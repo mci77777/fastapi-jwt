@@ -83,7 +83,7 @@ async def _get_llm_app_prompt_mode(request: Request) -> str:
     return mode
 
 
-async def _get_llm_app_output_protocol(request: Request, current_user: AuthenticatedUser | None = None) -> str:
+async def _get_llm_app_output_protocol(request: Request) -> str:
     """App 默认对外输出协议（SSOT：以 llm_app_settings.app_output_protocol 为准）。"""
 
     db = get_sqlite_manager(request.app)
@@ -103,47 +103,7 @@ async def _get_llm_app_output_protocol(request: Request, current_user: Authentic
 
     if mode not in {"thinkingml_v45", "jsonseq_v1"}:
         mode = "thinkingml_v45"
-    if mode != "jsonseq_v1":
-        return mode
-
-    # 可选：灰度 key（仅持有 key 的客户端可启用 jsonseq_v1；空=全量生效）
-    key = await _get_llm_app_output_protocol_key(request)
-    if not key:
-        return "jsonseq_v1"
-
-    # Dashboard 管理端用户允许绕过 key（便于排障/验收；不影响 App 端灰度）
-    if current_user is not None and is_dashboard_admin_user(current_user):
-        return "jsonseq_v1"
-
-    provided = str(request.headers.get("x-gymbro-output-protocol-key") or "").strip()
-    if provided and provided == key:
-        return "jsonseq_v1"
-
-    return "thinkingml_v45"
-
-
-async def _get_llm_app_output_protocol_key(request: Request) -> str:
-    """JSONSeq v1 灰度 key（SSOT：llm_app_settings.app_output_protocol_key；可回退 env）。"""
-
-    db = get_sqlite_manager(request.app)
-    row = await db.fetchone(
-        "SELECT value_json FROM llm_app_settings WHERE key = ? LIMIT 1",
-        ("app_output_protocol_key",),
-    )
-
-    key = ""
-    raw = row.get("value_json") if isinstance(row, dict) else None
-    if raw is not None:
-        try:
-            value = json.loads(raw) if isinstance(raw, str) else raw
-        except Exception:
-            value = raw
-        key = str(value or "").strip()
-
-    if not key:
-        key = str(get_settings().app_output_protocol_key or "").strip()
-
-    return key
+    return mode
 
 
 def _normalize_quota_model_key(model_name: str) -> str:
@@ -481,7 +441,7 @@ async def create_message(
         requested_result_mode = await _get_llm_app_default_result_mode(request)
     prompt_mode = await _get_llm_app_prompt_mode(request)
     enforced_skip_prompt = prompt_mode == "passthrough"
-    output_protocol = await _get_llm_app_output_protocol(request, current_user)
+    output_protocol = await _get_llm_app_output_protocol(request)
     # SSOT：/messages 不允许使用 agent prompts（仅 /agent/runs 可用）
     sanitized_metadata = dict(payload.metadata or {})
     raw_scope = str(sanitized_metadata.get("prompt_scope") or "").strip().lower()

@@ -65,43 +65,6 @@
         </NSpace>
       </NSpace>
 
-      <NSpace v-if="!compact" align="center" justify="space-between">
-        <NText depth="3">JSON 转发 Key</NText>
-        <NSpace align="center" :size="6">
-          <NTag v-if="llmAppOutputProtocolKeyMasked" size="small" type="info">
-            {{ llmAppOutputProtocolKeyMasked }}
-          </NTag>
-          <NTag v-else size="small" type="default">未配置</NTag>
-          <NInput
-            v-model:value="llmAppOutputProtocolKeyInput"
-            type="password"
-            size="small"
-            placeholder="可选：灰度 key"
-            :disabled="loading || llmAppConfigLoading || llmAppOutputProtocolKeySaving"
-            style="min-width: 180px"
-          />
-          <NButton
-            type="primary"
-            size="small"
-            :loading="llmAppOutputProtocolKeySaving"
-            :disabled="loading || llmAppConfigLoading"
-            @click="handleSaveLlmAppOutputProtocolKey"
-          >
-            保存
-          </NButton>
-          <NButton
-            type="error"
-            secondary
-            size="small"
-            :loading="llmAppOutputProtocolKeySaving"
-            :disabled="loading || llmAppConfigLoading"
-            @click="handleClearLlmAppOutputProtocolKey"
-          >
-            清空
-          </NButton>
-        </NSpace>
-      </NSpace>
-
       <div v-if="!compact && currentEndpoint" class="model-info">
         <NText depth="3" style="font-size: 12px">
           {{ currentEndpoint.base_url }}
@@ -120,7 +83,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { NButton, NCard, NInput, NSelect, NSpace, NText, NTag, useMessage } from 'naive-ui'
+import { NButton, NCard, NSelect, NSpace, NText, NTag, useMessage } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { useAiModelSuiteStore } from '@/store/modules/aiModelSuite'
 import api from '@/api'
@@ -160,9 +123,6 @@ const llmAppResultModeOptions = [
 ]
 const llmAppOutputProtocolSaving = ref(false)
 const llmAppOutputProtocol = ref('thinkingml_v45')
-const llmAppOutputProtocolKeySaving = ref(false)
-const llmAppOutputProtocolKeyMasked = ref('')
-const llmAppOutputProtocolKeyInput = ref('')
 const llmAppOutputProtocolOptions = [
   { label: 'ThinkingML v4.5', value: 'thinkingml_v45' },
   { label: 'JSONSeq v1', value: 'jsonseq_v1' },
@@ -327,7 +287,6 @@ async function loadLlmAppConfig() {
 
     const protocol = String(data?.app_output_protocol || '').trim().toLowerCase()
     llmAppOutputProtocol.value = ['thinkingml_v45', 'jsonseq_v1'].includes(protocol) ? protocol : 'thinkingml_v45'
-    llmAppOutputProtocolKeyMasked.value = String(data?.app_output_protocol_key_masked || '').trim()
   } catch (error) {
     message.error(error?.message || '加载 App 转发模式失败')
   } finally {
@@ -348,7 +307,6 @@ async function handleSaveLlmAppOutputProtocol(protocol) {
     const data = res?.data?.data || res?.data || {}
     const saved = String(data?.app_output_protocol || '').trim().toLowerCase()
     llmAppOutputProtocol.value = ['thinkingml_v45', 'jsonseq_v1'].includes(saved) ? saved : next
-    llmAppOutputProtocolKeyMasked.value = String(data?.app_output_protocol_key_masked || '').trim()
     message.success('已更新 App 输出协议')
   } catch (error) {
     llmAppOutputProtocol.value = prev
@@ -356,28 +314,6 @@ async function handleSaveLlmAppOutputProtocol(protocol) {
   } finally {
     llmAppOutputProtocolSaving.value = false
   }
-}
-
-async function handleSaveLlmAppOutputProtocolKey() {
-  if (llmAppOutputProtocolKeySaving.value) return
-  llmAppOutputProtocolKeySaving.value = true
-  try {
-    const next = String(llmAppOutputProtocolKeyInput.value || '').trim()
-    const res = await api.upsertLlmAppConfig({ app_output_protocol_key: next })
-    const data = res?.data?.data || res?.data || {}
-    llmAppOutputProtocolKeyMasked.value = String(data?.app_output_protocol_key_masked || '').trim()
-    llmAppOutputProtocolKeyInput.value = ''
-    message.success(next ? '已更新 JSON 转发 Key' : '已清空 JSON 转发 Key')
-  } catch (error) {
-    message.error(error?.message || '保存 JSON 转发 Key 失败')
-  } finally {
-    llmAppOutputProtocolKeySaving.value = false
-  }
-}
-
-async function handleClearLlmAppOutputProtocolKey() {
-  llmAppOutputProtocolKeyInput.value = ''
-  await handleSaveLlmAppOutputProtocolKey()
 }
 
 async function handleSaveLlmAppConfig(mode) {
