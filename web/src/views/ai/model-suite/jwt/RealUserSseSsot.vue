@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import {
   NAlert,
@@ -235,7 +235,8 @@ const activeChatTab = ref('agent') // agent | messages
 
 // prompt / result mode
 const promptMode = ref('server') // server | passthrough
-const DEFAULT_EXTRA_SYSTEM_PROMPT = `请严格按原样输出 Strict-XML（ThinkingML v4.5）：\n1) 必须输出且仅输出一个 XML 文本：<thinking>...</thinking> 紧接 <final>...</final>\n2) 只允许标签：think/serp/thinking/phase/title/final（phase 必须有 id=\"1..N\" 且递增）\n3) <final> 内容最后必须追加：\n<!-- <serp_queries>\n[\"q1\",\"q2\",\"q3\"]\n</serp_queries> -->\n4) 不要解释协议，不要使用 Markdown 代码块包裹 XML；若无法满足，输出 <<ParsingError>>`
+const DEFAULT_EXTRA_SYSTEM_PROMPT_THINKINGML_V45 = `请严格按原样输出 Strict-XML（ThinkingML v4.5）：\n1) 必须输出且仅输出一个 XML 文本：<thinking>...</thinking> 紧接 <final>...</final>\n2) 只允许标签：think/serp/thinking/phase/title/final（phase 必须有 id=\"1..N\" 且递增）\n3) <final> 内容最后必须追加：\n<!-- <serp_queries>\n[\"q1\",\"q2\",\"q3\"]\n</serp_queries> -->\n4) 不要解释协议，不要使用 Markdown 代码块包裹 XML；若无法满足，输出 <<ParsingError>>`
+const DEFAULT_EXTRA_SYSTEM_PROMPT_JSONSEQ_V1 = `请严格按原样输出 JSONSeq v1（JSON Lines，多行 JSON）：\n1) 只能输出 JSON Lines：每行一个 JSON 对象；禁止任何非 JSON 字符（禁止 Markdown/代码围栏/解释文字）\n2) event 白名单：thinking_start/phase_start/phase_delta/thinking_end/final_delta/final_end（可选 serp_summary/serp_queries）\n3) 顺序：thinking_start → phase_start(id=1,title) → phase_delta* → thinking_end → final_delta+ → (可选 serp_queries) → final_end\n4) phase_start.id 必须为正整数且严格递增；phase_start.title 必填\n5) final_end 后禁止任何输出；无法满足则仅输出两行：{\"event\":\"final_delta\",\"text\":\"<<ParsingError>>\"}\\n{\"event\":\"final_end\"}`
 const extraSystemPrompt = ref('')
 const agentPromptMode = ref('server') // server | passthrough
 const agentExtraSystemPrompt = ref('')
@@ -392,8 +393,10 @@ async function loadActivePrompts() {
   activePromptsError.value = ''
   activeAgentPromptsError.value = ''
   try {
+    const protocol = String(dashboardAppOutputProtocol.value || '').trim().toLowerCase()
+    const normalizedProtocol = ['thinkingml_v45', 'jsonseq_v1'].includes(protocol) ? protocol : undefined
     const [chatRes, agentRes] = await Promise.allSettled([
-      fetchActivePromptsSnapshot(),
+      fetchActivePromptsSnapshot(normalizedProtocol ? { output_protocol: normalizedProtocol } : {}),
       fetchActiveAgentPromptsSnapshot(),
     ])
     if (chatRes.status === 'fulfilled') activePromptsSnapshot.value = chatRes.value?.data ?? null
@@ -421,8 +424,13 @@ function handleFillExtraPromptFromDashboard() {
 
 function handleFillExtraPromptTemplate() {
   promptMode.value = 'passthrough'
-  extraSystemPrompt.value = DEFAULT_EXTRA_SYSTEM_PROMPT
-  message.success('已填充默认 Strict-XML 模板')
+  if (String(dashboardAppOutputProtocol.value || '').trim().toLowerCase() === 'jsonseq_v1') {
+    extraSystemPrompt.value = DEFAULT_EXTRA_SYSTEM_PROMPT_JSONSEQ_V1
+    message.success('已填充默认 JSONSeq v1 模板')
+  } else {
+    extraSystemPrompt.value = DEFAULT_EXTRA_SYSTEM_PROMPT_THINKINGML_V45
+    message.success('已填充默认 Strict-XML 模板')
+  }
 }
 
 function pushSseEvent(ev, receivedAtMs) {
@@ -465,8 +473,13 @@ function handleFillAgentExtraPromptFromDashboard() {
 
 function handleFillAgentExtraPromptTemplate() {
   agentPromptMode.value = 'passthrough'
-  agentExtraSystemPrompt.value = DEFAULT_EXTRA_SYSTEM_PROMPT
-  message.success('已填充默认 Strict-XML 模板（用于 agent passthrough）')
+  if (String(dashboardAppOutputProtocol.value || '').trim().toLowerCase() === 'jsonseq_v1') {
+    agentExtraSystemPrompt.value = DEFAULT_EXTRA_SYSTEM_PROMPT_JSONSEQ_V1
+    message.success('已填充默认 JSONSeq v1 模板（用于 agent passthrough）')
+  } else {
+    agentExtraSystemPrompt.value = DEFAULT_EXTRA_SYSTEM_PROMPT_THINKINGML_V45
+    message.success('已填充默认 Strict-XML 模板（用于 agent passthrough）')
+  }
 }
 
 function handleResetPromptDefaults() {
@@ -832,6 +845,14 @@ onMounted(() => {
   loadAppConfig()
   loadActivePrompts()
 })
+
+watch(
+  () => dashboardAppOutputProtocol.value,
+  () => {
+    // 预览/填充必须与协议一致（system/tools vs system_jsonseq_v1/tools_jsonseq_v1）
+    loadActivePrompts()
+  }
+)
 
 const sseStats = computed(() => {
   const events = Array.isArray(sseEvents.value) ? sseEvents.value : []
@@ -1343,6 +1364,10 @@ async function handleRunSseProbe() {
               promptsSnapshotForPreview?.tools_prompt?.id || '--'
             }}</NText
           >
+          <NText depth="3"
+            >prompt_type: {{ promptsSnapshotForPreview?.prompt_type_system || '--' }} /
+            {{ promptsSnapshotForPreview?.prompt_type_tools || '--' }}</NText
+          >
           <NText depth="3">tools_schema: {{ promptsSnapshotForPreview?.tools_schema_count ?? 0 }}</NText>
         </NSpace>
         <NInput
@@ -1373,7 +1398,11 @@ async function handleRunSseProbe() {
               >填充 Dashboard agent system message</NButton
             >
             <NButton tertiary size="small" @click="handleFillAgentExtraPromptTemplate"
-              >填充默认 Strict-XML 模板</NButton
+              >{{
+                dashboardAppOutputProtocol === 'jsonseq_v1'
+                  ? '填充默认 JSONSeq 模板'
+                  : '填充默认 Strict-XML 模板'
+              }}</NButton
             >
             <NText v-if="agentPromptMode === 'server'" depth="3">server 模式完全跟随后端 SSOT</NText>
           </NSpace>
@@ -1470,7 +1499,11 @@ async function handleRunSseProbe() {
               >填充 Dashboard system message</NButton
             >
             <NButton tertiary size="small" @click="handleFillExtraPromptTemplate"
-              >填充默认 Strict-XML 模板</NButton
+              >{{
+                dashboardAppOutputProtocol === 'jsonseq_v1'
+                  ? '填充默认 JSONSeq 模板'
+                  : '填充默认 Strict-XML 模板'
+              }}</NButton
             >
             <NText v-if="promptMode === 'server'" depth="3">server 模式完全跟随后端 SSOT</NText>
           </NSpace>

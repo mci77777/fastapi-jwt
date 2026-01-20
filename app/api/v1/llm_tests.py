@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 import time
 from datetime import datetime, timezone
@@ -261,13 +262,52 @@ async def test_prompt(
 @router.get("/tests/active-prompts")
 async def get_active_prompts_snapshot(
     request: Request,
+    output_protocol: str | None = Query(
+        default=None,
+        description="输出协议：thinkingml_v45（默认）/ jsonseq_v1。用于选择 system/tools vs system_jsonseq_v1/tools_jsonseq_v1。",
+    ),  # noqa: B008
     _: None = Depends(require_llm_admin),  # noqa: B008
 ) -> dict[str, Any]:
-    """只读：返回当前生效的 system/tools prompts 与拼接后的 system message（供 JWT/Agent 调试页展示）。"""
+    """只读：返回当前生效的 prompts 与拼接后的 system message（供 JWT/Agent 调试页展示）。"""
 
     service = get_service(request)
-    system_prompts, _ = await service.list_prompts(only_active=True, prompt_type="system", page=1, page_size=1)
-    tools_prompts, _ = await service.list_prompts(only_active=True, prompt_type="tools", page=1, page_size=1)
+
+    normalized_protocol = str(output_protocol or "").strip().lower()
+    if normalized_protocol not in {"thinkingml_v45", "jsonseq_v1"}:
+        normalized_protocol = ""
+    if not normalized_protocol:
+        # SSOT：默认跟随 llm_app_settings.app_output_protocol；缺失时回退 thinkingml_v45
+        try:
+            db = get_sqlite_manager(request.app)
+            row = await db.fetchone(
+                "SELECT value_json FROM llm_app_settings WHERE key = ? LIMIT 1",
+                ("app_output_protocol",),
+            )
+            raw = row.get("value_json") if isinstance(row, dict) else None
+            value = ""
+            if raw is not None:
+                try:
+                    value = json.loads(raw) if isinstance(raw, str) else raw
+                except Exception:
+                    value = raw
+            normalized_protocol = str(value or "").strip().lower()
+        except Exception:
+            normalized_protocol = ""
+    if normalized_protocol not in {"thinkingml_v45", "jsonseq_v1"}:
+        normalized_protocol = "thinkingml_v45"
+
+    prompt_type_system = "system"
+    prompt_type_tools = "tools"
+    if normalized_protocol == "jsonseq_v1":
+        prompt_type_system = "system_jsonseq_v1"
+        prompt_type_tools = "tools_jsonseq_v1"
+
+    system_prompts, _ = await service.list_prompts(
+        only_active=True, prompt_type=prompt_type_system, page=1, page_size=1
+    )
+    tools_prompts, _ = await service.list_prompts(
+        only_active=True, prompt_type=prompt_type_tools, page=1, page_size=1
+    )
 
     system_prompt = system_prompts[0] if system_prompts else None
     tools_prompt = tools_prompts[0] if tools_prompts else None
@@ -280,6 +320,9 @@ async def get_active_prompts_snapshot(
 
     return create_response(
         data={
+            "output_protocol": normalized_protocol,
+            "prompt_type_system": prompt_type_system,
+            "prompt_type_tools": prompt_type_tools,
             "system_prompt": system_prompt,
             "tools_prompt": tools_prompt,
             "effective_system_message": effective_system_message,
@@ -314,6 +357,8 @@ async def get_active_agent_prompts_snapshot(
 
     return create_response(
         data={
+            "prompt_type_system": "agent_system",
+            "prompt_type_tools": "agent_tools",
             "system_prompt": system_prompt,
             "tools_prompt": tools_prompt,
             "effective_system_message": effective_system_message,

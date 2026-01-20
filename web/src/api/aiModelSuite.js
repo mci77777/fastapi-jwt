@@ -53,8 +53,10 @@ export const createAnonToken = (data = {}) => request.post('/llm/tests/anon-toke
 export const listMailUsers = (params = {}) => request.get('/llm/tests/mail-users', { params })
 export const refreshMailUserToken = (testUserId, data = {}) =>
   request.post(`/llm/tests/mail-users/${testUserId}/refresh`, data)
-export const fetchActivePromptsSnapshot = () => request.get('/llm/tests/active-prompts')
-export const fetchActiveAgentPromptsSnapshot = () => request.get('/llm/tests/active-agent-prompts')
+export const fetchActivePromptsSnapshot = (params = {}) =>
+  request.get('/llm/tests/active-prompts', { params })
+export const fetchActiveAgentPromptsSnapshot = (params = {}) =>
+  request.get('/llm/tests/active-agent-prompts', { params })
 
 // 消息与对话相关
 /**
