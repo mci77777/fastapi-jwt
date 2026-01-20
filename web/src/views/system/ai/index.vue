@@ -58,6 +58,10 @@ const llmAppOutputProtocolOptions = [
   { label: 'ThinkingML v4.5（兼容旧客户端）', value: 'thinkingml_v45' },
   { label: 'JSONSeq v1（事件流：客户端只认事件）', value: 'jsonseq_v1' },
 ]
+const llmAppOutputProtocolKeySaving = ref(false)
+const llmAppOutputProtocolKeyMasked = ref('')
+const llmAppOutputProtocolKeySource = ref('none')
+const llmAppOutputProtocolKeyInput = ref('')
 
 // SSE 探针：用于定位网关缓冲导致的“假流式 / 大 chunk”
 const sseProbeRunning = ref(false)
@@ -96,6 +100,9 @@ async function loadLlmAppConfig() {
 
     const protocol = String(data?.app_output_protocol || '').trim().toLowerCase()
     llmAppOutputProtocol.value = ['thinkingml_v45', 'jsonseq_v1'].includes(protocol) ? protocol : 'thinkingml_v45'
+
+    llmAppOutputProtocolKeyMasked.value = String(data?.app_output_protocol_key_masked || '').trim()
+    llmAppOutputProtocolKeySource.value = String(data?.app_output_protocol_key_source || 'none').trim() || 'none'
 
     webSearchEnabled.value = Boolean(data?.web_search_enabled)
     webSearchProvider.value = String(data?.web_search_provider || 'exa').trim().toLowerCase() || 'exa'
@@ -153,6 +160,28 @@ async function handleSaveLlmAppOutputProtocol() {
   } finally {
     llmAppOutputProtocolSaving.value = false
   }
+}
+
+async function handleSaveLlmAppOutputProtocolKey() {
+  llmAppOutputProtocolKeySaving.value = true
+  try {
+    const next = String(llmAppOutputProtocolKeyInput.value || '').trim()
+    const res = await api.upsertLlmAppConfig({ app_output_protocol_key: next })
+    const data = res?.data?.data || res?.data || {}
+    llmAppOutputProtocolKeyMasked.value = String(data?.app_output_protocol_key_masked || '').trim()
+    llmAppOutputProtocolKeySource.value = String(data?.app_output_protocol_key_source || 'none').trim() || 'none'
+    llmAppOutputProtocolKeyInput.value = ''
+    message.success(next ? '已更新 JSON 转发 Key' : '已清空 JSON 转发 Key')
+  } catch (error) {
+    message.error(error?.message || '保存 JSON 转发 Key 失败')
+  } finally {
+    llmAppOutputProtocolKeySaving.value = false
+  }
+}
+
+async function handleClearLlmAppOutputProtocolKey() {
+  llmAppOutputProtocolKeyInput.value = ''
+  await handleSaveLlmAppOutputProtocolKey()
 }
 
 async function consumeSseReader(reader, { onEvent } = {}) {
@@ -1041,6 +1070,43 @@ onBeforeUnmount(() => {
         <NAlert type="warning" :bordered="false" class="mt-2">
           开启 <code>jsonseq_v1</code> 前请确认 App 已适配事件渲染；未知事件可忽略，终止以 <code>completed</code>/<code>error</code> 为准。
         </NAlert>
+
+        <NAlert type="info" :bordered="false" class="mt-2">
+          JSON 转发 Key（可选）：配置后仅携带该 Key 的客户端才会实际启用 <code>jsonseq_v1</code>；否则回退 <code>thinkingml_v45</code>（兼容旧 App）。
+          Header: <code>X-GymBro-Output-Protocol-Key</code>。
+        </NAlert>
+
+        <div class="flex flex-wrap items-center gap-3 mt-2">
+          <NTag
+            v-if="llmAppOutputProtocolKeyMasked"
+            round
+            :bordered="false"
+            :type="llmAppOutputProtocolKeySource === 'env' ? 'warning' : 'success'"
+          >
+            Key: {{ llmAppOutputProtocolKeyMasked }} ({{ llmAppOutputProtocolKeySource }})
+          </NTag>
+          <NTag v-else round :bordered="false" type="default">Key: 未配置</NTag>
+        </div>
+
+        <NForm label-placement="left" label-width="140" class="mt-2">
+          <NFormItem label="JSON 转发 Key">
+            <NInput
+              v-model:value="llmAppOutputProtocolKeyInput"
+              type="password"
+              placeholder="填写后保存；后端只回显 masked"
+              :disabled="llmAppConfigLoading || llmAppOutputProtocolKeySaving"
+            />
+          </NFormItem>
+        </NForm>
+
+        <NSpace wrap>
+          <NButton type="primary" :loading="llmAppOutputProtocolKeySaving" @click="handleSaveLlmAppOutputProtocolKey">
+            保存 Key
+          </NButton>
+          <NButton type="error" secondary :loading="llmAppOutputProtocolKeySaving" @click="handleClearLlmAppOutputProtocolKey">
+            清空 Key
+          </NButton>
+        </NSpace>
       </NCard>
 
       <NCard :loading="llmAppConfigLoading" title="Web 搜索（Exa）" size="small">

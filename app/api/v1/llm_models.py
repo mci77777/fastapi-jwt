@@ -41,6 +41,10 @@ _DEFAULT_LLM_APP_CONFIG: dict[str, Any] = {
     "prompt_mode": "server",
     # App 输出协议（对外 SSOT）：thinkingml_v45=旧 SSE(content_delta 拼接 XML)；jsonseq_v1=事件流(JSONSeq v1)
     "app_output_protocol": "thinkingml_v45",
+    # 可选：JSONSeq v1 灰度开关（仅持有 key 的客户端可启用 jsonseq_v1；空=全量生效）
+    # 注意：读取时只返回 masked，避免泄露。
+    "app_output_protocol_key_masked": "",
+    "app_output_protocol_key_source": "none",
     # Agent / Tools：Web 搜索（默认关闭；可在 Dashboard 中配置）
     "web_search_enabled": False,
     "web_search_provider": "exa",
@@ -149,6 +153,16 @@ async def _get_llm_app_config(request: Request) -> dict[str, Any]:
         output_protocol = "thinkingml_v45"
     merged["app_output_protocol"] = output_protocol
 
+    raw_protocol_key = merged.get("app_output_protocol_key")
+    protocol_key = str(raw_protocol_key or "").strip()
+    protocol_key_source = "db" if protocol_key else "none"
+    if not protocol_key:
+        protocol_key = str(os.getenv("APP_OUTPUT_PROTOCOL_KEY") or "").strip()
+        protocol_key_source = "env" if protocol_key else "none"
+    merged.pop("app_output_protocol_key", None)
+    merged["app_output_protocol_key_masked"] = _mask_secret(protocol_key) if protocol_key else ""
+    merged["app_output_protocol_key_source"] = protocol_key_source
+
     provider = str(merged.get("web_search_provider") or "exa").strip().lower() or "exa"
     if provider != "exa":
         provider = "exa"
@@ -172,6 +186,7 @@ async def _set_llm_app_config(request: Request, values: dict[str, Any]) -> dict[
         "default_result_mode",
         "prompt_mode",
         "app_output_protocol",
+        "app_output_protocol_key",
         "web_search_enabled",
         "web_search_provider",
         "web_search_exa_api_key",
@@ -212,6 +227,8 @@ class LlmAppConfigUpsertRequest(BaseModel):
     default_result_mode: Literal["xml_plaintext", "raw_passthrough", "auto"] | None = Field(default=None)
     prompt_mode: Literal["server", "passthrough"] | None = Field(default=None)
     app_output_protocol: Literal["thinkingml_v45", "jsonseq_v1"] | None = Field(default=None)
+    # 注意：该字段为写入专用；读取时仅返回 masked 版本，避免泄露。
+    app_output_protocol_key: str | None = Field(default=None, min_length=0, max_length=512)
     web_search_enabled: bool | None = Field(default=None)
     web_search_provider: Literal["exa"] | None = Field(default=None)
     # 注意：该字段为写入专用；读取时仅返回 masked 版本，避免泄露。
