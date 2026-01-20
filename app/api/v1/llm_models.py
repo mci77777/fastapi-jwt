@@ -39,6 +39,8 @@ _DEFAULT_LLM_APP_CONFIG: dict[str, Any] = {
     "default_result_mode": DEFAULT_LLM_APP_RESULT_MODE,
     # Prompt 组装模式：server=后端组装/注入默认 prompt（system+tools）；passthrough=跳过后端注入
     "prompt_mode": "server",
+    # App 输出协议（对外 SSOT）：thinkingml_v45=旧 SSE(content_delta 拼接 XML)；jsonseq_v1=事件流(JSONSeq v1)
+    "app_output_protocol": "thinkingml_v45",
     # Agent / Tools：Web 搜索（默认关闭；可在 Dashboard 中配置）
     "web_search_enabled": False,
     "web_search_provider": "exa",
@@ -142,6 +144,11 @@ async def _get_llm_app_config(request: Request) -> dict[str, Any]:
         prompt_mode = "server"
     merged["prompt_mode"] = prompt_mode
 
+    output_protocol = str(merged.get("app_output_protocol") or "").strip().lower()
+    if output_protocol not in {"thinkingml_v45", "jsonseq_v1"}:
+        output_protocol = "thinkingml_v45"
+    merged["app_output_protocol"] = output_protocol
+
     provider = str(merged.get("web_search_provider") or "exa").strip().lower() or "exa"
     if provider != "exa":
         provider = "exa"
@@ -164,6 +171,7 @@ async def _set_llm_app_config(request: Request, values: dict[str, Any]) -> dict[
     allowed_keys = {
         "default_result_mode",
         "prompt_mode",
+        "app_output_protocol",
         "web_search_enabled",
         "web_search_provider",
         "web_search_exa_api_key",
@@ -203,6 +211,7 @@ class LlmAppConfigUpsertRequest(BaseModel):
 
     default_result_mode: Literal["xml_plaintext", "raw_passthrough", "auto"] | None = Field(default=None)
     prompt_mode: Literal["server", "passthrough"] | None = Field(default=None)
+    app_output_protocol: Literal["thinkingml_v45", "jsonseq_v1"] | None = Field(default=None)
     web_search_enabled: bool | None = Field(default=None)
     web_search_provider: Literal["exa"] | None = Field(default=None)
     # 注意：该字段为写入专用；读取时仅返回 masked 版本，避免泄露。

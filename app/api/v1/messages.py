@@ -83,6 +83,29 @@ async def _get_llm_app_prompt_mode(request: Request) -> str:
     return mode
 
 
+async def _get_llm_app_output_protocol(request: Request) -> str:
+    """App 默认对外输出协议（SSOT：以 llm_app_settings.app_output_protocol 为准）。"""
+
+    db = get_sqlite_manager(request.app)
+    row = await db.fetchone(
+        "SELECT value_json FROM llm_app_settings WHERE key = ? LIMIT 1",
+        ("app_output_protocol",),
+    )
+
+    mode = ""
+    raw = row.get("value_json") if isinstance(row, dict) else None
+    if raw is not None:
+        try:
+            value = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            value = raw
+        mode = str(value or "").strip().lower()
+
+    if mode not in {"thinkingml_v45", "jsonseq_v1"}:
+        mode = "thinkingml_v45"
+    return mode
+
+
 def _normalize_quota_model_key(model_name: str) -> str:
     raw = str(model_name or "").strip().lower()
     if ":" in raw:
@@ -418,6 +441,7 @@ async def create_message(
         requested_result_mode = await _get_llm_app_default_result_mode(request)
     prompt_mode = await _get_llm_app_prompt_mode(request)
     enforced_skip_prompt = prompt_mode == "passthrough"
+    output_protocol = await _get_llm_app_output_protocol(request)
     # SSOT：/messages 不允许使用 agent prompts（仅 /agent/runs 可用）
     sanitized_metadata = dict(payload.metadata or {})
     raw_scope = str(sanitized_metadata.get("prompt_scope") or "").strip().lower()
@@ -487,6 +511,7 @@ async def create_message(
             # payload 模式：服务端不注入默认 prompt/tools（以 payload 为准）
             skip_prompt=True,
             result_mode=str(requested_result_mode),
+            output_protocol=str(output_protocol),
             model=requested_model,
             dialect=dialect,
             payload=sanitized_payload,
@@ -552,6 +577,7 @@ async def create_message(
             metadata=sanitized_metadata,
             skip_prompt=enforced_skip_prompt,
             result_mode=str(requested_result_mode),
+            output_protocol=str(output_protocol),
             model=requested_model,
             messages=normalized_messages,
             system_prompt=normalized_system_prompt,
@@ -568,6 +594,7 @@ async def create_message(
         conversation_id=conversation_id,
         request_id=request_id or "",
         result_mode=str(requested_result_mode),
+        output_protocol=str(output_protocol),
     )
 
     async def runner() -> None:
@@ -622,6 +649,9 @@ async def stream_message_events(
     result_mode = str(getattr(meta, "result_mode", "") or "xml_plaintext").strip() or "xml_plaintext"
     if result_mode not in {"xml_plaintext", "raw_passthrough", "auto"}:
         result_mode = "xml_plaintext"
+    output_protocol = str(getattr(meta, "output_protocol", "") or "thinkingml_v45").strip().lower() or "thinkingml_v45"
+    if output_protocol not in {"thinkingml_v45", "jsonseq_v1"}:
+        output_protocol = "thinkingml_v45"
 
     trace_enabled = False
     try:
@@ -632,6 +662,23 @@ async def stream_message_events(
 
     # 输出事件白名单：避免客户端在某模式下收到无意义事件（同时降低敏感数据暴露面）。
     def _current_allowed_events() -> set[str]:
+        if output_protocol == "jsonseq_v1":
+            return {
+                "status",
+                "heartbeat",
+                "tool_start",
+                "tool_result",
+                "serp_summary",
+                "thinking_start",
+                "phase_start",
+                "phase_delta",
+                "thinking_end",
+                "final_delta",
+                "serp_queries",
+                "final_end",
+                "completed",
+                "error",
+            }
         if result_mode == "raw_passthrough":
             return {"status", "heartbeat", "tool_start", "tool_result", "content_delta", "completed", "error"}
         if result_mode != "auto":  # xml_plaintext

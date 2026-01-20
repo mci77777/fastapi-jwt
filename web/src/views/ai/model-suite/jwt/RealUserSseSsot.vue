@@ -259,6 +259,7 @@ const agentWebSearchTopK = ref(5)
 const appConfigLoading = ref(false)
 const appConfigError = ref('')
 const dashboardDefaultResultMode = ref('')
+const dashboardAppOutputProtocol = ref('thinkingml_v45')
 const dashboardPromptMode = ref('server')
 const dashboardWebSearchEnabled = ref(false)
 const dashboardWebSearchProvider = ref('exa')
@@ -278,6 +279,11 @@ async function loadAppConfig() {
       ? mode
       : 'raw_passthrough'
     dashboardDefaultResultMode.value = normalizedMode
+
+    const protocol = String(data?.app_output_protocol || '').trim().toLowerCase()
+    dashboardAppOutputProtocol.value = ['thinkingml_v45', 'jsonseq_v1'].includes(protocol)
+      ? protocol
+      : 'thinkingml_v45'
 
     const pm = String(data?.prompt_mode || '').trim().toLowerCase()
     const normalizedPromptMode = pm === 'passthrough' ? 'passthrough' : 'server'
@@ -717,6 +723,11 @@ async function streamSse(msgId, convId, requestId, { kind = 'messages' } = {}) {
         lastDeltaAtMs.value = receivedAtMs
         aiResponseText.value += String(ev.data.delta)
       }
+      if (ev.event === 'final_delta' && ev.data?.text) {
+        if (!firstDeltaAtMs.value) firstDeltaAtMs.value = receivedAtMs
+        lastDeltaAtMs.value = receivedAtMs
+        aiResponseText.value += String(ev.data.text)
+      }
       if (ev.event === 'completed') {
         if (typeof ev.data?.result_mode_effective === 'string') {
           resultModeEffective.value = ev.data.result_mode_effective
@@ -741,7 +752,8 @@ async function streamSse(msgId, convId, requestId, { kind = 'messages' } = {}) {
         }
 
         const effective = String(resultModeEffective.value || resultMode.value || '').trim()
-        const shouldValidate = autoValidateOnCompleted.value && effective !== 'raw_passthrough'
+        const protocol = String(dashboardAppOutputProtocol.value || '').trim().toLowerCase()
+        const shouldValidate = autoValidateOnCompleted.value && effective !== 'raw_passthrough' && protocol !== 'jsonseq_v1'
         if (shouldValidate) thinkingmlValidation.value = validateThinkingMLV45(aiResponseText.value)
         return true
       }
@@ -782,8 +794,16 @@ onMounted(() => {
 const sseStats = computed(() => {
   const events = Array.isArray(sseEvents.value) ? sseEvents.value : []
   const deltas = events
-    .filter((e) => e?.event === 'content_delta' && e?.data && typeof e.data.delta === 'string')
-    .map((e) => ({ ts_ms: Number(e.ts_ms || 0), len: String(e.data.delta || '').length }))
+    .filter((e) => {
+      if (!e || !e.data) return false
+      if (e.event === 'content_delta') return typeof e.data.delta === 'string'
+      if (e.event === 'final_delta') return typeof e.data.text === 'string'
+      return false
+    })
+    .map((e) => {
+      const text = e.event === 'content_delta' ? String(e.data.delta || '') : String(e.data.text || '')
+      return { ts_ms: Number(e.ts_ms || 0), len: text.length }
+    })
 
   const count = deltas.length
   const totalLen = deltas.reduce((sum, d) => sum + (Number.isFinite(d.len) ? d.len : 0), 0)
@@ -813,6 +833,24 @@ const sseEventsText = computed(() => {
       if (ev === 'content_delta') {
         const delta = typeof data?.delta === 'string' ? data.delta : ''
         brief = `seq=${data?.seq ?? '--'} len=${delta.length} "${delta.slice(0, 80).replace(/\n/g, '\\n')}"`
+      } else if (ev === 'final_delta') {
+        const text = typeof data?.text === 'string' ? data.text : ''
+        brief = `len=${text.length} "${text.slice(0, 80).replace(/\n/g, '\\n')}"`
+      } else if (ev === 'serp_summary') {
+        const text = typeof data?.text === 'string' ? data.text : ''
+        brief = `len=${text.length} "${text.slice(0, 80).replace(/\n/g, '\\n')}"`
+      } else if (ev === 'serp_queries') {
+        const queries = Array.isArray(data?.queries) ? data.queries : []
+        const preview = queries.map((q) => String(q || '').slice(0, 32)).join(' | ')
+        brief = `count=${queries.length} "${preview}"`
+      } else if (ev === 'phase_start') {
+        const id = data?.id ?? '--'
+        const title = String(data?.title || '').slice(0, 60)
+        brief = `id=${id} title="${title}"`
+      } else if (ev === 'phase_delta') {
+        const id = data?.id ?? '--'
+        const text = typeof data?.text === 'string' ? data.text : ''
+        brief = `id=${id} len=${text.length} "${text.slice(0, 80).replace(/\n/g, '\\n')}"`
       } else if (ev === 'upstream_raw') {
         const raw = typeof data?.raw === 'string' ? data.raw : typeof data === 'string' ? data : ''
         brief = `seq=${data?.seq ?? '--'} len=${raw.length} "${raw.slice(0, 80).replace(/\n/g, '\\n')}"`
@@ -1041,11 +1079,24 @@ async function handleRunSseProbe() {
           style="min-width: 220px"
         />
         <NTag size="small" type="info">prompt_mode: {{ dashboardPromptMode }}</NTag>
-        <NCheckbox v-model:checked="autoValidateOnCompleted">completed 自动校验 ThinkingML</NCheckbox>
-        <NButton tertiary size="small" :disabled="!aiResponseText" @click="handleValidateThinkingML"
+        <NTag size="small" type="info">protocol: {{ dashboardAppOutputProtocol }}</NTag>
+        <NCheckbox
+          v-if="dashboardAppOutputProtocol !== 'jsonseq_v1'"
+          v-model:checked="autoValidateOnCompleted"
+          >completed 自动校验 ThinkingML</NCheckbox
+        >
+        <NButton
+          v-if="dashboardAppOutputProtocol !== 'jsonseq_v1'"
+          tertiary
+          size="small"
+          :disabled="!aiResponseText"
+          @click="handleValidateThinkingML"
           >立即校验</NButton
         >
-        <NTag v-if="aiResponseText" :type="thinkingmlValidation.ok ? 'success' : 'error'">
+        <NTag
+          v-if="dashboardAppOutputProtocol !== 'jsonseq_v1' && aiResponseText"
+          :type="thinkingmlValidation.ok ? 'success' : 'error'"
+        >
           ThinkingML: {{ thinkingmlValidation.reason }}
         </NTag>
         <NText depth="3" v-if="resultModeEffective">effective: {{ resultModeEffective }}</NText>
@@ -1254,7 +1305,7 @@ async function handleRunSseProbe() {
         </NSpace>
       </NCard>
 
-      <NCard v-if="aiResponseText" size="small" class="mt-3" title="拼接 reply（content_delta）">
+      <NCard v-if="aiResponseText" size="small" class="mt-3" title="拼接 reply（content_delta / final_delta）">
         <NInput :value="aiResponseText" type="textarea" :rows="10" readonly />
       </NCard>
       <NCard v-if="aiResponseRaw" size="small" class="mt-3" title="RAW / 诊断（upstream_raw 或 completed）">

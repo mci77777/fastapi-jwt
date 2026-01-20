@@ -295,6 +295,8 @@ class AIMessageInput:
     skip_prompt: bool = False
     # SSE 输出模式（SSOT：由创建消息请求决定；下游以 broker.meta 为准）
     result_mode: Optional[str] = None
+    # App 对外输出协议（SSOT：由创建消息请求/配置决定；下游以 broker.meta 为准）
+    output_protocol: Optional[str] = None
     dialect: Optional[str] = None
     payload: Optional[dict[str, Any]] = None
 
@@ -323,6 +325,8 @@ class MessageChannelMeta:
     created_at: datetime
     # SSE 输出模式（SSOT：创建消息时固化，订阅侧只读不推导）
     result_mode: str = "xml_plaintext"
+    # App 对外输出协议（SSOT：创建消息时固化；用于选择 SSE 对外事件形态）
+    output_protocol: str = "thinkingml_v45"
     # auto 模式的实际输出（SSOT：由事件流观测决定；订阅侧只读）
     effective_result_mode: Optional[str] = None
     closed: bool = False
@@ -348,6 +352,21 @@ class MessageChannelMeta:
     thinkingml_parsing_error_pending: str = ""
     thinkingml_unexpected_tag_pending: str = ""
 
+    # JSONSeq v1（事件流）输出：用于把上游文本流（XML/JSON/PlainText）映射为统一事件类型。
+    jsonseq_buffer: str = ""
+    jsonseq_format: str = ""  # "" | "jsonl" | "thinkingml" | "plaintext"
+    jsonseq_serp_summary_sent: bool = False
+    jsonseq_serp_queries_sent: bool = False
+    jsonseq_thinking_start_sent: bool = False
+    jsonseq_thinking_end_sent: bool = False
+    jsonseq_final_end_sent: bool = False
+    jsonseq_final_delta_sent: bool = False
+    jsonseq_last_phase_id: int = 0
+    jsonseq_current_phase_id: int | None = None
+    jsonseq_current_phase_title_sent: bool = False
+    jsonseq_inside_thinking: bool = False
+    jsonseq_inside_final: bool = False
+
 
 class MessageEventBroker:
     """管理消息事件队列，支持 SSE 订阅。"""
@@ -365,11 +384,15 @@ class MessageEventBroker:
         conversation_id: str,
         request_id: str = "",
         result_mode: str = "xml_plaintext",
+        output_protocol: str = "thinkingml_v45",
     ) -> asyncio.Queue[Optional[MessageEvent]]:
         queue: asyncio.Queue[Optional[MessageEvent]] = asyncio.Queue()
         normalized_mode = str(result_mode or "xml_plaintext").strip() or "xml_plaintext"
         if normalized_mode not in _ALLOWED_RESULT_MODES:
             normalized_mode = "xml_plaintext"
+        normalized_output_protocol = str(output_protocol or "thinkingml_v45").strip().lower() or "thinkingml_v45"
+        if normalized_output_protocol not in {"thinkingml_v45", "jsonseq_v1"}:
+            normalized_output_protocol = "thinkingml_v45"
         async with self._lock:
             self._channels[message_id] = queue
             self._meta[message_id] = MessageChannelMeta(
@@ -378,6 +401,7 @@ class MessageEventBroker:
                 request_id=str(request_id or ""),
                 created_at=datetime.utcnow(),
                 result_mode=normalized_mode,
+                output_protocol=normalized_output_protocol,
                 effective_result_mode=None if normalized_mode == "auto" else normalized_mode,
             )
         return queue
@@ -693,6 +717,471 @@ class MessageEventBroker:
 
         return _escape_unexpected_thinkingml_tags(combined)
 
+    def _jsonseq_v1_detect_format(self, meta: MessageChannelMeta) -> str:
+        if meta.jsonseq_format:
+            return meta.jsonseq_format
+        probe = (meta.jsonseq_buffer or "").lstrip()
+        if not probe:
+            return ""
+        if probe.startswith("{"):
+            meta.jsonseq_format = "jsonl"
+            return meta.jsonseq_format
+        if _THINKING_OPEN in probe or _FINAL_OPEN in probe or _SERP_OPEN in probe:
+            meta.jsonseq_format = "thinkingml"
+            return meta.jsonseq_format
+        # 无法识别时先缓冲一段，避免误判。
+        if len(meta.jsonseq_buffer) >= 512:
+            meta.jsonseq_format = "plaintext"
+        return meta.jsonseq_format
+
+    def _jsonseq_v1_make_delta_events(self, event: str, *, text: str, extra: dict[str, Any]) -> list[MessageEvent]:
+        payload = str(text or "")
+        if not payload:
+            return []
+        parts = _split_text_for_streaming(payload, max_size=STREAM_CHUNK_SIZE_CHARS)
+        out: list[MessageEvent] = []
+        for part in parts:
+            if not part:
+                continue
+            data = dict(extra)
+            data["text"] = part
+            out.append(MessageEvent(event=event, data=data))
+        return out
+
+    def _jsonseq_v1_consume_jsonl(self, meta: MessageChannelMeta, *, finalize: bool) -> list[MessageEvent]:
+        buf = meta.jsonseq_buffer or ""
+        if not buf:
+            return []
+
+        lines: list[str] = []
+        if "\n" in buf:
+            head, tail = buf.rsplit("\n", 1)
+            lines = head.split("\n")
+            meta.jsonseq_buffer = tail
+        elif finalize:
+            lines = [buf]
+            meta.jsonseq_buffer = ""
+        else:
+            return []
+
+        out: list[MessageEvent] = []
+
+        for raw_line in lines:
+            line = str(raw_line or "").strip()
+            if not line:
+                continue
+            if line.startswith("event:") or line.startswith("data:"):
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(obj, dict):
+                continue
+
+            name = obj.get("event")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            event = name.strip()
+
+            if event == "serp_summary":
+                text = obj.get("text")
+                if isinstance(text, str) and text.strip() and not meta.jsonseq_serp_summary_sent:
+                    meta.jsonseq_serp_summary_sent = True
+                    out.append(MessageEvent(event="serp_summary", data={"text": text.strip()}))
+                continue
+
+            if event == "serp_queries":
+                if meta.jsonseq_serp_queries_sent:
+                    continue
+                queries = obj.get("queries")
+                if not isinstance(queries, list):
+                    continue
+                cleaned: list[str] = []
+                seen: set[str] = set()
+                for q in queries:
+                    t = str(q or "").strip()
+                    if not t:
+                        continue
+                    if t in seen:
+                        continue
+                    seen.add(t)
+                    cleaned.append(t[:80])
+                    if len(cleaned) >= 5:
+                        break
+                meta.jsonseq_serp_queries_sent = True
+                out.append(MessageEvent(event="serp_queries", data={"queries": cleaned}))
+                continue
+
+            if event == "thinking_start":
+                if meta.jsonseq_thinking_start_sent:
+                    continue
+                meta.jsonseq_thinking_start_sent = True
+                meta.jsonseq_inside_thinking = True
+                out.append(MessageEvent(event="thinking_start", data={}))
+                continue
+
+            if event == "thinking_end":
+                if meta.jsonseq_thinking_end_sent:
+                    continue
+                meta.jsonseq_thinking_end_sent = True
+                meta.jsonseq_inside_thinking = False
+                out.append(MessageEvent(event="thinking_end", data={}))
+                continue
+
+            if event == "final_end":
+                if meta.jsonseq_final_end_sent:
+                    continue
+                meta.jsonseq_final_end_sent = True
+                meta.jsonseq_inside_final = False
+                out.append(MessageEvent(event="final_end", data={}))
+                continue
+
+            if event == "phase_start":
+                pid = obj.get("id")
+                title = obj.get("title")
+                try:
+                    phase_id = int(pid)
+                except Exception:
+                    continue
+                if phase_id <= 0 or phase_id <= meta.jsonseq_last_phase_id:
+                    continue
+                if not isinstance(title, str) or not title.strip():
+                    continue
+                meta.jsonseq_last_phase_id = phase_id
+                meta.jsonseq_current_phase_id = phase_id
+                meta.jsonseq_current_phase_title_sent = True
+                out.append(MessageEvent(event="phase_start", data={"id": phase_id, "title": title.strip()}))
+                continue
+
+            if event == "phase_delta":
+                pid = obj.get("id")
+                text = obj.get("text")
+                try:
+                    phase_id = int(pid)
+                except Exception:
+                    continue
+                if phase_id <= 0:
+                    continue
+                if not isinstance(text, str) or not text:
+                    continue
+                meta.jsonseq_current_phase_id = phase_id
+                out.extend(self._jsonseq_v1_make_delta_events("phase_delta", text=text, extra={"id": phase_id}))
+                continue
+
+            if event == "final_delta":
+                text = obj.get("text")
+                if not isinstance(text, str) or not text:
+                    continue
+                meta.jsonseq_final_delta_sent = True
+                out.extend(self._jsonseq_v1_make_delta_events("final_delta", text=text, extra={}))
+                continue
+
+        return out
+
+    def _jsonseq_v1_consume_thinkingml(self, meta: MessageChannelMeta, *, finalize: bool) -> list[MessageEvent]:
+        buf = meta.jsonseq_buffer or ""
+        if not buf:
+            return []
+
+        out: list[MessageEvent] = []
+
+        def _drop_prefix(prefix: str) -> bool:
+            nonlocal buf
+            if not buf.startswith(prefix):
+                return False
+            buf = buf[len(prefix) :]
+            return True
+
+        def _strip_leading_ws() -> None:
+            nonlocal buf
+            if not buf:
+                return
+            cut = 0
+            while cut < len(buf) and buf[cut] in (" ", "\t", "\r", "\n"):
+                cut += 1
+            if cut:
+                buf = buf[cut:]
+
+        while True:
+            if not buf:
+                break
+            if meta.jsonseq_final_end_sent:
+                buf = ""
+                break
+
+            # 1) serp_summary（可选）
+            if not meta.jsonseq_serp_summary_sent:
+                serp_open = buf.find(_SERP_OPEN)
+                serp_close = buf.find(_SERP_CLOSE)
+                if serp_open != -1 and serp_close != -1 and serp_close > serp_open:
+                    text = buf[serp_open + len(_SERP_OPEN) : serp_close].strip()
+                    if text:
+                        meta.jsonseq_serp_summary_sent = True
+                        out.append(MessageEvent(event="serp_summary", data={"text": text}))
+                    buf = buf[serp_close + len(_SERP_CLOSE) :]
+                    continue
+
+            # 2) thinking_start
+            if not meta.jsonseq_thinking_start_sent:
+                idx = buf.find(_THINKING_OPEN)
+                if idx == -1:
+                    break
+                buf = buf[idx + len(_THINKING_OPEN) :]
+                meta.jsonseq_thinking_start_sent = True
+                meta.jsonseq_inside_thinking = True
+                out.append(MessageEvent(event="thinking_start", data={}))
+                continue
+
+            # 3) thinking 内容（phase... / thinking_end）
+            if meta.jsonseq_inside_thinking:
+                _strip_leading_ws()
+
+                # thinking_end（在 phase 之间）
+                end_idx = buf.find(_THINKING_CLOSE)
+                phase_idx = buf.find("<phase")
+                if end_idx != -1 and (phase_idx == -1 or end_idx < phase_idx):
+                    buf = buf[end_idx + len(_THINKING_CLOSE) :]
+                    meta.jsonseq_inside_thinking = False
+                    if not meta.jsonseq_thinking_end_sent:
+                        meta.jsonseq_thinking_end_sent = True
+                        out.append(MessageEvent(event="thinking_end", data={}))
+                    continue
+
+                # phase_start
+                if meta.jsonseq_current_phase_id is None:
+                    open_idx = buf.find('<phase id="')
+                    if open_idx == -1:
+                        break
+                    id_start = open_idx + len('<phase id="')
+                    id_end = buf.find('"', id_start)
+                    if id_end == -1:
+                        break
+                    gt = buf.find(">", id_end)
+                    if gt == -1:
+                        break
+                    try:
+                        phase_id = int(buf[id_start:id_end])
+                    except Exception:
+                        phase_id = 0
+                    buf = buf[gt + 1 :]
+                    meta.jsonseq_current_phase_id = phase_id if phase_id > 0 else None
+                    meta.jsonseq_current_phase_title_sent = False
+                    continue
+
+                # title（phase_start 需要 title）
+                if meta.jsonseq_current_phase_id is not None and not meta.jsonseq_current_phase_title_sent:
+                    title_open = buf.find(_TITLE_OPEN)
+                    title_close = buf.find(_TITLE_CLOSE)
+                    if title_open == -1 or title_close == -1 or title_close <= title_open:
+                        break
+                    title = buf[title_open + len(_TITLE_OPEN) : title_close].strip()
+                    buf = buf[title_close + len(_TITLE_CLOSE) :]
+                    if title and meta.jsonseq_current_phase_id > meta.jsonseq_last_phase_id:
+                        meta.jsonseq_last_phase_id = meta.jsonseq_current_phase_id
+                        meta.jsonseq_current_phase_title_sent = True
+                        out.append(
+                            MessageEvent(
+                                event="phase_start",
+                                data={"id": meta.jsonseq_current_phase_id, "title": title},
+                            )
+                        )
+                    continue
+
+                # phase_delta：输出到下一个 tag
+                if meta.jsonseq_current_phase_id is not None and meta.jsonseq_current_phase_title_sent:
+                    _strip_leading_ws()
+                    if _drop_prefix(_PHASE_CLOSE):
+                        meta.jsonseq_current_phase_id = None
+                        meta.jsonseq_current_phase_title_sent = False
+                        continue
+                    next_lt = buf.find("<")
+                    if next_lt == -1:
+                        if finalize:
+                            text = buf
+                            buf = ""
+                            if text:
+                                out.extend(
+                                    self._jsonseq_v1_make_delta_events(
+                                        "phase_delta",
+                                        text=text,
+                                        extra={"id": int(meta.jsonseq_current_phase_id)},
+                                    )
+                                )
+                        break
+                    if next_lt > 0:
+                        text = buf[:next_lt]
+                        buf = buf[next_lt:]
+                        if text:
+                            out.extend(
+                                self._jsonseq_v1_make_delta_events(
+                                    "phase_delta",
+                                    text=text,
+                                    extra={"id": int(meta.jsonseq_current_phase_id)},
+                                )
+                            )
+                        continue
+                    # next_lt == 0：等待完整 tag
+                    if ">" not in buf:
+                        break
+                    # 未识别 tag：丢弃该 tag，避免死循环
+                    gt = buf.find(">")
+                    buf = buf[gt + 1 :]
+                    continue
+
+            # 4) final
+            if not meta.jsonseq_inside_final:
+                idx = buf.find(_FINAL_OPEN)
+                if idx == -1:
+                    break
+                buf = buf[idx + len(_FINAL_OPEN) :]
+                meta.jsonseq_inside_final = True
+                continue
+
+            # 5) final_delta / serp_queries / final_end
+            if meta.jsonseq_inside_final:
+                _strip_leading_ws()
+
+                if _drop_prefix(_FINAL_CLOSE):
+                    meta.jsonseq_inside_final = False
+                    if not meta.jsonseq_final_end_sent:
+                        meta.jsonseq_final_end_sent = True
+                        out.append(MessageEvent(event="final_end", data={}))
+                    continue
+
+                if buf.startswith("<!--"):
+                    end = buf.find("-->")
+                    if end == -1:
+                        break
+                    block = buf[: end + 3]
+                    buf = buf[end + 3 :]
+                    if meta.jsonseq_serp_queries_sent:
+                        continue
+                    if "<serp_queries>" not in block:
+                        continue
+                    lines = [line.rstrip("\r") for line in block.splitlines()]
+                    if len(lines) >= 3:
+                        json_line = (lines[1] or "").strip()
+                        try:
+                            queries = json.loads(json_line)
+                        except Exception:
+                            queries = None
+                        if isinstance(queries, list):
+                            cleaned: list[str] = []
+                            seen: set[str] = set()
+                            for q in queries:
+                                t = str(q or "").strip()
+                                if not t or t in seen:
+                                    continue
+                                seen.add(t)
+                                cleaned.append(t[:80])
+                                if len(cleaned) >= 5:
+                                    break
+                            meta.jsonseq_serp_queries_sent = True
+                            out.append(MessageEvent(event="serp_queries", data={"queries": cleaned}))
+                    continue
+
+                next_lt = buf.find("<")
+                if next_lt == -1:
+                    if finalize:
+                        text = buf
+                        buf = ""
+                        if text:
+                            meta.jsonseq_final_delta_sent = True
+                            out.extend(self._jsonseq_v1_make_delta_events("final_delta", text=text, extra={}))
+                    break
+                if next_lt > 0:
+                    text = buf[:next_lt]
+                    buf = buf[next_lt:]
+                    if text:
+                        meta.jsonseq_final_delta_sent = True
+                        out.extend(self._jsonseq_v1_make_delta_events("final_delta", text=text, extra={}))
+                    continue
+                # next_lt == 0：等待完整 tag/comment
+                if ">" not in buf and not buf.startswith("<!--"):
+                    break
+                gt = buf.find(">")
+                if gt == -1:
+                    break
+                buf = buf[gt + 1 :]
+                continue
+
+            break
+
+        meta.jsonseq_buffer = buf
+        return out
+
+    def _jsonseq_v1_consume_plaintext(self, meta: MessageChannelMeta, *, finalize: bool) -> list[MessageEvent]:
+        buf = meta.jsonseq_buffer or ""
+        if not buf:
+            return []
+
+        out: list[MessageEvent] = []
+        if not meta.jsonseq_thinking_start_sent:
+            meta.jsonseq_thinking_start_sent = True
+            meta.jsonseq_thinking_end_sent = True
+            meta.jsonseq_last_phase_id = max(meta.jsonseq_last_phase_id, 1)
+            out.append(MessageEvent(event="thinking_start", data={}))
+            out.append(MessageEvent(event="phase_start", data={"id": 1, "title": "格式修复"}))
+            out.extend(
+                self._jsonseq_v1_make_delta_events(
+                    "phase_delta",
+                    text="上游输出未包含结构化 thinking/final，已按纯文本兜底。",
+                    extra={"id": 1},
+                )
+            )
+            out.append(MessageEvent(event="thinking_end", data={}))
+
+        meta.jsonseq_final_delta_sent = True
+        out.extend(self._jsonseq_v1_make_delta_events("final_delta", text=buf, extra={}))
+        meta.jsonseq_buffer = ""
+        return out
+
+    def _jsonseq_v1_consume(self, meta: MessageChannelMeta, chunk: str, *, finalize: bool = False) -> list[MessageEvent]:
+        if meta.jsonseq_final_end_sent:
+            return []
+        if chunk:
+            meta.jsonseq_buffer = f"{meta.jsonseq_buffer}{chunk}"
+        fmt = self._jsonseq_v1_detect_format(meta)
+        if fmt == "jsonl":
+            return self._jsonseq_v1_consume_jsonl(meta, finalize=finalize)
+        if fmt == "thinkingml":
+            return self._jsonseq_v1_consume_thinkingml(meta, finalize=finalize)
+        if fmt == "plaintext":
+            return self._jsonseq_v1_consume_plaintext(meta, finalize=finalize)
+        return []
+
+    def _jsonseq_v1_finalize(self, meta: MessageChannelMeta) -> list[MessageEvent]:
+        out: list[MessageEvent] = []
+        fmt = self._jsonseq_v1_detect_format(meta)
+        if not fmt:
+            meta.jsonseq_format = "plaintext"
+            fmt = meta.jsonseq_format
+
+        out.extend(self._jsonseq_v1_consume(meta, "", finalize=True))
+
+        if not meta.jsonseq_thinking_start_sent:
+            meta.jsonseq_thinking_start_sent = True
+            meta.jsonseq_thinking_end_sent = True
+            out.append(MessageEvent(event="thinking_start", data={}))
+            out.append(MessageEvent(event="phase_start", data={"id": 1, "title": "格式修复"}))
+            out.append(MessageEvent(event="thinking_end", data={}))
+
+        if not meta.jsonseq_thinking_end_sent:
+            meta.jsonseq_thinking_end_sent = True
+            out.append(MessageEvent(event="thinking_end", data={}))
+
+        if not meta.jsonseq_final_delta_sent:
+            meta.jsonseq_final_delta_sent = True
+            out.append(MessageEvent(event="final_delta", data={"text": "<<ParsingError>>"}))
+
+        if not meta.jsonseq_final_end_sent:
+            meta.jsonseq_final_end_sent = True
+            out.append(MessageEvent(event="final_end", data={}))
+
+        meta.jsonseq_buffer = ""
+        return out
+
     async def publish(self, message_id: str, event: MessageEvent) -> None:
         queue = self._channels.get(message_id)
         if queue:
@@ -741,6 +1230,14 @@ class MessageEventBroker:
                             if not fixed:
                                 # 本次 chunk 仅用于跨边界识别标签前缀，不对外发送空 delta。
                                 return
+                            if str(getattr(meta, "output_protocol", "") or "").strip().lower() == "jsonseq_v1":
+                                out_events = self._jsonseq_v1_consume(meta, fixed, finalize=False)
+                                for out_event in out_events:
+                                    out_event.data.setdefault("message_id", message_id)
+                                    if request_id:
+                                        out_event.data.setdefault("request_id", request_id)
+                                    await queue.put(out_event)
+                                return
                             if len(fixed) > STREAM_CHUNK_THRESHOLD_CHARS:
                                 parts = _split_text_for_streaming(fixed, max_size=STREAM_CHUNK_SIZE_CHARS)
                                 if len(parts) > 1:
@@ -755,6 +1252,17 @@ class MessageEventBroker:
                         meta.delta_seq += 1
                         e.data.setdefault("seq", meta.delta_seq)
                     elif e.event in {"completed", "error"}:
+                        if (
+                            e.event == "completed"
+                            and str(getattr(meta, "output_protocol", "") or "").strip().lower() == "jsonseq_v1"
+                        ):
+                            out_events = self._jsonseq_v1_finalize(meta)
+                            for out_event in out_events:
+                                out_event.data.setdefault("message_id", message_id)
+                                if request_id:
+                                    out_event.data.setdefault("request_id", request_id)
+                                await queue.put(out_event)
+
                         # flush：输出最后残留的前缀（最多 9 个字符），避免拼接后丢失。
                         pending = meta.thinkingml_pending
                         if pending and not meta.thinkingml_final_closed:
@@ -2012,6 +2520,9 @@ class AIService:
                 scope = "agent"
         if scope == "agent":
             return ("agent_system", "agent_tools")
+        protocol = str(getattr(message, "output_protocol", "") or "").strip().lower()
+        if protocol == "jsonseq_v1":
+            return ("system_jsonseq_v1", "tools_jsonseq_v1")
         return ("system", "tools")
 
     def _map_legacy_function_call_to_tool_choice(self, value: Any) -> Any:

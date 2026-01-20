@@ -55,7 +55,20 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def _load_prompt_assets() -> tuple[dict[str, Any], str, str]:
+def _load_prompt_assets(*, output_protocol: str = "thinkingml_v45") -> tuple[dict[str, Any], str, str]:
+    """加载 Prompt SSOT（assets）。
+
+    - thinkingml_v45：Strict XML / ThinkingML v4.5（serp_prompt.md + tool.md）
+    - jsonseq_v1：JSONSeq v1（serp_prompt_jsonseq_v1.md + tool_jsonseq_v1.md）
+    """
+
+    protocol = str(output_protocol or "thinkingml_v45").strip().lower() or "thinkingml_v45"
+    if protocol == "jsonseq_v1":
+        profile = json.loads(_read_text(REPO_ROOT / "assets" / "prompts" / "standard_jsonseq_v1.json"))
+        serp_prompt = _read_text(REPO_ROOT / "assets" / "prompts" / "serp_prompt_jsonseq_v1.md")
+        tool_prompt = _read_text(REPO_ROOT / "assets" / "prompts" / "tool_jsonseq_v1.md")
+        return profile, serp_prompt, tool_prompt
+
     profile = json.loads(_read_text(REPO_ROOT / "assets" / "prompts" / "standard_serp_v2.json"))
     serp_prompt = _read_text(REPO_ROOT / "assets" / "prompts" / "serp_prompt.md")
     tool_prompt = _read_text(REPO_ROOT / "assets" / "prompts" / "tool.md")
@@ -226,6 +239,113 @@ def _validate_thinkingml(reply: str) -> tuple[bool, str]:
     return True, "ok"
 
 
+def _validate_jsonseq_v1_events(events: list[dict[str, Any]]) -> tuple[bool, str]:
+    allowed = {
+        "serp_summary",
+        "thinking_start",
+        "phase_start",
+        "phase_delta",
+        "thinking_end",
+        "final_delta",
+        "serp_queries",
+        "final_end",
+    }
+    seq = [e for e in events if isinstance(e, dict) and e.get("event") in allowed]
+    names = [str(e.get("event") or "") for e in seq]
+    if not names:
+        return False, "empty_events"
+
+    if "thinking_start" not in names:
+        return False, "missing_thinking_start"
+    if "thinking_end" not in names:
+        return False, "missing_thinking_end"
+    if "final_delta" not in names:
+        return False, "missing_final_delta"
+    if "final_end" not in names:
+        return False, "missing_final_end"
+
+    if names.index("thinking_end") > names.index("final_delta"):
+        return False, "invalid_sequence_thinking_end_after_final_delta"
+    if names.index("final_end") < names.index("final_delta"):
+        return False, "invalid_sequence_final_end_before_final_delta"
+
+    # phase_start 必须递增且包含 title；phase_delta 必须引用已开始的 phase
+    current_phase_id = 0
+    saw_phase_start = False
+    for item in seq:
+        ev = str(item.get("event") or "")
+        data = item.get("data")
+        if ev == "phase_start":
+            if not isinstance(data, dict):
+                return False, "phase_start_invalid_data"
+            try:
+                pid = int(data.get("id"))
+            except Exception:
+                return False, "phase_start_invalid_id"
+            title = str(data.get("title") or "").strip()
+            if pid != current_phase_id + 1:
+                return False, "phase_id_not_strict_increment"
+            if not title:
+                return False, "phase_title_missing"
+            current_phase_id = pid
+            saw_phase_start = True
+        if ev == "phase_delta":
+            if not isinstance(data, dict):
+                return False, "phase_delta_invalid_data"
+            try:
+                pid = int(data.get("id"))
+            except Exception:
+                return False, "phase_delta_invalid_id"
+            text = str(data.get("text") or "")
+            if not text:
+                return False, "phase_delta_empty_text"
+            if current_phase_id <= 0 or pid <= 0 or pid > current_phase_id:
+                return False, "phase_delta_id_out_of_range"
+    if not saw_phase_start:
+        return False, "missing_phase_start"
+
+    # final_delta 至少 1 次且不为空（ParsingError marker 视为失败）
+    final_text = ""
+    for item in seq:
+        if str(item.get("event") or "") != "final_delta":
+            continue
+        data = item.get("data")
+        if not isinstance(data, dict):
+            continue
+        t = str(data.get("text") or "")
+        if t:
+            final_text += t
+    final_text = final_text.strip()
+    if not final_text:
+        return False, "final_delta_empty"
+    if final_text == "<<ParsingError>>":
+        return False, "parsing_error_marker"
+
+    # serp_queries（若出现）必须是数组、去重、<=5、每项<=80
+    for item in seq:
+        if str(item.get("event") or "") != "serp_queries":
+            continue
+        data = item.get("data")
+        if not isinstance(data, dict):
+            return False, "serp_queries_invalid_data"
+        queries = data.get("queries")
+        if not isinstance(queries, list):
+            return False, "serp_queries_not_array"
+        if len(queries) > 5:
+            return False, "serp_queries_too_many"
+        seen: set[str] = set()
+        for q in queries:
+            if not isinstance(q, str):
+                return False, "serp_queries_item_not_string"
+            if len(q) > 80:
+                return False, "serp_queries_item_too_long"
+            if q in seen:
+                return False, "serp_queries_not_deduped"
+            seen.add(q)
+
+    return True, "ok"
+
+
 def _mock_httpx_stream_json(mock_httpx: MagicMock, payload: dict[str, Any], *, headers: dict[str, str] | None = None) -> None:
     response = MagicMock()
     response.status_code = 200
@@ -271,6 +391,8 @@ async def _collect_sse_events(
             evt = {"event": current_event, "data": parsed}
             if current_event == "content_delta" and isinstance(parsed, dict) and parsed.get("delta"):
                 reply_accum += str(parsed.get("delta"))
+            if current_event == "final_delta" and isinstance(parsed, dict) and parsed.get("text"):
+                reply_accum += str(parsed.get("text"))
             return evt
 
         async for line in response.aiter_lines():

@@ -41,6 +41,8 @@ const promptTypeOptions = [
   { label: '全部', value: null },
   { label: 'System', value: 'system' },
   { label: 'Tools', value: 'tools' },
+  { label: 'System（JSONSeq v1）', value: 'system_jsonseq_v1' },
+  { label: 'Tools（JSONSeq v1）', value: 'tools_jsonseq_v1' },
   { label: 'Agent System', value: 'agent_system' },
   { label: 'Agent Tools', value: 'agent_tools' },
 ]
@@ -85,7 +87,7 @@ function toPayload(form) {
     auto_sync: form.auto_sync,
   }
   const pt = String(form.prompt_type || '').trim()
-  const allowTools = pt === 'tools' || pt === 'agent_tools'
+  const allowTools = pt === 'tools' || pt === 'tools_jsonseq_v1' || pt === 'agent_tools'
   if (allowTools && form.tools_json_text && form.tools_json_text.trim().length) {
     payload.tools_json = form.tools_json_text
   }
@@ -163,10 +165,20 @@ const columns = [
           ? 'Agent System'
           : t === 'agent_tools'
             ? 'Agent Tools'
+            : t === 'system_jsonseq_v1'
+              ? 'System（JSONSeq v1）'
+              : t === 'tools_jsonseq_v1'
+                ? 'Tools（JSONSeq v1）'
             : t === 'tools'
               ? 'Tools'
               : 'System'
-      const type = t.startsWith('agent_') ? 'warning' : t === 'tools' ? 'info' : 'default'
+      const type = t.startsWith('agent_')
+        ? 'warning'
+        : t === 'tools' || t === 'tools_jsonseq_v1'
+          ? 'info'
+          : t === 'system_jsonseq_v1'
+            ? 'success'
+            : 'default'
       return h(NTag, { size: 'small', type, bordered: false }, { default: () => label })
     },
   },
@@ -496,6 +508,8 @@ onMounted(() => {
             :options="[
               { label: 'System', value: 'system' },
               { label: 'Tools', value: 'tools' },
+              { label: 'System（JSONSeq v1）', value: 'system_jsonseq_v1' },
+              { label: 'Tools（JSONSeq v1）', value: 'tools_jsonseq_v1' },
               { label: 'Agent System', value: 'agent_system' },
               { label: 'Agent Tools', value: 'agent_tools' },
             ]"
@@ -525,7 +539,7 @@ onMounted(() => {
             v-model:value="modalForm.tools_json_text"
             type="textarea"
             :autosize="{ minRows: 4 }"
-            :disabled="!['tools', 'agent_tools'].includes(String(modalForm.prompt_type || 'system'))"
+            :disabled="!['tools', 'tools_jsonseq_v1', 'agent_tools'].includes(String(modalForm.prompt_type || 'system'))"
             placeholder="可选，输入工具定义 JSON"
           />
         </NFormItem>

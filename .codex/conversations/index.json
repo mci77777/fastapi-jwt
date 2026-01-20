@@ -1,12 +1,12 @@
 {
   "version": "1.0.0",
   "description": "Project-local conversation context index",
-  "lastUpdated": "2026-01-17T22:33:11+08:00",
+  "lastUpdated": "2026-01-20T10:07:51+08:00",
   "statistics": {
-    "totalConversations": 2,
-    "totalTags": 8,
+    "totalConversations": 3,
+    "totalTags": 12,
     "oldestConversation": "2026-01-17",
-    "newestConversation": "2026-01-17"
+    "newestConversation": "2026-01-20"
   },
   "conversations": [
     {
@@ -37,6 +37,21 @@
       "type": "development",
       "status": "active",
       "lineCount": 38,
+      "relatedContexts": []
+    },
+    {
+      "id": "2fd9fbb8-6844-46d4-ba46-a4007e5acc11",
+      "title": "JSONSeq v1：统一事件流协议 + Dashboard 开关 + Prompt/测试",
+      "file": "2026-01-20_jsonseq-v1-events.md",
+      "project": "vue-fastapi-admin",
+      "project_path": "X:/project/vue-fastapi-admin",
+      "created_at": "2026-01-20T10:07:51+08:00",
+      "updated_at": "2026-01-20T10:07:51+08:00",
+      "tags": ["jsonseq", "events", "sse", "dashboard", "prompt", "gymbro"],
+      "summary": "新增 JSONSeq v1（事件流）对外协议：后端把上游输出统一映射为事件（thinking/phase/final + 可选 serp），并在 Dashboard 提供开关；补齐 prompts/assets 与 E2E 测试，保持默认兼容。",
+      "type": "development",
+      "status": "active",
+      "lineCount": 37,
       "relatedContexts": []
     }
   ]

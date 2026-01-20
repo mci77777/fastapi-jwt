@@ -52,6 +52,12 @@ const llmAppResultModeOptions = [
   { label: '透明转发（SSE content_delta）', value: 'raw_passthrough' },
   { label: 'XML 文本转发（SSE content_delta）', value: 'xml_plaintext' },
 ]
+const llmAppOutputProtocolSaving = ref(false)
+const llmAppOutputProtocol = ref('thinkingml_v45')
+const llmAppOutputProtocolOptions = [
+  { label: 'ThinkingML v4.5（兼容旧客户端）', value: 'thinkingml_v45' },
+  { label: 'JSONSeq v1（事件流：客户端只认事件）', value: 'jsonseq_v1' },
+]
 
 // SSE 探针：用于定位网关缓冲导致的“假流式 / 大 chunk”
 const sseProbeRunning = ref(false)
@@ -88,6 +94,9 @@ async function loadLlmAppConfig() {
       llmAppDefaultResultMode.value = ['xml_plaintext', 'raw_passthrough'].includes(mode) ? mode : 'raw_passthrough'
     }
 
+    const protocol = String(data?.app_output_protocol || '').trim().toLowerCase()
+    llmAppOutputProtocol.value = ['thinkingml_v45', 'jsonseq_v1'].includes(protocol) ? protocol : 'thinkingml_v45'
+
     webSearchEnabled.value = Boolean(data?.web_search_enabled)
     webSearchProvider.value = String(data?.web_search_provider || 'exa').trim().toLowerCase() || 'exa'
     webSearchExaApiKeyMasked.value = String(data?.web_search_exa_api_key_masked || '').trim()
@@ -123,6 +132,26 @@ async function handleSaveLlmAppConfig() {
     message.error(error?.message || '保存 App 转发模式配置失败')
   } finally {
     llmAppConfigSaving.value = false
+  }
+}
+
+async function handleSaveLlmAppOutputProtocol() {
+  llmAppOutputProtocolSaving.value = true
+  try {
+    const protocol = String(llmAppOutputProtocol.value || '').trim().toLowerCase()
+    if (!['thinkingml_v45', 'jsonseq_v1'].includes(protocol)) {
+      message.warning('请选择输出协议（ThinkingML v4.5 / JSONSeq v1）')
+      return
+    }
+    const res = await api.upsertLlmAppConfig({ app_output_protocol: protocol })
+    const data = res?.data?.data || res?.data || {}
+    const saved = String(data?.app_output_protocol || '').trim().toLowerCase()
+    llmAppOutputProtocol.value = ['thinkingml_v45', 'jsonseq_v1'].includes(saved) ? saved : protocol
+    message.success('已更新 App 输出协议')
+  } catch (error) {
+    message.error(error?.message || '保存 App 输出协议失败')
+  } finally {
+    llmAppOutputProtocolSaving.value = false
   }
 }
 
@@ -980,6 +1009,37 @@ onBeforeUnmount(() => {
         </NAlert>
         <NAlert v-if="llmAppDefaultResultModeLegacyAuto" type="warning" :bordered="false" class="mt-2">
           检测到历史值 <code>auto</code>：为避免歧义，请在上方选择一种并保存（接口保持兼容不变）。
+        </NAlert>
+      </NCard>
+
+      <NCard :loading="llmAppConfigLoading" title="App 输出协议（默认）" size="small">
+        <NSpace align="center" wrap>
+          <NSelect
+            v-model:value="llmAppOutputProtocol"
+            :options="llmAppOutputProtocolOptions"
+            placeholder="选择输出协议（ThinkingML v4.5 / JSONSeq v1）"
+            style="min-width: 320px"
+          />
+          <NButton type="primary" :loading="llmAppOutputProtocolSaving" @click="handleSaveLlmAppOutputProtocol">
+            保存
+          </NButton>
+          <NTag round :bordered="false" :type="llmAppOutputProtocol === 'jsonseq_v1' ? 'success' : 'default'">
+            {{ llmAppOutputProtocol }}
+          </NTag>
+        </NSpace>
+        <NAlert type="info" :bordered="false" class="mt-2">
+          <div>
+            <div>
+              <code>thinkingml_v45</code>：沿用旧 SSE（<code>content_delta</code> 拼接 XML/文本）。
+            </div>
+            <div>
+              <code>jsonseq_v1</code>：后端将把上游输出统一映射为事件流（<code>thinking_start</code>/<code>phase_start</code>/<code>phase_delta</code>/<code>thinking_end</code>/<code>final_delta</code>/<code>final_end</code>，可选
+              <code>serp_summary</code>/<code>serp_queries</code>），App 端只认事件无需解析 XML。
+            </div>
+          </div>
+        </NAlert>
+        <NAlert type="warning" :bordered="false" class="mt-2">
+          开启 <code>jsonseq_v1</code> 前请确认 App 已适配事件渲染；未知事件可忽略，终止以 <code>completed</code>/<code>error</code> 为准。
         </NAlert>
       </NCard>
 

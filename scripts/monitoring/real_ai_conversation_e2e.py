@@ -2,9 +2,11 @@
 """
 真实上游 E2E（多轮对话 + 多次重复）：
 1) Dashboard 本地 admin 登录（/api/v1/base/access_token）获取 JWT
-2) 用 assets/prompts/{serp_prompt.md,tool.md,standard_serp_v2.json} 写入并 activate prompts（避免 DB 影子 prompt）
+2) 用 assets/prompts 的 SSOT 写入并 activate prompts（避免 DB 影子 prompt；支持 ThinkingML 与 JSONSeq）
 3) GET /api/v1/llm/models?view=mapped，按 mapping 名称逐个发起对话
-4) POST /api/v1/messages -> GET /events 消费 GymBro SSE，拼接 reply 并按 docs/ai预期响应结构.md（ThinkingML v4.5）校验
+4) POST /api/v1/messages -> GET /events 消费 GymBro SSE：
+   - thinkingml_v45：拼接 content_delta 并按 docs/ai预期响应结构.md（ThinkingML v4.5）校验
+   - jsonseq_v1：按事件流校验 docs/ai_jsonseq_v1_预期响应结构.md（JSONSeq v1）
 
 默认目标：优先跑 xai + deepseek（可用 --models 指定，或留空跑全部 mapped models）。
 
@@ -35,6 +37,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from scripts.monitoring.local_mock_ai_conversation_e2e import (  # noqa: E402
     _load_prompt_assets,
     _parse_tools_from_tool_md,
+    _validate_jsonseq_v1_events,
     _validate_thinkingml,
 )
 
@@ -76,6 +79,12 @@ def _parse_args() -> argparse.Namespace:
         "--tool-choice",
         default=os.getenv("E2E_TOOL_CHOICE", "none"),
         help="OpenAI tool_choice：auto/none/required。默认 none（避免后端 tool_calls 未实现导致结构不稳定）。",
+    )
+    parser.add_argument(
+        "--app-output-protocol",
+        default=os.getenv("E2E_APP_OUTPUT_PROTOCOL", "thinkingml_v45"),
+        choices=["thinkingml_v45", "jsonseq_v1"],
+        help="App 对外输出协议：thinkingml_v45=旧 SSE(content_delta)；jsonseq_v1=事件流(final_delta/phase_*)。",
     )
     parser.add_argument("--temperature", type=float, default=None)
     parser.add_argument(
@@ -280,6 +289,8 @@ async def _collect_sse_events(
             evt = {"event": current_event, "data": parsed}
             if current_event == "content_delta" and isinstance(parsed, dict) and parsed.get("delta"):
                 reply_accum += str(parsed.get("delta"))
+            if current_event == "final_delta" and isinstance(parsed, dict) and parsed.get("text"):
+                reply_accum += str(parsed.get("text"))
             return evt
 
         async for line in response.aiter_lines():
@@ -371,6 +382,7 @@ async def _run_single_turn(
     *,
     auth_headers: dict[str, str],
     model: str,
+    app_output_protocol: str,
     conversation_id: str,
     messages: list[dict[str, Any]],
     tool_choice: str | None,
@@ -445,7 +457,11 @@ async def _run_single_turn(
 
     try:
         meta, events, reply_text, sse_error, event_counts = await send(tool_choice_value=tool_choice)
-        ok, reason = _validate_thinkingml(reply_text)
+        protocol = str(app_output_protocol or "thinkingml_v45").strip().lower() or "thinkingml_v45"
+        if protocol == "jsonseq_v1":
+            ok, reason = _validate_jsonseq_v1_events(events)
+        else:
+            ok, reason = _validate_thinkingml(reply_text)
         if ok:
             return TurnResult(
                 ok=True,
@@ -465,8 +481,12 @@ async def _run_single_turn(
 
         if sse_error and _should_retry_without_tools(sse_error):
             _print(f"[retry] model={model} request_id={request_id} reason=tools_not_supported", verbose=verbose)
-            meta, _, reply_text, sse_error, event_counts = await send(tool_choice_value=None)
-            ok, reason = _validate_thinkingml(reply_text)
+            meta, events, reply_text, sse_error, event_counts = await send(tool_choice_value=None)
+            protocol = str(app_output_protocol or "thinkingml_v45").strip().lower() or "thinkingml_v45"
+            if protocol == "jsonseq_v1":
+                ok, reason = _validate_jsonseq_v1_events(events)
+            else:
+                ok, reason = _validate_thinkingml(reply_text)
             return TurnResult(
                 ok=ok,
                 reason=reason if ok else f"{reason}|retried_without_tools",
@@ -541,9 +561,16 @@ async def main() -> int:
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     (artifacts_dir / ".gitkeep").write_text("", encoding="utf-8")
 
-    profile, serp_prompt, tool_prompt = _load_prompt_assets()
-    tools_schema = _parse_tools_from_tool_md(tool_prompt)
+    output_protocol = str(args.app_output_protocol or "thinkingml_v45").strip().lower() or "thinkingml_v45"
+    profile, serp_prompt, tool_prompt = _load_prompt_assets(output_protocol=output_protocol)
+    tools_schema_source = (REPO_ROOT / "assets" / "prompts" / "tool.md").read_text(encoding="utf-8").strip()
+    tools_schema = _parse_tools_from_tool_md(tools_schema_source)
     profile_version = str((profile or {}).get("version") or "").strip() or "v1"
+    prompt_type_system = "system"
+    prompt_type_tools = "tools"
+    if output_protocol == "jsonseq_v1":
+        prompt_type_system = "system_jsonseq_v1"
+        prompt_type_tools = "tools_jsonseq_v1"
 
     async with httpx.AsyncClient(base_url=api_base) as client:
         try:
@@ -558,12 +585,14 @@ async def main() -> int:
             await _ensure_prompt(
                 client,
                 auth_headers=auth_headers,
-                name="SSOT:standard_serp_system",
-                prompt_type="system",
+                name="SSOT:standard_serp_system" if output_protocol != "jsonseq_v1" else "SSOT:standard_jsonseq_v1_system",
+                prompt_type=prompt_type_system,
                 content=serp_prompt,
                 version=profile_version,
                 category="ssot",
-                description="Strict XML / ThinkingML v4.5 system prompt (serp)",
+                description="Strict XML / ThinkingML v4.5 system prompt (serp)"
+                if output_protocol != "jsonseq_v1"
+                else "JSONSeq v1 system prompt (events)",
                 tools_json=None,
                 throttle_seconds=float(args.throttle_seconds),
                 verbose=args.verbose,
@@ -571,12 +600,14 @@ async def main() -> int:
             await _ensure_prompt(
                 client,
                 auth_headers=auth_headers,
-                name="SSOT:standard_serp_tools",
-                prompt_type="tools",
+                name="SSOT:standard_serp_tools" if output_protocol != "jsonseq_v1" else "SSOT:standard_jsonseq_v1_tools",
+                prompt_type=prompt_type_tools,
                 content=tool_prompt,
                 version=profile_version,
                 category="ssot",
-                description="ToolCall patch (does not change Strict XML output protocol)",
+                description="ToolCall patch (does not change Strict XML output protocol)"
+                if output_protocol != "jsonseq_v1"
+                else "ToolCall patch (does not change JSONSeq v1 output protocol)",
                 tools_json=tools_schema,
                 throttle_seconds=float(args.throttle_seconds),
                 verbose=args.verbose,
@@ -638,77 +669,125 @@ async def main() -> int:
         prompt_text = str(args.prompt_text or "").strip()
         turn_texts = _turn_prompts(int(args.turns), first_turn_text=prompt_text or None)
 
-        total = 0
-        passed = 0
-        failed = 0
+        # App 对外协议：脚本运行期间临时切换，结束后恢复（避免影响其它 E2E/人工调试）。
+        original_output_protocol = "thinkingml_v45"
+        try:
+            request_id = uuid.uuid4().hex
+            cfg = await client.get(
+                "/llm/app/config",
+                headers={**auth_headers, REQUEST_ID_HEADER: request_id},
+                timeout=30.0,
+            )
+            cfg.raise_for_status()
+            cfg_data = _unwrap_data(cfg.json()) or {}
+            original_output_protocol = (
+                str((cfg_data or {}).get("app_output_protocol") or "").strip().lower() or "thinkingml_v45"
+            )
+        except Exception:
+            original_output_protocol = "thinkingml_v45"
 
-        for model in selected:
-            for run_index in range(1, int(args.runs) + 1):
-                conversation_id = str(uuid.uuid4())
-                history: list[dict[str, Any]] = []
+        changed_protocol = False
+        if output_protocol != original_output_protocol:
+            request_id = uuid.uuid4().hex
+            updated = await client.post(
+                "/llm/app/config",
+                headers={**auth_headers, REQUEST_ID_HEADER: request_id},
+                json={"app_output_protocol": output_protocol},
+                timeout=30.0,
+            )
+            updated.raise_for_status()
+            changed_protocol = True
+            if float(args.throttle_seconds) > 0:
+                await asyncio.sleep(float(args.throttle_seconds))
 
-                for turn_index, user_text in enumerate(turn_texts, start=1):
-                    history.append({"role": "user", "content": user_text})
-                    result = await _run_single_turn(
-                        client,
-                        auth_headers=auth_headers,
-                        model=model,
-                        conversation_id=conversation_id,
-                        messages=history,
-                        tool_choice=str(args.tool_choice or "").strip() or None,
-                        temperature=args.temperature,
-                        stream_timeout=float(args.stream_timeout),
-                        max_events=int(args.max_events),
-                        verbose=args.verbose,
-                    )
-                    total += 1
-                    if result.ok:
-                        passed += 1
+        try:
+            total = 0
+            passed = 0
+            failed = 0
+
+            for model in selected:
+                for run_index in range(1, int(args.runs) + 1):
+                    conversation_id = str(uuid.uuid4())
+                    history: list[dict[str, Any]] = []
+
+                    for turn_index, user_text in enumerate(turn_texts, start=1):
+                        history.append({"role": "user", "content": user_text})
+                        result = await _run_single_turn(
+                            client,
+                            auth_headers=auth_headers,
+                            model=model,
+                            app_output_protocol=str(args.app_output_protocol or "thinkingml_v45"),
+                            conversation_id=conversation_id,
+                            messages=history,
+                            tool_choice=str(args.tool_choice or "").strip() or None,
+                            temperature=args.temperature,
+                            stream_timeout=float(args.stream_timeout),
+                            max_events=int(args.max_events),
+                            verbose=args.verbose,
+                        )
+                        total += 1
+                        if result.ok:
+                            passed += 1
+                            print(
+                                "PASS "
+                                + f"model={model} run={run_index} turn={turn_index} "
+                                + f"request_id={result.request_id} message_id={result.message_id} "
+                                + f"provider={result.provider} resolved_model={result.resolved_model} endpoint_id={result.endpoint_id} "
+                                + f"reply_len={len(result.reply_text)} reason={result.reason}"
+                            )
+                            history.append({"role": "assistant", "content": result.reply_text})
+                            conversation_id = result.conversation_id or conversation_id
+                            continue
+
+                        failed += 1
                         print(
-                            "PASS "
+                            "FAIL "
                             + f"model={model} run={run_index} turn={turn_index} "
                             + f"request_id={result.request_id} message_id={result.message_id} "
                             + f"provider={result.provider} resolved_model={result.resolved_model} endpoint_id={result.endpoint_id} "
-                            + f"reply_len={len(result.reply_text)} reason={result.reason}"
+                            + f"reason={result.reason}"
                         )
-                        history.append({"role": "assistant", "content": result.reply_text})
-                        conversation_id = result.conversation_id or conversation_id
-                        continue
 
-                    failed += 1
-                    print(
-                        "FAIL "
-                        + f"model={model} run={run_index} turn={turn_index} "
-                        + f"request_id={result.request_id} message_id={result.message_id} "
-                        + f"provider={result.provider} resolved_model={result.resolved_model} endpoint_id={result.endpoint_id} "
-                        + f"reason={result.reason}"
+                        artifact = {
+                            "model": model,
+                            "run": run_index,
+                            "turn": turn_index,
+                            "request_id": result.request_id,
+                            "message_id": result.message_id,
+                            "conversation_id": result.conversation_id,
+                            "provider": result.provider,
+                            "resolved_model": result.resolved_model,
+                            "endpoint_id": result.endpoint_id,
+                            "upstream_request_id": result.upstream_request_id,
+                            "retried_without_tools": result.retried_without_tools,
+                            "reason": result.reason,
+                            "sse_error": result.sse_error,
+                            "event_counts": result.event_counts,
+                            "reply_text": result.reply_text,
+                            "prompt_profile_version": profile_version,
+                            "tool_choice": str(args.tool_choice or "").strip() or None,
+                            "app_output_protocol": output_protocol,
+                        }
+                        out = artifacts_dir / f"fail_{model}_run{run_index}_turn{turn_index}_{result.request_id}.json"
+                        out.write_text(json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8")
+                        break
+
+            print(
+                f"SUMMARY total={total} passed={passed} failed={failed} models={','.join(selected)} runs={args.runs} turns={args.turns}"
+            )
+            return 0 if failed == 0 else 3
+        finally:
+            if changed_protocol:
+                try:
+                    request_id = uuid.uuid4().hex
+                    await client.post(
+                        "/llm/app/config",
+                        headers={**auth_headers, REQUEST_ID_HEADER: request_id},
+                        json={"app_output_protocol": original_output_protocol},
+                        timeout=30.0,
                     )
-
-                    artifact = {
-                        "model": model,
-                        "run": run_index,
-                        "turn": turn_index,
-                        "request_id": result.request_id,
-                        "message_id": result.message_id,
-                        "conversation_id": result.conversation_id,
-                        "provider": result.provider,
-                        "resolved_model": result.resolved_model,
-                        "endpoint_id": result.endpoint_id,
-                        "upstream_request_id": result.upstream_request_id,
-                        "retried_without_tools": result.retried_without_tools,
-                        "reason": result.reason,
-                        "sse_error": result.sse_error,
-                        "event_counts": result.event_counts,
-                        "reply_text": result.reply_text,
-                        "prompt_profile_version": profile_version,
-                        "tool_choice": str(args.tool_choice or "").strip() or None,
-                    }
-                    out = artifacts_dir / f"fail_{model}_run{run_index}_turn{turn_index}_{result.request_id}.json"
-                    out.write_text(json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8")
-                    break
-
-        print(f"SUMMARY total={total} passed={passed} failed={failed} models={','.join(selected)} runs={args.runs} turns={args.turns}")
-        return 0 if failed == 0 else 3
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":

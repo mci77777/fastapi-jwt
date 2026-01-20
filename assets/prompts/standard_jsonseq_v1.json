@@ -1,0 +1,27 @@
+{
+  "id": "standard_jsonseq_v1",
+  "displayName": "ThinkingBox · GymBro (JSONSeq v1)",
+  "description": "JSONSeq v1（事件流）输出协议：客户端只认事件；语义与 ThinkingML(XML) 对齐",
+  "version": "1.0.0",
+  "protocols": [
+    "JSONSeq-v1"
+  ],
+  "outputFormat": "GymBro JSONSeq v1 Events",
+  "role": "GymBro 专业健身教练",
+  "enableThinking": true,
+  "systemPrompt": "🔒 Prompt SSOT: see prompts/serp_prompt_jsonseq_v1.md (loaded via systemPromptDocPath).",
+  "capabilities": [
+    "Evidence-based fitness guidance",
+    "Structured reasoning via event stream",
+    "Interactive plan generation and logging"
+  ],
+  "constraints": [
+    "⭐ 仅输出 JSON Lines（每行一个 JSON 对象），禁止任何非 JSON 字符",
+    "⭐ 事件类型白名单：thinking_start/phase_start/phase_delta/thinking_end/final_delta/final_end（可选 serp_summary/serp_queries）",
+    "⭐ phase_start.id 为正整数且严格递增；phase_start.title 必填",
+    "⭐ final_end 后禁止任何输出",
+    "⭐ 禁止推荐第三方健身 APP（除非用户主动要求）"
+  ],
+  "systemPromptDocPath": "prompts/serp_prompt_jsonseq_v1.md"
+}
+

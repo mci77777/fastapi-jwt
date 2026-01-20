@@ -61,6 +61,11 @@ _DEFAULT_TOOLS_PROMPT_NAME = "gymbro-default-tools-v1"
 _DEFAULT_SYSTEM_PROMPT_ASSET = Path("assets") / "prompts" / "serp_prompt.md"
 _DEFAULT_TOOLS_PROMPT_ASSET = Path("assets") / "prompts" / "tool.md"
 
+_DEFAULT_JSONSEQ_SYSTEM_PROMPT_NAME = "gymbro-default-system-jsonseq-v1"
+_DEFAULT_JSONSEQ_TOOLS_PROMPT_NAME = "gymbro-default-tools-jsonseq-v1"
+_DEFAULT_JSONSEQ_SYSTEM_PROMPT_ASSET = Path("assets") / "prompts" / "serp_prompt_jsonseq_v1.md"
+_DEFAULT_JSONSEQ_TOOLS_PROMPT_ASSET = Path("assets") / "prompts" / "tool_jsonseq_v1.md"
+
 _DEFAULT_AGENT_SYSTEM_PROMPT_NAME = "gymbro-agent-system-thinkingml-v45"
 _DEFAULT_AGENT_TOOLS_PROMPT_NAME = "gymbro-agent-tools-v1"
 _DEFAULT_AGENT_SYSTEM_PROMPT_ASSET = _DEFAULT_SYSTEM_PROMPT_ASSET
@@ -68,15 +73,19 @@ _DEFAULT_AGENT_TOOLS_PROMPT_ASSET = Path("assets") / "prompts" / "agent_tool.md"
 
 _PROMPT_TYPE_SYSTEM = "system"
 _PROMPT_TYPE_TOOLS = "tools"
+_PROMPT_TYPE_SYSTEM_JSONSEQ_V1 = "system_jsonseq_v1"
+_PROMPT_TYPE_TOOLS_JSONSEQ_V1 = "tools_jsonseq_v1"
 _PROMPT_TYPE_AGENT_SYSTEM = "agent_system"
 _PROMPT_TYPE_AGENT_TOOLS = "agent_tools"
 _ALLOWED_PROMPT_TYPES = {
     _PROMPT_TYPE_SYSTEM,
     _PROMPT_TYPE_TOOLS,
+    _PROMPT_TYPE_SYSTEM_JSONSEQ_V1,
+    _PROMPT_TYPE_TOOLS_JSONSEQ_V1,
     _PROMPT_TYPE_AGENT_SYSTEM,
     _PROMPT_TYPE_AGENT_TOOLS,
 }
-_TOOLS_PROMPT_TYPES = {_PROMPT_TYPE_TOOLS, _PROMPT_TYPE_AGENT_TOOLS}
+_TOOLS_PROMPT_TYPES = {_PROMPT_TYPE_TOOLS, _PROMPT_TYPE_TOOLS_JSONSEQ_V1, _PROMPT_TYPE_AGENT_TOOLS}
 _AGENT_PROMPT_TYPES = {_PROMPT_TYPE_AGENT_SYSTEM, _PROMPT_TYPE_AGENT_TOOLS}
 
 _TOOL_NAME_RE = re.compile(r"^\s*-\s*`([^`]+)`：\s*(.*)\s*$")
@@ -655,6 +664,24 @@ class AIConfigService:
         )
         if tools_prompt:
             created["tools_prompt"] = tools_prompt
+
+        # JSONSeq v1 prompts（独立 prompt_type，不影响现有 system/tools）
+        jsonseq_system_prompt = await _ensure(
+            prompt_type=_PROMPT_TYPE_SYSTEM_JSONSEQ_V1,
+            name=_DEFAULT_JSONSEQ_SYSTEM_PROMPT_NAME,
+            asset_path=_DEFAULT_JSONSEQ_SYSTEM_PROMPT_ASSET,
+        )
+        if jsonseq_system_prompt:
+            created["jsonseq_system_prompt"] = jsonseq_system_prompt
+
+        jsonseq_tools_prompt = await _ensure(
+            prompt_type=_PROMPT_TYPE_TOOLS_JSONSEQ_V1,
+            name=_DEFAULT_JSONSEQ_TOOLS_PROMPT_NAME,
+            asset_path=_DEFAULT_JSONSEQ_TOOLS_PROMPT_ASSET,
+            tools_json=tools_schema if tools_schema else None,
+        )
+        if jsonseq_tools_prompt:
+            created["jsonseq_tools_prompt"] = jsonseq_tools_prompt
 
         # Agent prompts（与 /agent/runs 使用的 prompt 绑定；独立于 messages 的 system/tools）
         agent_system_seed = None
@@ -1899,6 +1926,10 @@ class AIConfigService:
             other_type = _PROMPT_TYPE_TOOLS
         elif prompt_type == _PROMPT_TYPE_TOOLS:
             other_type = _PROMPT_TYPE_SYSTEM
+        elif prompt_type == _PROMPT_TYPE_SYSTEM_JSONSEQ_V1:
+            other_type = _PROMPT_TYPE_TOOLS_JSONSEQ_V1
+        elif prompt_type == _PROMPT_TYPE_TOOLS_JSONSEQ_V1:
+            other_type = _PROMPT_TYPE_SYSTEM_JSONSEQ_V1
         elif prompt_type == _PROMPT_TYPE_AGENT_SYSTEM:
             other_type = _PROMPT_TYPE_AGENT_TOOLS
         else:
@@ -1908,7 +1939,7 @@ class AIConfigService:
         tools_prompt_text: Optional[str] = None
         tools_json: Any = None
 
-        if prompt_type in {_PROMPT_TYPE_SYSTEM, _PROMPT_TYPE_AGENT_SYSTEM}:
+        if prompt_type in {_PROMPT_TYPE_SYSTEM, _PROMPT_TYPE_SYSTEM_JSONSEQ_V1, _PROMPT_TYPE_AGENT_SYSTEM}:
             system_prompt_text = str(prompt.get("content") or "").strip() or None
             if not skip_prompt:
                 active_tools, _ = await self.list_prompts(only_active=True, prompt_type=other_type, page=1, page_size=1)
