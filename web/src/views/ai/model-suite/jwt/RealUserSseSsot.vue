@@ -243,6 +243,7 @@ const resultMode = ref('xml_plaintext') // xml_plaintext | raw_passthrough | aut
 const toolChoice = ref('') // '' | none | auto（OpenAI tool_choice）
 const autoValidateOnCompleted = ref(true)
 const thinkingmlValidation = ref({ ok: false, reason: 'empty_reply' })
+const jsonseqValidation = ref({ ok: false, reason: 'empty_events' })
 
 const sseEvents = ref([])
 const streamStartedAtMs = ref(0)
@@ -267,6 +268,12 @@ const dashboardWebSearchExaApiKeyMasked = ref('')
 const dashboardWebSearchExaApiKeySource = ref('none')
 const didInitResultModeFromDashboard = ref(false)
 const didInitPromptModeFromDashboard = ref(false)
+const appOutputProtocolSaving = ref(false)
+
+const appOutputProtocolOptions = [
+  { label: 'ThinkingML v4.5（兼容旧客户端）', value: 'thinkingml_v45' },
+  { label: 'JSONSeq v1（事件流：客户端只认事件）', value: 'jsonseq_v1' },
+]
 
 async function loadAppConfig() {
   appConfigLoading.value = true
@@ -309,6 +316,34 @@ async function loadAppConfig() {
   } finally {
     appConfigLoading.value = false
   }
+}
+
+async function saveAppOutputProtocol(nextProtocol) {
+  appOutputProtocolSaving.value = true
+  try {
+    const protocol = String(nextProtocol || '').trim().toLowerCase()
+    if (!['thinkingml_v45', 'jsonseq_v1'].includes(protocol)) {
+      message.warning('请选择输出协议（ThinkingML v4.5 / JSONSeq v1）')
+      return
+    }
+    const res = await api.upsertLlmAppConfig({ app_output_protocol: protocol })
+    const data = res?.data?.data || res?.data || {}
+    const saved = String(data?.app_output_protocol || '').trim().toLowerCase()
+    dashboardAppOutputProtocol.value = ['thinkingml_v45', 'jsonseq_v1'].includes(saved) ? saved : protocol
+    message.success('已更新 App 输出协议（全局 SSOT）')
+  } catch (error) {
+    message.error(error?.message || '保存 App 输出协议失败')
+  } finally {
+    appOutputProtocolSaving.value = false
+  }
+}
+
+async function handleSaveAppOutputProtocol() {
+  await saveAppOutputProtocol(dashboardAppOutputProtocol.value)
+}
+
+async function handleRestoreDefaultAppOutputProtocol() {
+  await saveAppOutputProtocol('thinkingml_v45')
 }
 
 // Dashboard active prompts（只读预览，避免 JWT 页与 Dashboard 漂移）
@@ -397,7 +432,7 @@ function pushSseEvent(ev, receivedAtMs) {
     data: ev?.data ?? null,
   }
   sseEvents.value.push(entry)
-  if (sseEvents.value.length > 200) sseEvents.value.splice(0, sseEvents.value.length - 200)
+  if (sseEvents.value.length > 600) sseEvents.value.splice(0, sseEvents.value.length - 600)
 }
 
 function genRequestId(prefix) {
@@ -473,6 +508,7 @@ async function handleSend() {
   firstDeltaAtMs.value = 0
   lastDeltaAtMs.value = 0
   thinkingmlValidation.value = { ok: false, reason: 'empty_reply' }
+  jsonseqValidation.value = { ok: false, reason: 'empty_events' }
 
   try {
     const createRequestId = genRequestId('web-create')
@@ -556,6 +592,7 @@ async function handleSendAgentRun() {
   firstDeltaAtMs.value = 0
   lastDeltaAtMs.value = 0
   thinkingmlValidation.value = { ok: false, reason: 'empty_reply' }
+  jsonseqValidation.value = { ok: false, reason: 'empty_events' }
 
   try {
     const createRequestId = genRequestId('web-agent-create')
@@ -753,8 +790,13 @@ async function streamSse(msgId, convId, requestId, { kind = 'messages' } = {}) {
 
         const effective = String(resultModeEffective.value || resultMode.value || '').trim()
         const protocol = String(dashboardAppOutputProtocol.value || '').trim().toLowerCase()
-        const shouldValidate = autoValidateOnCompleted.value && effective !== 'raw_passthrough' && protocol !== 'jsonseq_v1'
-        if (shouldValidate) thinkingmlValidation.value = validateThinkingMLV45(aiResponseText.value)
+        const shouldValidateThinkingml =
+          autoValidateOnCompleted.value && effective !== 'raw_passthrough' && protocol !== 'jsonseq_v1'
+        if (shouldValidateThinkingml) thinkingmlValidation.value = validateThinkingMLV45(aiResponseText.value)
+
+        const shouldValidateJsonseq =
+          autoValidateOnCompleted.value && effective !== 'raw_passthrough' && protocol === 'jsonseq_v1'
+        if (shouldValidateJsonseq) jsonseqValidation.value = validateJsonseqV1Events(sseEvents.value)
         return true
       }
       if (ev.event === 'error') {
@@ -915,6 +957,148 @@ function handleValidateThinkingML() {
   thinkingmlValidation.value = validateThinkingMLV45(aiResponseText.value)
   if (thinkingmlValidation.value.ok) message.success('ThinkingML 校验通过')
   else message.warning(`ThinkingML 校验失败：${thinkingmlValidation.value.reason}`)
+}
+
+function hasSensitiveQueryToken(query) {
+  const q = String(query || '').trim()
+  if (!q) return false
+  const lower = q.toLowerCase()
+  if (lower.includes('@') && /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(q)) return true
+  if (/\b\d{1,3}(\.\d{1,3}){3}\b/.test(q)) return true
+  if (/\b1\d{10}\b/.test(q)) return true
+  return false
+}
+
+function validateJsonseqV1Events(allEvents) {
+  const allowed = new Set([
+    'serp_summary',
+    'thinking_start',
+    'phase_start',
+    'phase_delta',
+    'thinking_end',
+    'final_delta',
+    'serp_queries',
+    'final_end',
+  ])
+
+  const seq = (Array.isArray(allEvents) ? allEvents : []).filter((e) => e && allowed.has(String(e.event || '')))
+  if (!seq.length) return { ok: false, reason: 'no_jsonseq_events' }
+
+  let serpSummaryCount = 0
+  let serpQueriesCount = 0
+  let sawThinkingStart = false
+  let sawThinkingEnd = false
+  let sawFinalEnd = false
+  let currentPhaseId = 0
+  let finalDeltaCount = 0
+  let finalTextLen = 0
+
+  for (const e of seq) {
+    const ev = String(e.event || '')
+    const data = e.data || {}
+
+    if (ev === 'serp_summary') {
+      serpSummaryCount += 1
+      if (serpSummaryCount > 1) return { ok: false, reason: 'serp_summary_multiple' }
+      if (sawThinkingStart) return { ok: false, reason: 'serp_summary_after_thinking_start' }
+      const text = typeof data?.text === 'string' ? data.text : ''
+      if (!text.trim()) return { ok: false, reason: 'serp_summary_text_empty' }
+      if (text.includes('<') || text.includes('>')) return { ok: false, reason: 'serp_summary_has_xml' }
+      continue
+    }
+
+    if (ev === 'thinking_start') {
+      if (sawThinkingStart) return { ok: false, reason: 'thinking_start_multiple' }
+      if (sawThinkingEnd || finalDeltaCount || sawFinalEnd) return { ok: false, reason: 'thinking_start_after_end' }
+      sawThinkingStart = true
+      continue
+    }
+
+    if (ev === 'phase_start') {
+      if (!sawThinkingStart) return { ok: false, reason: 'phase_start_before_thinking_start' }
+      if (sawThinkingEnd) return { ok: false, reason: 'phase_start_after_thinking_end' }
+      const id = Number(data?.id)
+      if (!Number.isInteger(id) || id <= 0) return { ok: false, reason: 'phase_id_invalid' }
+      const title = String(data?.title || '').trim()
+      if (!title) return { ok: false, reason: 'phase_title_empty' }
+      if (id !== currentPhaseId + 1) return { ok: false, reason: 'phase_id_not_incremental' }
+      currentPhaseId = id
+      continue
+    }
+
+    if (ev === 'phase_delta') {
+      if (!sawThinkingStart) return { ok: false, reason: 'phase_delta_before_thinking_start' }
+      if (sawThinkingEnd) return { ok: false, reason: 'phase_delta_after_thinking_end' }
+      const id = Number(data?.id)
+      if (!Number.isInteger(id) || id <= 0) return { ok: false, reason: 'phase_delta_id_invalid' }
+      if (!currentPhaseId) return { ok: false, reason: 'phase_delta_without_phase_start' }
+      if (id !== currentPhaseId) return { ok: false, reason: 'phase_delta_id_mismatch' }
+      if (typeof data?.text !== 'string') return { ok: false, reason: 'phase_delta_text_invalid' }
+      continue
+    }
+
+    if (ev === 'thinking_end') {
+      if (!sawThinkingStart) return { ok: false, reason: 'thinking_end_before_thinking_start' }
+      if (sawThinkingEnd) return { ok: false, reason: 'thinking_end_multiple' }
+      if (currentPhaseId < 1) return { ok: false, reason: 'thinking_end_without_phase' }
+      sawThinkingEnd = true
+      continue
+    }
+
+    if (ev === 'final_delta') {
+      if (!sawThinkingEnd) return { ok: false, reason: 'final_delta_before_thinking_end' }
+      if (sawFinalEnd) return { ok: false, reason: 'final_delta_after_final_end' }
+      if (typeof data?.text !== 'string') return { ok: false, reason: 'final_delta_text_invalid' }
+      finalDeltaCount += 1
+      finalTextLen += String(data.text || '').length
+      continue
+    }
+
+    if (ev === 'serp_queries') {
+      serpQueriesCount += 1
+      if (serpQueriesCount > 1) return { ok: false, reason: 'serp_queries_multiple' }
+      if (!finalDeltaCount) return { ok: false, reason: 'serp_queries_before_final_delta' }
+      if (sawFinalEnd) return { ok: false, reason: 'serp_queries_after_final_end' }
+
+      const queries = Array.isArray(data?.queries) ? data.queries : null
+      if (!queries) return { ok: false, reason: 'serp_queries_invalid' }
+
+      const normalized = queries.map((q) => String(q || '').trim()).filter((q) => q)
+      if (!normalized.length) return { ok: false, reason: 'serp_queries_empty' }
+      if (normalized.length > 5) return { ok: false, reason: 'serp_queries_too_many' }
+
+      const seen = new Set()
+      for (const q of normalized) {
+        if (q.length > 80) return { ok: false, reason: 'serp_queries_too_long' }
+        const key = q.toLowerCase()
+        if (seen.has(key)) return { ok: false, reason: 'serp_queries_not_deduped' }
+        if (hasSensitiveQueryToken(q)) return { ok: false, reason: 'serp_queries_sensitive' }
+        seen.add(key)
+      }
+      continue
+    }
+
+    if (ev === 'final_end') {
+      if (!finalDeltaCount) return { ok: false, reason: 'final_end_without_final_delta' }
+      if (sawFinalEnd) return { ok: false, reason: 'final_end_multiple' }
+      sawFinalEnd = true
+      continue
+    }
+  }
+
+  if (!sawThinkingStart) return { ok: false, reason: 'missing_thinking_start' }
+  if (!sawThinkingEnd) return { ok: false, reason: 'missing_thinking_end' }
+  if (!finalDeltaCount) return { ok: false, reason: 'missing_final_delta' }
+  if (finalTextLen <= 0) return { ok: false, reason: 'final_delta_empty' }
+  if (!sawFinalEnd) return { ok: false, reason: 'missing_final_end' }
+
+  return { ok: true, reason: 'ok', stats: { phases: currentPhaseId, final_deltas: finalDeltaCount } }
+}
+
+function handleValidateJsonseq() {
+  jsonseqValidation.value = validateJsonseqV1Events(sseEvents.value)
+  if (jsonseqValidation.value.ok) message.success('JSONSeq v1 校验通过')
+  else message.warning(`JSONSeq v1 校验失败：${jsonseqValidation.value.reason}`)
 }
 
 // ---------------- SSE Probe ----------------
@@ -1079,14 +1263,41 @@ async function handleRunSseProbe() {
           style="min-width: 220px"
         />
         <NTag size="small" type="info">prompt_mode: {{ dashboardPromptMode }}</NTag>
-        <NTag size="small" type="info">protocol: {{ dashboardAppOutputProtocol }}</NTag>
-        <NCheckbox
-          v-if="dashboardAppOutputProtocol !== 'jsonseq_v1'"
-          v-model:checked="autoValidateOnCompleted"
-          >completed 自动校验 ThinkingML</NCheckbox
+        <NSelect
+          v-model:value="dashboardAppOutputProtocol"
+          :options="appOutputProtocolOptions"
+          :disabled="appConfigLoading"
+          style="min-width: 240px"
+        />
+        <NButton
+          secondary
+          size="small"
+          :loading="appOutputProtocolSaving"
+          :disabled="appConfigLoading"
+          @click="handleSaveAppOutputProtocol"
+          >保存协议</NButton
         >
         <NButton
-          v-if="dashboardAppOutputProtocol !== 'jsonseq_v1'"
+          tertiary
+          size="small"
+          :loading="appOutputProtocolSaving"
+          :disabled="appConfigLoading"
+          @click="handleRestoreDefaultAppOutputProtocol"
+          >恢复默认协议</NButton
+        >
+        <NCheckbox v-model:checked="autoValidateOnCompleted">
+          completed 自动校验 {{ dashboardAppOutputProtocol === 'jsonseq_v1' ? 'JSONSeq v1' : 'ThinkingML' }}
+        </NCheckbox>
+        <NButton
+          v-if="dashboardAppOutputProtocol === 'jsonseq_v1'"
+          tertiary
+          size="small"
+          :disabled="!sseEvents.length"
+          @click="handleValidateJsonseq"
+          >立即校验</NButton
+        >
+        <NButton
+          v-else
           tertiary
           size="small"
           :disabled="!aiResponseText"
@@ -1094,9 +1305,12 @@ async function handleRunSseProbe() {
           >立即校验</NButton
         >
         <NTag
-          v-if="dashboardAppOutputProtocol !== 'jsonseq_v1' && aiResponseText"
-          :type="thinkingmlValidation.ok ? 'success' : 'error'"
+          v-if="dashboardAppOutputProtocol === 'jsonseq_v1' && jsonseqValidation.reason !== 'empty_events'"
+          :type="jsonseqValidation.ok ? 'success' : 'error'"
         >
+          JSONSeq: {{ jsonseqValidation.reason }}
+        </NTag>
+        <NTag v-else-if="aiResponseText" :type="thinkingmlValidation.ok ? 'success' : 'error'">
           ThinkingML: {{ thinkingmlValidation.reason }}
         </NTag>
         <NText depth="3" v-if="resultModeEffective">effective: {{ resultModeEffective }}</NText>
@@ -1106,6 +1320,11 @@ async function handleRunSseProbe() {
         <NButton tertiary size="small" :loading="appConfigLoading" @click="loadAppConfig">刷新 App Config</NButton>
         <NButton tertiary size="small" @click="handleResetPromptDefaults">恢复默认（SSOT）</NButton>
       </NSpace>
+
+      <NAlert type="warning" :bordered="false" class="mt-2">
+        注意：输出协议为全局 SSOT 配置，切换会影响 App/其它页面；测试后请恢复默认
+        <code>thinkingml_v45</code>。
+      </NAlert>
 
       <NAlert v-if="promptsErrorForPreview" type="error" class="mt-2">{{ promptsErrorForPreview }}</NAlert>
       <NCard
@@ -1316,7 +1535,7 @@ async function handleRunSseProbe() {
         <NInput :value="toolEventsText" type="textarea" :rows="8" readonly />
       </NCard>
 
-      <NCard v-if="sseEvents.length" size="small" class="mt-3" title="SSE 事件（最近 200）">
+      <NCard v-if="sseEvents.length" size="small" class="mt-3" title="SSE 事件（最近 600）">
         <NInput :value="sseEventsText" type="textarea" :rows="12" readonly />
       </NCard>
     </NCard>

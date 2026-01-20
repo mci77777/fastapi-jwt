@@ -1,10 +1,10 @@
 {
   "version": "1.0.0",
   "description": "Project-local conversation context index",
-  "lastUpdated": "2026-01-20T10:07:51+08:00",
+  "lastUpdated": "2026-01-20T11:10:36+08:00",
   "statistics": {
-    "totalConversations": 3,
-    "totalTags": 12,
+    "totalConversations": 4,
+    "totalTags": 15,
     "oldestConversation": "2026-01-17",
     "newestConversation": "2026-01-20"
   },
@@ -53,6 +53,21 @@
       "status": "active",
       "lineCount": 37,
       "relatedContexts": []
+    },
+    {
+      "id": "a133a1ee-dd61-4f82-bf0d-6b4eb32c53a2",
+      "title": "JWT SSE 测试页：协议切换 + JSONSeq v1 校验",
+      "file": "2026-01-20_jwt-sse-jsonseq-v1-ui.md",
+      "project": "vue-fastapi-admin",
+      "project_path": "X:/project/vue-fastapi-admin",
+      "created_at": "2026-01-20T11:10:36+08:00",
+      "updated_at": "2026-01-20T11:10:36+08:00",
+      "tags": ["jsonseq", "jwt", "sse", "validator", "dashboard", "ui"],
+      "summary": "在 JWT SSE SSOT 测试页新增 app_output_protocol（thinkingml_v45/jsonseq_v1）切换/保存/恢复默认，并实现 JSONSeq v1 事件流 validator（顺序/phase/serp_queries）。",
+      "type": "development",
+      "status": "active",
+      "lineCount": 38,
+      "relatedContexts": ["2fd9fbb8-6844-46d4-ba46-a4007e5acc11"]
     }
   ]
 }
