@@ -88,7 +88,8 @@
           <n-tag v-if="promptTypeLabel" type="warning" size="small">{{ promptTypeLabel }}</n-tag>
         </n-space>
       </n-space>
-    </n-card>
+    </n-space>
+  </n-card>
 </template>
 
 <script setup>
